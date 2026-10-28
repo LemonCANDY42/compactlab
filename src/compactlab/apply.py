@@ -160,7 +160,7 @@ def _dump_json(d: dict, original: str) -> str:
 
 
 def _toml_top(text: str) -> str:
-    m = re.search(r"^\s*\[", text, re.M)
+    m = re.search(r"^[ \t]*\[", text, re.M)
     return text[:m.start()] if m else text
 
 
