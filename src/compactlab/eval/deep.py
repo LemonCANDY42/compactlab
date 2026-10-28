@@ -1,11 +1,11 @@
-"""Hyper mode: opt-in, agent-driven evaluation layered on top of lite.
+"""Deep mode: opt-in, agent-driven evaluation layered on top of lite.
 
 Never runs by default. The CLI prints an estimated cost, requires `--yes`, and enforces `--budget`
 as a hard cap. Network or harness access happens only inside an `LLMClient` (see executors.py).
 
 Two pieces:
   run_eval()        probes + LLM judge on summaries that already exist in your history.
-  hyper_analyze()   re-summarizes sampled sessions at candidate thresholds, probes the summaries for
+  deep_analyze()   re-summarizes sampled sessions at candidate thresholds, probes the summaries for
                     ground-truth facts, and reports measured recall next to lite's assumed recall.
 """
 
@@ -208,7 +208,7 @@ def load_client(spec: str) -> LLMClient:
     return getattr(importlib.import_module(mod), cls)()
 
 
-# ---------------- hyper_analyze: re-summarize at candidate thresholds ----------------
+# ---------------- deep_analyze: re-summarize at candidate thresholds ----------------
 
 SUMMARY_PROMPT = (
     "You are compacting an agent session. Write a faithful summary that preserves file paths, "
@@ -244,12 +244,12 @@ def cut_index(s: Session, threshold: int, base: int) -> int | None:
 
 
 @dataclass
-class HyperPlan:
+class DeepPlan:
     pairs: list[tuple[str, str, Session, int, int]]  # (model, role, session, threshold, cut)
     est_usd: float
 
 
-def plan_hyper(
+def plan_deep(
     sessions: list[Session],
     result: dict,
     pricing: PricingTable,
@@ -258,7 +258,7 @@ def plan_hyper(
     repeats: int = 3,
     sessions_per_group: int = 3,
     probes: int = 5,
-) -> HyperPlan:
+) -> DeepPlan:
     pairs = []
     est = 0.0
     g_by = {(g["model"], g["role"]): g for g in result["groups"]}
@@ -282,11 +282,11 @@ def plan_hyper(
                 guard = BudgetGuard(1.0, pricing)
                 est += guard.cost(model, chars // 4 + 100, 2000)
                 est += estimate_cost(probes, 8000, model, judge_model, repeats, pricing)
-    return HyperPlan(pairs, est)
+    return DeepPlan(pairs, est)
 
 
-def hyper_analyze(
-    plan: HyperPlan,
+def deep_analyze(
+    plan: DeepPlan,
     result: dict,
     client: LLMClient,
     *,
@@ -298,7 +298,7 @@ def hyper_analyze(
     confirm: bool = False,
 ) -> dict:
     if not confirm:
-        raise EvalError(f"hyper mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
+        raise EvalError(f"deep mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
     if model == judge_model:
         raise EvalError("judge model must differ from the summarizing/answering model")
     guard = BudgetGuard(budget_usd, pricing)
@@ -372,8 +372,8 @@ def hyper_analyze(
             g["tiers"]["headroom"]["lite_threshold"] = head
             g["tiers"]["headroom"]["threshold"] = adjusted
             g["gears"]["headroom"] = adjusted
-    result["mode"] = "hyper"
-    result["hyper"] = {
+    result["mode"] = "deep"
+    result["deep"] = {
         "model": model,
         "judge_model": judge_model,
         "repeats": repeats,

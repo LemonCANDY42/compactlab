@@ -2,8 +2,8 @@ import json
 
 import pytest
 
+from compactlab.eval.deep import DeepPlan, EvalError, MockClient, deep_analyze
 from compactlab.eval.executors import ClaudeCodeExecutor, CodexExecutor
-from compactlab.eval.hyper import EvalError, HyperPlan, MockClient, hyper_analyze
 from compactlab.model import Session, Turn
 from compactlab.pricing import PricingTable
 from compactlab.pricing.refresh import parse_litellm, parse_models_dev, refresh
@@ -84,7 +84,7 @@ def test_executors_parse_output():
 
     c = ClaudeCodeExecutor(runner).complete("claude-sonnet-5-5", "hi", 50)
     assert (c.text, c.input_tokens, c.output_tokens) == ("hello", 15, 3)
-    assert seen["cmd"][:2] == ["claude", "-p"] and "compactlab-hyper-" in seen["cwd"]
+    assert seen["cmd"][:2] == ["claude", "-p"] and "compactlab-deep-" in seen["cwd"]
     c2 = CodexExecutor(lambda cmd, p, cwd: "  ok \n").complete("gpt-5-codex", "x" * 40, 50)
     assert c2.text == "ok" and c2.input_tokens == 11
 
@@ -116,11 +116,11 @@ def _result():
     }
 
 
-def test_hyper_lowers_headroom_when_measured_recall_fails():
+def test_deep_lowers_headroom_when_measured_recall_fails():
     s = _session()
-    plan = HyperPlan([("claude-opus-5-5", "main", s, 100_000, 12), ("claude-opus-5-5", "main", s, 300_000, 45)], 0.1)
+    plan = DeepPlan([("claude-opus-5-5", "main", s, 100_000, 12), ("claude-opus-5-5", "main", s, 300_000, 45)], 0.1)
 
-    res = hyper_analyze(
+    res = deep_analyze(
         plan,
         _result(),
         MockClient(),
@@ -130,7 +130,7 @@ def test_hyper_lowers_headroom_when_measured_recall_fails():
         budget_usd=5,
         confirm=True,
     )
-    assert res["mode"] == "hyper" and res["hyper"]["groups"][0]["points"]
+    assert res["mode"] == "deep" and res["deep"]["groups"][0]["points"]
     # mock answers every probe correctly -> no adjustment
     assert res["groups"][0]["tiers"]["headroom"]["threshold"] == 300_000
 
@@ -141,7 +141,7 @@ def test_hyper_lowers_headroom_when_measured_recall_fails():
                 c.text = json.dumps({"correct": False})
             return c
 
-    res2 = hyper_analyze(
+    res2 = deep_analyze(
         plan,
         _result(),
         Wrong(),
@@ -154,7 +154,7 @@ def test_hyper_lowers_headroom_when_measured_recall_fails():
     assert res2["groups"][0]["tiers"]["headroom"]["threshold"] == 100_000
     assert res2["groups"][0]["tiers"]["headroom"]["lite_threshold"] == 300_000
     with pytest.raises(EvalError):
-        hyper_analyze(
+        deep_analyze(
             plan,
             _result(),
             MockClient(),

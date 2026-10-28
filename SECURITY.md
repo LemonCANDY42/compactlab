@@ -11,7 +11,7 @@ file paths and tool output) and harness configuration files it may modify.
 - Reports and `result.json` contain token counts, model names and session ids, never transcript text or paths.
   `report --redact` hashes session ids.
 - `apply` writes only with `--write` plus a pre-authorization file or `--i-authorize`, keeps backups, and can revert.
-- Hyper mode sends reconstructed excerpts of sampled sessions to the model you choose, through a harness you
+- Deep mode sends reconstructed excerpts of sampled sessions to the model you choose, through a harness you
   choose. It shows an estimate first, needs `--yes`, and stops at `--budget`.
 
 ## Reporting a vulnerability

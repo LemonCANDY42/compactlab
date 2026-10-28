@@ -7,7 +7,7 @@ src/compactlab/
   pricing/    PricingTable with provenance (bundled -> refreshed -> user) · refresh.py (models.dev / LiteLLM)
   sim/        engine.py (traces, replay, sweep) · calibrate.py (re-discovery penalty) · select.py (recommend,
               Pareto, gears, tiers)
-  eval/       factcheck.py (offline heuristics) · hyper.py (probes, judge, budget, re-summarize) · executors.py
+  eval/       factcheck.py (offline heuristics) · deep.py (probes, judge, budget, re-summarize) · executors.py
   report/     html.py + template.html (single offline file)
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
@@ -24,7 +24,7 @@ flowchart LR
   P[pricing + provenance] --> D
   D --> E[select: standard, headroom, gears, Pareto]
   E --> R[(result.json)]
-  R -->|optional hyper: re-summarize, probe, judge| R
+  R -->|optional deep: re-summarize, probe, judge| R
   R --> H[report.html]
   R --> X[apply dry-run / write / revert]
 ```
@@ -36,7 +36,7 @@ shared (it contains no transcript text) and applied later.
 
 - Adapters know file formats only. They emit one `Turn` per billed request and count what they do not recognize.
 - `sim` is pure: sessions + prices + options in, numbers out. No I/O.
-- `eval.hyper` performs model calls only through an `LLMClient`; `executors.py` is the only place that shells out
+- `eval.deep` performs model calls only through an `LLMClient`; `executors.py` is the only place that shells out
   to a harness CLI. `pricing.refresh` is the only place that fetches a URL.
 - `apply` is the only code that writes outside `~/.compactlab` and the output paths you pass.
 

@@ -1,6 +1,6 @@
 """compactlab: measure where to auto-compact from your own agent history.
 
-Modes: lite (default; offline, zero cost) and hyper (opt-in; adds LLM-driven checks, needs --yes and --budget).
+Modes: lite (default; offline, zero cost) and deep (opt-in; adds LLM-driven checks, needs --yes and --budget).
 Tiers: headroom (default; a bit larger than the optimum for fewer lossy compactions) and standard (optimum).
 """
 
@@ -21,7 +21,7 @@ from .. import __version__, synth
 from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
 from ..adapters.cache import ScanCache
-from ..eval.hyper import EvalError, MockClient, hyper_analyze, load_client, plan_hyper
+from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
 from ..model import Session
 from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, refresh
@@ -35,7 +35,7 @@ EXAMPLES = """examples:
   compactlab simulate --out result.json             lite analysis of the last 30 days
   compactlab report --result result.json            HTML report from a saved result
   compactlab apply --result result.json --claude-settings ~/.claude/settings.json   dry-run diff
-  compactlab simulate --mode hyper --budget 2       print the hyper cost estimate (add --yes to run)
+  compactlab simulate --mode deep --budget 2       print the deep cost estimate (add --yes to run)
 """
 
 
@@ -106,17 +106,17 @@ def _sim(p: argparse.ArgumentParser) -> None:
     g.add_argument("--cache-ttl", type=int, help="prompt-cache TTL in seconds (default from pricing file: 300)")
     g.add_argument("--summary-tokens", type=_k, help="compaction summary size (default: observed median, else 12k)")
     g.add_argument("--base-tokens", type=_k, help="post-compaction base context (default: observed, else 35k)")
-    h = p.add_argument_group("hyper mode (opt-in, costs money)")
+    h = p.add_argument_group("deep mode (opt-in, costs money)")
     h.add_argument(
-        "--mode", choices=["lite", "hyper"], default="lite", help="lite: offline (default); hyper: adds LLM checks"
+        "--mode", choices=["lite", "deep"], default="lite", help="lite: offline (default); deep: adds LLM checks"
     )
     h.add_argument("--executor", default="claude-code", help="claude-code | codex | mock | package.module:Class")
     h.add_argument("--model", default="claude-sonnet-5-5", help="model that re-summarizes and answers probes")
     h.add_argument("--judge-model", default="claude-haiku-5-5", help="judge model (must differ from --model)")
     h.add_argument("--repeats", type=int, default=3, help="judge repeats per probe (majority vote)")
     h.add_argument("--sessions-per-group", type=int, default=3)
-    h.add_argument("--budget", type=float, help="hard USD cap for hyper mode (required with --mode hyper)")
-    h.add_argument("--yes", action="store_true", help="confirm hyper-mode spending after reviewing the estimate")
+    h.add_argument("--budget", type=float, help="hard USD cap for deep mode (required with --mode deep)")
+    h.add_argument("--yes", action="store_true", help="confirm deep-mode spending after reviewing the estimate")
 
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
@@ -169,25 +169,25 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
         )
     pricing = _pricing(a)
     res = analyze(sessions, pricing, _opts(a))
-    if a.mode == "hyper":
-        return _hyper(a, sessions, res, pricing)
+    if a.mode == "deep":
+        return _deep(a, sessions, res, pricing)
     return res
 
 
-def _hyper(
+def _deep(
     a: argparse.Namespace, sessions: list[Session], res: dict[str, Any], pricing: PricingTable
 ) -> dict[str, Any] | None:
     if a.budget is None:
-        raise CLIError("--mode hyper needs --budget USD (a hard cap)")
-    plan = plan_hyper(sessions, res, pricing, a.model, a.judge_model, a.repeats, a.sessions_per_group)
+        raise CLIError("--mode deep needs --budget USD (a hard cap)")
+    plan = plan_deep(sessions, res, pricing, a.model, a.judge_model, a.repeats, a.sessions_per_group)
     print(
-        f"hyper plan: {len(plan.pairs)} re-summarizations via {a.executor} ({a.model}, judge {a.judge_model}); "
+        f"deep plan: {len(plan.pairs)} re-summarizations via {a.executor} ({a.model}, judge {a.judge_model}); "
         f"estimated ~${plan.est_usd:.2f}; hard cap ${a.budget:.2f}",
         file=sys.stderr,
     )
     if not a.yes:
         print(
-            "not running hyper: review the estimate, then re-run with --yes (lite results are unaffected)",
+            "not running deep: review the estimate, then re-run with --yes (lite results are unaffected)",
             file=sys.stderr,
         )
         return None
@@ -199,7 +199,7 @@ def _hyper(
         else (EXECUTORS[a.executor]() if a.executor in EXECUTORS else load_client(a.executor))
     )
     try:
-        return hyper_analyze(
+        return deep_analyze(
             plan,
             res,
             client,
@@ -216,7 +216,7 @@ def _hyper(
 
 def _summary(res: dict[str, Any]) -> str:
     lines = [
-        f"mode: {res['mode']}" + (f"  (hyper spent ${res['hyper']['spent_usd']:.2f})" if res.get("hyper") else ""),
+        f"mode: {res['mode']}" + (f"  (deep spent ${res['deep']['spent_usd']:.2f})" if res.get("deep") else ""),
         f"{'model':22} {'role':8} {'sess':>4} {'turns':>6}  {'standard':>8}  {'headroom':>8}  "
         f"{'+cost':>6}  {'-compact':>8}  {'recall':>6}",
     ]
@@ -580,7 +580,7 @@ def build_parser() -> argparse.ArgumentParser:
     _source(s)
     s.set_defaults(f=cmd_scan)
 
-    s = sub.add_parser("simulate", help="threshold sweep -> result.json + summary (lite or hyper)")
+    s = sub.add_parser("simulate", help="threshold sweep -> result.json + summary (lite or deep)")
     _sim(s)
     s.add_argument("--out", default="compactlab-result.json")
     s.set_defaults(f=cmd_simulate)

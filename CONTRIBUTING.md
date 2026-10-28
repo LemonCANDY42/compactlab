@@ -8,7 +8,7 @@ Thanks for helping. compactlab reads sensitive local logs, so the rules below ar
   containing a username. Build fixtures with `compactlab.synth` or hand-written minimal JSONL in tests.
 - Run `python scripts/secrets_scan.py --all` before every push (pre-commit runs it too).
 - No new runtime dependencies without discussion. The HTML report stays a single offline file.
-- Network access belongs only in `pricing/refresh.py` (explicit command) and hyper-mode executors (explicit opt-in).
+- Network access belongs only in `pricing/refresh.py` (explicit command) and deep-mode executors (explicit opt-in).
 
 ## Setup
 

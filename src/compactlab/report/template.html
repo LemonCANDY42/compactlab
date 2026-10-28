@@ -36,8 +36,8 @@ ul.n{margin:12px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
 <section class="panel" id="ctl"></section>
 <h2>Trade-off</h2>
 <div class="grid2"><div class="fig" id="fPareto"></div><div class="fig" id="fCost"></div></div>
-<h2>Lite vs hyper</h2>
-<div class="fig" id="fHyper"></div>
+<h2>Lite vs deep</h2>
+<div class="fig" id="fDeep"></div>
 <h2>Your history</h2>
 <div class="grid2"><div class="fig" id="fHist"></div><div class="fig" id="fSess"></div></div>
 <h2>Sessions</h2>
@@ -69,7 +69,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,h=g.his
    <div><div class="k">Estimated spend vs. your history</div><div class="v ${sv>=0?'good':'bad'}">${pc(-sv)}</div><div class="d">${fd(cost)} vs ${fd(hc)} (${h.threshold?'median compaction ≈ '+fk(h.threshold):'no compaction observed'})</div></div>
    <div><div class="k">vs. never compacting</div><div class="v ${sv0>=0?'good':'bad'}">${pc(-sv0)}</div><div class="d">${fd(g.baseline_cost_total)}</div></div>
    <div><div class="k">Assumed recall</div><div class="v ${g.recall[i]>=r.recall_floor?'':'bad'}">${g.recall[i].toFixed(3)}</div><div class="d">history ${h.recall.toFixed(3)} · floor ${r.recall_floor}</div></div>
-   <div><div class="k">Tiers</div><div class="v">${fk(g.tiers.standard.threshold)} → ${fk(g.tiers.headroom.threshold)}</div><div class="d">standard → headroom: ${pc(g.tiers.headroom.extra_cost_pct)} cost, ${g.tiers.headroom.fewer_compactions} fewer compactions${g.tiers.headroom.lite_threshold?' · hyper lowered from '+fk(g.tiers.headroom.lite_threshold):''}</div></div>
+   <div><div class="k">Tiers</div><div class="v">${fk(g.tiers.standard.threshold)} → ${fk(g.tiers.headroom.threshold)}</div><div class="d">standard → headroom: ${pc(g.tiers.headroom.extra_cost_pct)} cost, ${g.tiers.headroom.fewer_compactions} fewer compactions${g.tiers.headroom.lite_threshold?' · deep lowered from '+fk(g.tiers.headroom.lite_threshold):''}</div></div>
    <div><div class="k">Compactions in replay</div><div class="v">${g.compactions[i]}</div><div class="d">${g.n_sessions} sessions · ${g.n_turns.toLocaleString()} turns</div></div></div>
   <ul class="n">${notes(g).map(n=>'<li>'+esc(n)+'</li>').join('')}</ul>`;
   document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setGear(b.dataset.g));
@@ -90,16 +90,16 @@ function pareto(){const g=G(),box=$('#fPareto');box.innerHTML='<h3>Pareto fronti
   f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(g.recommendation.recall_floor),y2:Y(g.recommendation.recall_floor),stroke:'var(--warn)','stroke-dasharray':'4 4','stroke-width':.8}));
   f.svg.append(el('polyline',{points:fr.map(i=>X(xs[i])+','+Y(ys[i])).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.5,opacity:.7}));
   g.grid.forEach((t,i)=>{const on=fr.includes(i);f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:on?4:2.6,fill:on?'var(--acc)':'var(--ghost)'}))});
-  const hy=hyperOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--fg)','stroke-width':1.3}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--fg)','stroke-dasharray':'2 2','stroke-width':.8}))});
+  const hy=deepOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--fg)','stroke-width':1.3}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--fg)','stroke-dasharray':'2 2','stroke-width':.8}))});
   ['eco','standard','headroom','recall'].forEach(k=>{const i=g.grid.indexOf(g.gears[k]);if(i>=0&&k!==S.gear)f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:7,fill:'none',stroke:'var(--mut)','stroke-width':1.2}))});
   const si=g.grid.indexOf(S.T);f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:8,fill:'var(--acc2)',opacity:.9}));f.svg.append(el('text',{x:X(xs[si])+11,y:Y(ys[si])-9,style:'fill:var(--fg);font-weight:600'},fk(S.T)));
   f.svg.append(el('rect',{x:X(g.history.combined)-4,y:Y(g.history.recall)-4,width:8,height:8,fill:'var(--warn)'}));f.svg.append(el('text',{x:X(g.history.combined)+8,y:Y(g.history.recall)+14,style:'fill:var(--warn)'},'your history'));
   f.svg.append(el('text',{x:f.x1,y:f.y1+8,'text-anchor':'end'},'x: cost + penalty (USD)'));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--acc)"></i>Pareto-optimal</span><span><i style="background:var(--ghost)"></i>dominated</span><span><i style="background:var(--acc2)"></i>selected</span><span>○ other gears</span><span><i style="background:var(--warn)"></i>your history / floor</span>'+(hyperOf(g)?'<span><i style="background:var(--fg)"></i>hyper: measured recall</span>':'')+'</div>')}
-function hyperOf(g){return D.hyper&&D.hyper.groups.find(x=>x.model===g.model&&x.role===g.role)}
-function hyperPanel(){const g=G(),b=$('#fHyper'),hy=hyperOf(g);if(!D.hyper){b.innerHTML='<h3>Lite vs hyper</h3><p>This report is <b>lite</b> only: recall is an assumed proxy. Run <code>compactlab simulate --mode hyper --budget N</code> to measure recall at candidate thresholds (costs money; estimate shown first).</p>';return}
-  if(!hy){b.innerHTML='<h3>Lite vs hyper</h3><p>No hyper samples for this group.</p>';return}
-  b.innerHTML='<h3>Lite vs hyper</h3><p>'+esc(D.hyper.model)+' summarizes, '+esc(D.hyper.judge_model)+' judges ('+D.hyper.repeats+' votes). Spent '+fd(D.hyper.spent_usd)+' of '+fd(D.hyper.budget_usd)+'.'+(D.hyper.stopped?' Stopped early: '+esc(D.hyper.stopped):'')+'</p><table><tr><th>threshold</th><th>assumed (lite)</th><th>measured (hyper)</th><th>samples</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">disagree</span>':''}</td></tr>`).join('')+'</table>'+(hy.headroom_adjusted_to?'<p class="bad">Measured recall at the lite headroom fell below the floor; headroom lowered to '+fk(hy.headroom_adjusted_to)+'.</p>':'')}
+  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--acc)"></i>Pareto-optimal</span><span><i style="background:var(--ghost)"></i>dominated</span><span><i style="background:var(--acc2)"></i>selected</span><span>○ other gears</span><span><i style="background:var(--warn)"></i>your history / floor</span>'+(deepOf(g)?'<span><i style="background:var(--fg)"></i>deep: measured recall</span>':'')+'</div>')}
+function deepOf(g){return D.deep&&D.deep.groups.find(x=>x.model===g.model&&x.role===g.role)}
+function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);if(!D.deep){b.innerHTML='<h3>Lite vs deep</h3><p>This report is <b>lite</b> only: recall is an assumed proxy. Run <code>compactlab simulate --mode deep --budget N</code> to measure recall at candidate thresholds (costs money; estimate shown first).</p>';return}
+  if(!hy){b.innerHTML='<h3>Lite vs deep</h3><p>No deep samples for this group.</p>';return}
+  b.innerHTML='<h3>Lite vs deep</h3><p>'+esc(D.deep.model)+' summarizes, '+esc(D.deep.judge_model)+' judges ('+D.deep.repeats+' votes). Spent '+fd(D.deep.spent_usd)+' of '+fd(D.deep.budget_usd)+'.'+(D.deep.stopped?' Stopped early: '+esc(D.deep.stopped):'')+'</p><table><tr><th>threshold</th><th>assumed (lite)</th><th>measured (deep)</th><th>samples</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">disagree</span>':''}</td></tr>`).join('')+'</table>'+(hy.headroom_adjusted_to?'<p class="bad">Measured recall at the lite headroom fell below the floor; headroom lowered to '+fk(hy.headroom_adjusted_to)+'.</p>':'')}
 function costs(){const g=G(),box=$('#fCost');box.innerHTML='<h3>Cost by threshold</h3><p>Replay cost, re-discovery penalty and their sum.</p>';
   const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=g.grid,hi=Math.max(...g.combined)*1.06;
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
@@ -133,7 +133,7 @@ function sessPick(){const g=G(),box=$('#fSess'),ss=D.sessions.filter(s=>s.model=
   f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6}));
   box.append(f.svg);box.insertAdjacentHTML('beforeend',`<div class="legend"><span><i style="background:var(--ghost)"></i>actual (${s.compactions} compactions)</span><span><i style="background:var(--acc)"></i>replayed (${sim.k} compactions)</span><span><i style="background:var(--acc2)"></i>threshold</span></div>`);
   $('#sp').onchange=e=>{S.sid=e.target.value;sessPick()}}
-function render(){controls();pareto();costs();hist();sessPick();hyperPanel()}
+function render(){controls();pareto();costs();hist();sessPick();deepPanel()}
 function pick(i){S.gi=i;S.gear='headroom';S.T=G().gears.headroom;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
 D.groups.forEach(g=>{g.baseline_cost_total=g.baseline_cost+0});
 D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.textContent=g.model+' · '+g.role;b.onclick=()=>pick(i);$('#tabs').append(b)});

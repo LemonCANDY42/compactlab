@@ -9,7 +9,7 @@
 | Summary size, base context | median observed, else 12k / 35k | measured if available, else prior |
 | Re-discovery penalty | repeated reads/searches and correction phrases in the 20 turns after a compaction, minus the rate in the 20 turns before | calibrated with ≥5 observed compactions, else prior (ρ = 0.04, 6k tokens, 0.3 correction turns) |
 | Recall (lite) | context-rot table × summary-retention decay | **assumed**; placeholders you can replace |
-| Recall (hyper) | probes answered from re-generated summaries, judged by a different model | measured on samples, with variance |
+| Recall (deep) | probes answered from re-generated summaries, judged by a different model | measured on samples, with variance |
 
 compactlab does not contain measured recall curves for Claude 5 or any other model.
 
@@ -42,7 +42,7 @@ Recall proxy per turn: `rot(c) · (1 − (1 − r)·exp(−turns_since_compactio
 - Gears in the report: Eco (cheapest Pareto point meeting the floor), Standard, Headroom, Recall (highest recall on
   the frontier), Custom.
 
-## Hyper mode
+## Deep mode
 
 For each model/role group, up to N sessions (largest peak first) are cut where the replay would compact at each
 candidate threshold (standard, headroom, eco, recall). The executor model summarizes a reconstructed excerpt of
@@ -58,7 +58,7 @@ lowered to the largest sampled threshold that meets it (or to standard).
 - Growth is assumed independent of the threshold.
 - Cost-only optima tend to sit low; the recall and headroom rules push the pick up. These rules are judgement
   calls, made explicit so you can change them.
-- Hyper mode summarizes compactlab's excerpt of a session (tool calls, user text, short output snippets), not the
+- Deep mode summarizes compactlab's excerpt of a session (tool calls, user text, short output snippets), not the
   full transcript, so it is a proxy for the harness's own summarizer. Probes cover file recall only in v0.1.
 - Fact-check heuristics are regexes with false positives and negatives.
 - Codex fork/replay handling follows public parsers and is marked `assumed` where unverified; see

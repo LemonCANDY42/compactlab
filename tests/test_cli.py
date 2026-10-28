@@ -100,7 +100,7 @@ def test_retune_requires_allow_retune(tmp_path, claude_root, codex_root):
     assert main(args) == 0 and "autoCompactWindow" in settings.read_text()
 
 
-def test_hyper_needs_budget_and_yes(tmp_path, claude_root, capsys):
+def test_deep_needs_budget_and_yes(tmp_path, claude_root, capsys):
     base = [
         "simulate",
         "--claude-root",
@@ -112,7 +112,7 @@ def test_hyper_needs_budget_and_yes(tmp_path, claude_root, capsys):
         "--grid",
         "100k:600k:50k",
         "--mode",
-        "hyper",
+        "deep",
         "--executor",
         "mock",
         "--out",
@@ -124,7 +124,7 @@ def test_hyper_needs_budget_and_yes(tmp_path, claude_root, capsys):
     assert "estimated ~$" in err and "--yes" in err and not (tmp_path / "h.json").exists()
     assert main([*base, "--budget", "5", "--yes"]) == 0
     res = json.loads((tmp_path / "h.json").read_text())
-    assert res["mode"] == "hyper" and res["hyper"]["calls"] > 0 and res["hyper"]["spent_usd"] <= 5
+    assert res["mode"] == "deep" and res["deep"]["calls"] > 0 and res["deep"]["spent_usd"] <= 5
 
 
 def test_scan_json_and_doctor(tmp_path, claude_root, codex_root, capsys, isolated_home):

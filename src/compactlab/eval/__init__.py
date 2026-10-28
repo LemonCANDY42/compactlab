@@ -1,1 +1,1 @@
-"""Summary evaluation: offline fact-check heuristics and the opt-in hyper (LLM) layer."""
+"""Summary evaluation: offline fact-check heuristics and the opt-in deep (LLM) layer."""

@@ -67,7 +67,7 @@ and any session's real context curve next to the same session replayed at the ch
 
 ## Two modes
 
-| | `lite` (default) | `hyper` (opt-in) |
+| | `lite` (default) | `deep` (opt-in) |
 | --- | --- | --- |
 | Inputs | your logs + price table | lite + a model you choose, via Claude Code or Codex |
 | Does | replay simulation, cost model, re-discovery penalty, summary fact-check heuristics | re-summarizes sampled sessions at candidate thresholds, probes them for ground-truth facts, LLM judge on a different model |
@@ -75,11 +75,11 @@ and any session's real context curve next to the same session replayed at the ch
 | Cost | $0, offline | shows an estimate first, needs `--yes`, stops at `--budget` |
 
 ```bash
-compactlab simulate --mode hyper --executor claude-code --model claude-sonnet-5-5 \
+compactlab simulate --mode deep --executor claude-code --model claude-sonnet-5-5 \
   --judge-model claude-haiku-5-5 --budget 3            # prints the estimate; add --yes to run
 ```
 
-If measured recall at the headroom threshold falls below the floor, hyper lowers headroom and says so.
+If measured recall at the headroom threshold falls below the floor, deep lowers headroom and says so.
 
 ## How it works
 
@@ -114,7 +114,7 @@ Neither harness lets subagents have their own threshold, so `apply` writes the m
 ## Safety and privacy
 
 - **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` fetches public
-  prices, and only hyper mode calls a model, and only after you confirm.
+  prices, and only deep mode calls a model, and only after you confirm.
 - **Nothing leaves your machine in lite mode.** Reports and `result.json` hold token counts, model names and
   session ids, never transcript text or file paths. `report --redact` hashes the ids.
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
@@ -124,7 +124,7 @@ Neither harness lets subagents have their own threshold, so `apply` writes the m
 
 ## Limitations
 
-- Lite-mode recall is an **assumed** curve, not a measurement of any model. Hyper mode measures recall on samples
+- Lite-mode recall is an **assumed** curve, not a measurement of any model. Deep mode measures recall on samples
   of compactlab's excerpts, not the full transcript the harness would summarize.
 - Replayed cost is for comparing thresholds, not a reconstruction of your invoice.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
@@ -143,7 +143,7 @@ so the default leaves headroom. Use `--tier standard` if you want the optimum.
 
 **Does it work without any history?** `compactlab demo` uses bundled synthetic sessions.
 
-**Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Hyper mode
+**Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Deep mode
 gives sampled measurements with their own noise.
 
 ## Related work

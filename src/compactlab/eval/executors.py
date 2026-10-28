@@ -1,4 +1,4 @@
-"""LLM clients that run through a local agent harness (for hyper mode).
+"""LLM clients that run through a local agent harness (for deep mode).
 
 They shell out to the harness CLI in an empty temporary directory, send the prompt on stdin, and parse
 the reply. Flags are the documented non-interactive modes; check them against your installed version
@@ -14,7 +14,7 @@ import tempfile
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from .hyper import Completion, EvalError
+from .deep import Completion, EvalError
 
 Runner = Callable[[Sequence[str], str, str], str]
 
@@ -38,7 +38,7 @@ class ClaudeCodeExecutor:
         self.runner, self.binary = runner, binary
 
     def complete(self, model: str, prompt: str, max_tokens: int) -> Completion:
-        with tempfile.TemporaryDirectory(prefix="compactlab-hyper-") as d:
+        with tempfile.TemporaryDirectory(prefix="compactlab-deep-") as d:
             out = self.runner([self.binary, "-p", "--model", model, "--output-format", "json"], prompt, d)
         try:
             j: dict[str, Any] = json.loads(out)
@@ -61,7 +61,7 @@ class CodexExecutor:
         self.runner, self.binary = runner, binary
 
     def complete(self, model: str, prompt: str, max_tokens: int) -> Completion:
-        with tempfile.TemporaryDirectory(prefix="compactlab-hyper-") as d:
+        with tempfile.TemporaryDirectory(prefix="compactlab-deep-") as d:
             out = self.runner([self.binary, "exec", "-m", model, "--skip-git-repo-check", "-"], prompt, d)
         text = out.strip()
         return Completion(text, len(prompt) // 4 + 1, len(text) // 4 + 1)

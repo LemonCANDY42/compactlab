@@ -13,10 +13,10 @@ versioning: [SemVer](https://semver.org/).
 - Replay simulator: cache read/write/output costs, long-context tiers, cache TTL/idle effects, summary size,
   post-compaction base context, re-discovery penalty calibrated from observed compactions.
 - Two result tiers per model and role: `standard` (optimum) and `headroom` (default).
-- Two modes: `lite` (offline, default) and opt-in `hyper` (re-summarize at candidate thresholds, probes, LLM judge,
+- Two modes: `lite` (offline, default) and opt-in `deep` (re-summarize at candidate thresholds, probes, LLM judge,
   estimate + `--yes` + hard `--budget`; Claude Code / Codex executors).
 - Self-contained HTML report: gears, Pareto frontier, cost curves, token distribution, history-vs-replay overlay,
-  lite-vs-hyper comparison, sessions table.
+  lite-vs-deep comparison, sessions table.
 - `apply` / `retune` / `revert` with pre-authorization files, backups, manifests and key-level revert for
   Claude Code `modelSettings.<model>.autoCompactWindow` and Codex `model_auto_compact_token_limit`.
 - `doctor`, `pricing show|refresh` (models.dev / LiteLLM), `cache info|clear`, `demo`, `--json` output.
