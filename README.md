@@ -43,27 +43,49 @@ uvx compactlab apply --result result.json --claude-settings ~/.claude/settings.j
 
 ## What you get
 
-For each model and role, two results:
+For each model and role, two results, each compared with **the harness default** (what happens if you change
+nothing) and with **your current setting** when compactlab can read it:
 
-- **standard**: the threshold with the lowest replayed cost + re-discovery penalty that meets a recall floor.
+- **standard**: the threshold with the lowest score (replayed cost + re-discovery penalty + time) that meets a
+  recall floor.
 - **headroom** (default): the largest threshold within 12% of that optimum. You pay a little more and get fewer
-  lossy compactions. The tolerance is a flag (`--headroom`), and the extra cost and the drop in compactions are
-  printed.
+  lossy compactions. The tolerance is a flag (`--headroom`).
+- **no action needed**: shown instead of a number when the default never compacts in those sessions.
 
-Sample output (**synthetic demo data**, not a benchmark):
+Every result reports Δcost, Δwall-clock (time saved by smaller contexts minus time added by compactions and
+re-discovery, fitted from your own timestamps), compactions and recall against the default. Time enters the score
+at `--value-of-time` USD per hour (default 10; `--view cost` ranks by cost alone). Thin timing data is flagged.
+
+Sample output (**synthetic demo data**, not a benchmark; output is bilingual by default, `--lang en` shown):
 
 ```
-model                  role     sess  turns  standard  headroom   +cost  -compact  recall
-claude-opus-5-5        main        6   1464      175k      300k    9.4%        40   0.925
-claude-opus-5-5        subagent    3    134      200k      350k    4.1%         3   0.948
-claude-sonnet-5-5      main        6   1137      175k      250k    9.4%        24   0.923
-claude-sonnet-5-5      subagent    3    137      225k      375k   11.8%         1   0.945
-gpt-5-codex            main        6    737      175k      250k    9.2%        12   0.929
+claude-opus-5-5 · main · 6 sessions · 1308 turns · window 1000k
+  tier               window action                       Δcost vs default     Δtime   compactions           recall
+  default              967k -                                 $363 (base)         0             8            0.871
+  current              600k -                                 -$88 (-24%)     -0.6h     15 (vs 8)   0.908 (+0.037)
+  standard             150k set                              -$200 (-55%)     -2.8h     85 (vs 8)   0.920 (+0.049)
+  headroom             275k set                              -$185 (-51%)     -2.2h     38 (vs 8)   0.925 (+0.054)
+
+claude-opus-5-5 · subagent · 3 sessions · 143 turns · window 1000k
+  tier               window action                       Δcost vs default     Δtime   compactions           recall
+  default              967k -                                  $18 (base)         0             0            0.937
+  current              600k -                                   +$0 (+0%)       +0m      0 (vs 0)   0.937 (+0.000)
+  standard                - no action needed                            -         -             0            0.937
+  headroom                - no action needed                            -         -             0            0.937
+  · no action needed: the default never compacts in these sessions
+  · time estimate low-confidence (141 timed turns)
+
+gpt-5-codex · main · 6 sessions · 871 turns · window 400k
+  tier               window action                       Δcost vs default     Δtime   compactions           recall
+  default              360k -                                  $42 (base)         0            16            0.929
+  standard             225k set                                -$7 (-17%)       -1m    29 (vs 16)   0.930 (+0.001)
+  headroom             325k set                                 -$2 (-4%)       -2m    18 (vs 16)   0.930 (+0.001)
 ```
 
-The HTML report is one offline file. It has gear switching (Eco / Standard / Headroom / Recall / Custom), estimated
-spend against a replay of your own history, a Pareto frontier, cost curves, where your tokens sit by context size,
-and any session's real context curve next to the same session replayed at the chosen threshold.
+The HTML report is one offline file, in Chinese and English (switchable). It has gear switching (Eco / Standard /
+Headroom / Recall / Custom), a cost + time or cost-only view, the default/current comparison table, a Pareto
+frontier, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
+next to the same session replayed at the chosen threshold.
 
 ## Two modes
 
@@ -98,7 +120,8 @@ flowchart LR
 
 Each session becomes the tokens added per turn. compactlab replays that growth for each threshold. It charges
 cache reads, cache writes (after a compaction, or after an idle gap longer than the cache TTL), output, a summarizer
-call per compaction, and the re-reads and corrections that tend to follow one. Details and formulas:
+call per compaction, and the re-reads and corrections that tend to follow one. It also adds up wall-clock time
+from latency curves fitted to your own timestamps. Details and formulas:
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md). Background: [docs/WHY_THRESHOLDS.md](docs/WHY_THRESHOLDS.md).
 
 ## Supported harnesses
@@ -126,7 +149,8 @@ Neither harness lets subagents have their own threshold, so `apply` writes the m
 
 - Lite-mode recall is an **assumed** curve, not a measurement of any model. Deep mode measures recall on samples
   of compactlab's excerpts, not the full transcript the harness would summarize.
-- Replayed cost is for comparing thresholds, not a reconstruction of your invoice.
+- Replayed cost is for comparing thresholds, not a reconstruction of your invoice. Wall-clock estimates come from
+  log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
   row; refresh or override them as needed.
 - Some log-format details (Codex fork replay, compaction events) are marked `assumed` in
@@ -142,6 +166,10 @@ allow-listed key, with a backup.
 so the default leaves headroom. Use `--tier standard` if you want the optimum.
 
 **Does it work without any history?** `compactlab demo` uses bundled synthetic sessions.
+
+**What is the baseline?** The harness default from its docs or source: about 967K tokens for Claude models with a
+native 1M window, 200K for Sonnet/Opus 4.6 without extended context, the context limit otherwise; 90% of the
+context window for Codex. Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
 
 **Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Deep mode
 gives sampled measurements with their own noise.

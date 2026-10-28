@@ -32,10 +32,46 @@ with and without it.
 Recall proxy per turn: `rot(c) · (1 − (1 − r)·exp(−turns_since_compaction / H))` with retention `r = 0.9`,
 `H = 15`, and `rot` interpolated from `(0, 1.0) (100k, .98) (200k, .95) (400k, .90) (600k, .84) (1M, .75)`.
 
+## Time
+
+compactlab fits wall-clock behaviour from your own timestamps, per model and role (`sim/timing.py`):
+
+- **Turn latency vs context**: latency = response timestamp − last user/tool-result timestamp before it (≤ 600 s).
+  Samples are binned by 50k tokens of context; bin medians (≥ 5 samples) are made monotone non-decreasing and
+  interpolated. Confidence: `ok` with ≥ 200 samples in ≥ 3 bins, `low` otherwise, `prior` (8 s + 4 s per 100k)
+  with no usable timestamps.
+- **Compaction latency vs size**: compaction timestamp − last input before it (≤ 900 s), fitted as `a + b·pre_tokens`
+  (a, b ≥ 0) with ≥ 5 samples (`ok` with ≥ 20), else the prior 15 s + 0.12 s per 1k tokens.
+- **Re-discovery time**: (re-discovered tokens ÷ median tool-result size + correction turns) × median turn latency.
+
+Per threshold the replay sums turn time at the simulated context, compaction time and re-discovery time. Versus the
+default this splits into *time saved by smaller contexts* and *time added by compactions and re-discovery*.
+Time enters the score as `time_hours × value_of_time` (default $10/h, a modest weight: you are not idle for all of
+an agent's run). `--value-of-time 0` or `--view cost` gives the cost-only ranking; both views are in the result.
+
+Limits: for Claude Code the response timestamp is the first content block, so long generations are undercounted;
+timestamps include tool and network time; latency depends on load. Treat time as a secondary signal.
+
+## Baselines
+
+Every result is compared with:
+
+- **default**: the harness's own compaction point if you change nothing (`data/harness_defaults.json`). Claude Code:
+  about 967K for models with a native 1M window, 200K for Sonnet/Opus 4.6 without extended context, else the
+  context limit (docs: code.claude.com model-config, "Default auto-compact thresholds"). Codex: 90% of the context
+  window, and a configured `model_auto_compact_token_limit` is clamped to that (openai/codex `ModelInfo`).
+  Codex's window comes from `model_context_window` in the logs when present.
+- **current**: the value in your config, read-only (`modelSettings.<model>.autoCompactWindow`, then top-level
+  `autoCompactWindow`, in `~/.claude/settings.json`; top-level `model_auto_compact_token_limit` in
+  `~/.codex/config.toml`). Project-level settings, env vars and CLI flags can override these and are not read.
+
+If the default never compacts in a group's sessions, the result is **no action needed**; a tier at or above the
+default is **keep default**. `apply` skips both.
+
 ## Selection and tiers
 
-- **standard**: among thresholds with recall ≥ floor (default 0.90), the largest whose combined cost + penalty is
-  within 2% of the minimum.
+- **standard**: among thresholds with recall ≥ floor (default 0.90), the largest whose score (cost + penalty +
+  time, or cost + penalty in the cost view) is within 2% of the minimum.
 - **headroom** (default): the largest threshold whose combined score is within `--headroom` (default 12%) of the
   feasible minimum, recall ≥ floor, rounded to the grid step, ≤ `--headroom-cap` and the model window, ≥ standard.
   The report shows its extra cost and how many fewer compactions it implies.

@@ -1,5 +1,11 @@
 # Safety: apply, revert, pre-authorization
 
+## Reading config
+
+`simulate`, `report` and `retune` read your current threshold from `~/.claude/settings.json` and
+`~/.codex/config.toml` (or `--claude-settings` / `--codex-config`) to compare against it. This is read-only; pass
+`--no-current` to skip it.
+
 ## Defaults
 
 - `compactlab apply` is a **dry-run**: it prints the planned changes and a unified diff and writes nothing.

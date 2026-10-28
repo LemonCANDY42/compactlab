@@ -686,7 +686,7 @@ def cmd_demo(a: argparse.Namespace) -> int:
     ns = build_parser().parse_args(
         ["simulate", "--claude-root", str(out / "claude" / "projects"), "--codex-root", str(out / "codex" / "sessions"),
          "--since-days", "0", "--no-cache", "--offline-pricing", "--claude-settings", str(demo_settings),
-         "--codex-config", str(out / "codex" / "config.toml")]
+         "--codex-config", str(out / "codex" / "config.toml"), "--lang", a.lang]
     )  # fmt: skip
     res = run_analysis(ns)
     assert res is not None
@@ -709,6 +709,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("demo", help="build and open a report from bundled synthetic data", formatter_class=fmt)
     s.add_argument("--out", default="compactlab-demo")
     s.add_argument("--no-open", action="store_true", help="do not open the report")
+    s.add_argument("--lang", choices=["both", "en", "zh"], default="both", help="summary language (default: both 中英)")
     s.set_defaults(f=cmd_demo)
 
     s = sub.add_parser("doctor", help="detect harnesses, log locations, config paths, versions")

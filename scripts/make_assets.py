@@ -49,7 +49,7 @@ def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2) -> N
 
 def demo(tmp: Path) -> tuple[str, dict]:
     out = subprocess.run(
-        [sys.executable, "-m", "compactlab.cli.main", "demo", "--out", str(tmp / "demo"), "--no-open"],
+        [sys.executable, "-m", "compactlab.cli.main", "demo", "--out", str(tmp / "demo"), "--no-open", "--lang", "en"],
         check=True, capture_output=True, text=True, cwd=ROOT,
     )  # fmt: skip
     text = out.stdout.replace(str(tmp / "demo"), "compactlab-demo")
@@ -57,8 +57,12 @@ def demo(tmp: Path) -> tuple[str, dict]:
 
 
 def terminal_svg(text: str) -> str:
-    lines = ["$ uvx compactlab demo", *[ln for ln in text.splitlines() if ln.strip()]]
-    lh, pad, w = 22, 20, 980
+    # keep the hero short: first model/role block plus the closing lines
+    blocks = text.split("\n\n")
+    first = [ln for ln in blocks[1].splitlines() if not ln.strip().startswith("· default")]
+    tail = [ln for ln in text.splitlines() if ln.startswith(("headroom is", "SYNTHETIC"))]
+    lines = ["$ uvx compactlab demo --lang en", blocks[0], *first, "  ...", *tail]
+    lh, pad, w = 22, 20, 1000
     h = pad * 2 + 30 + lh * len(lines)
     rows = []
     for i, ln in enumerate(lines):

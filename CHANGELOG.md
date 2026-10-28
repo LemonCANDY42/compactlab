@@ -5,6 +5,16 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Time dimension: turn-latency and compaction-latency fits from log timestamps, wall-clock per threshold
+  (saved by smaller contexts vs added by compactions and re-discovery), `--value-of-time`, cost+time and cost views.
+- Baselines: every tier compared with the harness default (`data/harness_defaults.json`, with sources) and with the
+  current configured value; "no action needed" / "keep default"; `apply` skips those.
+- Bilingual output by default: CLI summary and HTML report in Chinese and English (`--lang`, report switch).
+
+### Changed
+- Renamed the opt-in mode `hyper` to `deep`.
+
 ## [0.1.0] - unreleased
 
 ### Added
