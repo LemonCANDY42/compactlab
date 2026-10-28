@@ -26,6 +26,7 @@ from ..model import Session
 from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, refresh
 from ..report.html import render_html
+from ..sim.baseline import read_current
 from ..sim.engine import SimOptions, analyze
 
 STATE = "~/.compactlab"
@@ -106,6 +107,22 @@ def _sim(p: argparse.ArgumentParser) -> None:
     g.add_argument("--cache-ttl", type=int, help="prompt-cache TTL in seconds (default from pricing file: 300)")
     g.add_argument("--summary-tokens", type=_k, help="compaction summary size (default: observed median, else 12k)")
     g.add_argument("--base-tokens", type=_k, help="post-compaction base context (default: observed, else 35k)")
+    g.add_argument(
+        "--value-of-time",
+        type=float,
+        default=10.0,
+        help="USD per hour of agent wall-clock added to the combined score (default 10; 0 = cost only)",
+    )
+    g.add_argument(
+        "--view",
+        choices=["cost_time", "cost"],
+        default="cost_time",
+        help="score that drives the tiers: cost + time (default) or cost only",
+    )
+    c = p.add_argument_group("current config (read-only, for comparison)")
+    _config_args(c)
+    c.add_argument("--no-current", action="store_true", help="do not read current harness config")
+    p.add_argument("--lang", choices=["both", "en", "zh"], default="both", help="output language (default: both 中英)")
     h = p.add_argument_group("deep mode (opt-in, costs money)")
     h.add_argument(
         "--mode", choices=["lite", "deep"], default="lite", help="lite: offline (default); deep: adds LLM checks"
@@ -117,6 +134,11 @@ def _sim(p: argparse.ArgumentParser) -> None:
     h.add_argument("--sessions-per-group", type=int, default=3)
     h.add_argument("--budget", type=float, help="hard USD cap for deep mode (required with --mode deep)")
     h.add_argument("--yes", action="store_true", help="confirm deep-mode spending after reviewing the estimate")
+
+
+def _config_args(g: Any) -> None:
+    g.add_argument("--claude-settings", help="Claude Code settings.json (default: ~/.claude/settings.json)")
+    g.add_argument("--codex-config", help="Codex config.toml (default: ~/.codex/config.toml)")
 
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
@@ -140,6 +162,8 @@ def _opts(a: argparse.Namespace) -> SimOptions:
     except (ValueError, argparse.ArgumentTypeError) as e:
         raise CLIError(f"--grid must look like 100k:1m:25k ({e})") from e
     return SimOptions(
+        value_of_time=a.value_of_time,
+        view=a.view,
         grid_start=lo,
         grid_stop=hi,
         grid_step=st,
@@ -157,6 +181,26 @@ def _pricing(a: argparse.Namespace) -> PricingTable:
     return PricingTable.load(getattr(a, "pricing", None), offline=getattr(a, "offline_pricing", False))
 
 
+def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
+    """Read the configured threshold per (harness, model) from config files, read-only."""
+    if getattr(a, "no_current", False):
+        return {}
+    paths: dict[str, Path | None] = {}
+    for h, arg in (("claude-code", a.claude_settings), ("codex", a.codex_config)):
+        if arg:
+            paths[h] = Path(arg).expanduser()
+        else:
+            cands = get_adapter(h).config_paths() if h in adapter_names() else []
+            paths[h] = next((c for c in cands if c.exists()), None)
+    out = {}
+    for h, m in {(x.harness, x.model) for x in sessions}:
+        try:
+            out[(h, m)] = read_current(h, m, paths.get(h))
+        except (OSError, ValueError) as e:
+            out[(h, m)] = (None, f"unreadable: {e}")
+    return out
+
+
 def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     sessions = load_sessions(a)
     if not sessions:
@@ -168,7 +212,7 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
             "or `compactlab demo` to see a report built from synthetic data."
         )
     pricing = _pricing(a)
-    res = analyze(sessions, pricing, _opts(a))
+    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions))
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
     return res
@@ -214,24 +258,119 @@ def _deep(
         raise CLIError(str(e)) from e
 
 
-def _summary(res: dict[str, Any]) -> str:
-    lines = [
-        f"mode: {res['mode']}" + (f"  (deep spent ${res['deep']['spent_usd']:.2f})" if res.get("deep") else ""),
-        f"{'model':22} {'role':8} {'sess':>4} {'turns':>6}  {'standard':>8}  {'headroom':>8}  "
-        f"{'+cost':>6}  {'-compact':>8}  {'recall':>6}",
-    ]
+def _k_(v: int | None) -> str:
+    return "-" if v is None else f"{v // 1000}k"
+
+
+def _hrs(sec: float) -> str:
+    return f"{sec / 3600:+.1f}h" if abs(sec) >= 360 else f"{sec / 60:+.0f}m"
+
+
+WIDTHS = ((16, "<"), (8, ">"), (24, "<"), (20, ">"), (9, ">"), (13, ">"), (16, ">"))
+
+
+def _pad(text: str, width: int, align: str) -> str:
+    """Pad by display width (CJK characters take two columns)."""
+    import unicodedata
+
+    w = sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+    fill = " " * max(width - w, 0)
+    return (fill + text if align == ">" else text + fill) + " "
+
+
+T: dict[str, dict[str, Any]] = {
+    "en": {
+        "cols": ("tier", "window", "action", "Δcost vs default", "Δtime", "compactions", "recall"),
+        "default": "default",
+        "current": "current",
+        "no_action": "no action needed: the default never compacts in these sessions",
+        "thin_time": "time estimate low-confidence ({n} timed turns)",
+        "prior_time": "time from prior (no usable timestamps)",
+        "note": "headroom is the default tier; Δ are vs the harness default; recall is an assumed proxy in lite mode.",
+    },
+    "zh": {
+        "cols": ("档位", "阈值", "建议", "成本差(对默认)", "时间差", "压缩次数", "召回"),
+        "default": "默认",
+        "current": "当前",
+        "no_action": "无需调整:默认设置在这些会话里从未触发压缩",
+        "thin_time": "时间估计置信度低(仅 {n} 个可计时轮次)",
+        "prior_time": "时间来自先验值(没有可用时间戳)",
+        "note": "默认推荐冗余档(headroom);所有差值相对 harness 默认值;lite 模式下召回率是假设代理值。",
+    },
+}
+ACTION_ZH = {"set": "设置", "keep default": "保持默认", "no action needed": "无需调整", "-": "-"}
+
+
+def _summary(res: dict[str, Any], lang: str = "both") -> str:
+    langs = ["en", "zh"] if lang == "both" else [lang]
+    head = f"mode: {res['mode']}" + (f"  (deep spent ${res['deep']['spent_usd']:.2f})" if res.get("deep") else "")
+    lines = [head]
     for g in res["groups"]:
-        st, hd = g["tiers"]["standard"], g["tiers"]["headroom"]
+        d = g["default"]
         lines.append(
-            f"{g['model'][:22]:22} {g['role']:8} {g['n_sessions']:>4} {g['n_turns']:>6}  "
-            f"{st['threshold'] // 1000:>7}k  {hd['threshold'] // 1000:>7}k  {hd['extra_cost_pct'] * 100:>5.1f}%  "
-            f"{hd['fewer_compactions']:>8}  {hd['recall']:>6.3f}"
-            + ("" if g["recommendation"]["floor_met"] else "  [recall floor not met]")
+            f"\n{g['model']} · {g['role']} · {g['n_sessions']} sessions · {g['n_turns']} turns"
+            f" · window {_k_(g['max_window'])}"
         )
-    lines.append(
-        "headroom (default) trades a bounded extra cost for fewer compactions; recall is an assumed proxy in lite mode."
-    )
-    return "\n".join(lines)
+        for hdr in [T[x]["cols"] for x in langs]:
+            lines.append("  " + "".join(_pad(h, w, al) for h, (w, al) in zip(hdr, WIDTHS, strict=True)))
+
+        def row(name: str, thr: int | None, action: str, cmp: dict[str, Any] | None, pt: dict[str, Any]) -> str:
+            act = (
+                action
+                if lang == "en"
+                else (
+                    ACTION_ZH.get(action, action)
+                    if lang == "zh"
+                    else f"{action}/{ACTION_ZH.get(action, action)}"
+                    if action != "-"
+                    else "-"
+                )
+            )
+            if action == "no action needed":
+                cells = ("-", act, "-", "-", f"{pt['compactions']}", f"{pt['recall']:.3f}")
+                return "  " + "".join(_pad(x, w, al) for x, (w, al) in zip((name, *cells), WIDTHS, strict=True))
+            if cmp is None:
+                dc, dt, comp, rc = (
+                    f"${pt['combined_cost']:,.0f} (base)",
+                    "0",
+                    f"{pt['compactions']}",
+                    f"{pt['recall']:.3f}",
+                )
+            else:
+                sign = "+" if cmp["d_cost"] >= 0 else "-"
+                dc = f"{sign}${abs(cmp['d_cost']):,.0f} ({cmp['d_cost_pct'] * 100:+.0f}%)"
+                dt = _hrs(cmp["d_time_s"])
+                comp = f"{cmp['compactions']} (vs {cmp['ref_compactions']})"
+                rc = f"{pt['recall']:.3f} ({cmp['d_recall']:+.3f})"
+            return "  " + "".join(
+                _pad(x, w, al) for x, (w, al) in zip((name, _k_(thr), act, dc, dt, comp, rc), WIDTHS, strict=True)
+            )
+
+        dname = "/".join(T[x]["default"] for x in langs)
+        lines.append(row(dname, d["threshold"], "-", None, d))
+        if g.get("current"):
+            c = g["current"]
+            from ..sim.engine import compare
+
+            lines.append(row("/".join(T[x]["current"] for x in langs), c["configured"], "-", compare(c, d), c))
+        for name in ("standard", "headroom"):
+            cm = g["comparison"][name]
+            lines.append(row(name, cm["threshold"], cm["action"], cm["vs_default"], g["tiers"][name]))
+        notes = []
+        if g["no_action_needed"]:
+            notes += [T[x]["no_action"] for x in langs]
+        tmod = g["time_model"]
+        if tmod["turn_confidence"] == "prior":
+            notes += [T[x]["prior_time"] for x in langs]
+        elif tmod["turn_confidence"] == "low" or tmod["compact_confidence"] != "ok":
+            notes += [T[x]["thin_time"].format(n=tmod["n_turn_samples"]) for x in langs]
+        if not g["recommendation"]["floor_met"]:
+            notes.append("recall floor not met / 未达到召回下限")
+        notes.append(f"default: {d['note']}" + (f"; current: {g['current_note']}" if g.get("current_note") else ""))
+        lines += [f"  · {n}" for n in notes]
+    lines.append("")
+    lines += [T[x]["note"] for x in langs]
+    return "\n".join(ln.rstrip() for ln in lines)
 
 
 # ---------- commands ----------
@@ -282,7 +421,7 @@ def cmd_simulate(a: argparse.Namespace) -> int:
             "mode": res["mode"],
             "groups": [{k: g[k] for k in ("model", "role", "tiers", "recommendation")} for g in res["groups"]],
         },
-        _summary(res) + f"\n\nwrote {a.out}",
+        _summary(res, a.lang) + f"\n\nwrote {a.out}",
     )
     return 0
 
@@ -313,8 +452,6 @@ def _apply_opts(p: argparse.ArgumentParser) -> None:
         default="headroom",
         help="which result to write (default headroom); pre-authorization bounds still win",
     )
-    g.add_argument("--claude-settings", help="Claude Code settings.json to modify")
-    g.add_argument("--codex-config", help="Codex config.toml to modify (one global key, not per model)")
     g.add_argument(
         "--preauth", help="pre-authorization JSON: allowed files, key patterns, models, bounds (docs/SAFETY.md)"
     )
@@ -346,6 +483,11 @@ def _recs(res: dict[str, Any], tier: str) -> list[dict[str, Any]]:
     for g in res["groups"]:
         if g["role"] != "main":
             continue
+        if tier in ("headroom", "standard") and g.get("comparison", {}).get(tier, {}).get("action") in (
+            "no action needed",
+            "keep default",
+        ):
+            continue  # leave the harness default alone
         v = g["tiers"][tier]["threshold"] if tier in ("headroom", "standard") else g["gears"][tier]
         out.append({"harness": g["harness"], "model": g["model"], "value": v})
     return out
@@ -531,30 +673,21 @@ def cmd_demo(a: argparse.Namespace) -> int:
     out = Path(a.out)
     synth.write_claude_code(out / "claude" / "projects", n_main=12, n_sub=6)
     synth.write_codex(out / "codex" / "sessions", n=6)
-    ns = argparse.Namespace(
-        harness=None,
-        claude_root=[str(out / "claude" / "projects")],
-        codex_root=[str(out / "codex" / "sessions")],
-        since_days=0,
-        no_cache=True,
-        cache_dir="",
-        pricing=None,
-        offline_pricing=True,
-        grid="100k:1m:25k",
-        recall_floor=0.90,
-        headroom=0.12,
-        headroom_cap=None,
-        cache_ttl=None,
-        summary_tokens=None,
-        base_tokens=None,
-        mode="lite",
+    demo_settings = out / "claude" / "settings.json"  # synthetic "current" config to show the comparison
+    demo_settings.write_text(
+        json.dumps({"modelSettings": {"claude-opus-5-5": {"autoCompactWindow": 600000}}}, indent=2)
     )
+    ns = build_parser().parse_args(
+        ["simulate", "--claude-root", str(out / "claude" / "projects"), "--codex-root", str(out / "codex" / "sessions"),
+         "--since-days", "0", "--no-cache", "--offline-pricing", "--claude-settings", str(demo_settings),
+         "--codex-config", str(out / "codex" / "config.toml")]
+    )  # fmt: skip
     res = run_analysis(ns)
     assert res is not None
     res["demo"] = True
     (out / "result.json").write_text(json.dumps(res, sort_keys=True))
     (out / "report.html").write_text(render_html(res))
-    print(_summary(res))
+    print(_summary(res, getattr(a, "lang", "both")))
     print(f"\nSYNTHETIC DEMO DATA (not your history). Report: {out / 'report.html'}")
     if not a.no_open:
         _open(out / "report.html")
@@ -596,6 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("apply", help="write a tier to harness config (dry-run unless --write + authorization)")
     s.add_argument("--result", required=True)
     s.add_argument("--json", action="store_true")
+    _config_args(s)
     _apply_opts(s)
     s.set_defaults(f=cmd_apply)
 

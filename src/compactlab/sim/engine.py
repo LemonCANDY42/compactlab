@@ -11,8 +11,10 @@ from typing import Any
 
 from ..model import Session
 from ..pricing import Price, PricingTable
+from .baseline import default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate
 from .select import gears, recommend, tiers
+from .timing import TimeModel, fit
 
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]
 
@@ -35,6 +37,8 @@ class SimOptions:
     headroom_tolerance: float = 0.12  # headroom tier: allowed combined-score excess over the optimum
     headroom_step: int = 25_000
     headroom_cap: int | None = None
+    value_of_time: float = 10.0  # USD per hour of agent wall-clock folded into the combined score
+    view: str = "cost_time"  # which score drives tiers: "cost_time" or "cost"
 
 
 @dataclass
@@ -74,121 +78,217 @@ def rot_fn(table: list[tuple[int, float]]):
     return f
 
 
-def replay(
-    tr: Trace,
-    T: float,
-    price: Price,
-    base: int,
-    summ: int,
-    ttl: float,
-    pen: PenaltyParams | None,
-    rot,
-    opts: SimOptions,
-) -> tuple[float, int, float]:
-    """Returns (cost_usd, compactions, recall_sum). pen=None disables the penalty."""
+@dataclass
+class Run:
+    """One replay of a set of traces at one threshold."""
+
+    cost: float = 0.0  # USD, without penalty
+    penalty: float = 0.0  # USD added by re-discovery and corrections
+    compactions: int = 0
+    recall_sum: float = 0.0
+    t_turns: float = 0.0  # seconds spent in model turns (depends on context size)
+    t_compact: float = 0.0  # seconds spent compacting
+    t_redisc: float = 0.0  # seconds spent re-discovering after compactions
+
+    @property
+    def time_s(self) -> float:
+        return self.t_turns + self.t_compact + self.t_redisc
+
+    def add(self, o: Run) -> None:
+        for k in ("cost", "penalty", "compactions", "recall_sum", "t_turns", "t_compact", "t_redisc"):
+            setattr(self, k, getattr(self, k) + getattr(o, k))
+
+
+@dataclass
+class Ctx:
+    """Per-group constants for replay."""
+
+    price: Price
+    base: int
+    summ: int
+    ttl: float
+    pen: PenaltyParams
+    tm: TimeModel
+    step_tokens: int
+    rot: Any
+    opts: SimOptions
+
+
+def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
+    """Replay one trace at threshold T. Penalty cost/time are tracked separately from base cost."""
+    price, base, summ, opts, tm = c.price, c.base, c.summ, c.opts, c.tm
     ctx = base
-    cost = 0.0
-    n_comp = 0
-    recall_sum = 0.0
+    r = Run()
     fresh = False
     since = math.inf
     extra = 0
     avg_out = (sum(tr.o) / len(tr.o)) if tr.o else 0
     for i in range(len(tr.g)):
         g = tr.g[i] + extra
-        extra = 0
         prev = ctx
         ctx += g
         _, ro, rw, rr = price.rates(ctx)
-        prefix_rate = rw if (fresh or tr.gap[i] > ttl) else rr
-        cost += prev * prefix_rate + g * rw + tr.o[i] * ro
+        prefix_rate = rw if (fresh or tr.gap[i] > c.ttl) else rr
+        turn = prev * prefix_rate + g * rw + tr.o[i] * ro
+        if extra:  # the share caused by re-discovered tokens is penalty, not base cost
+            r.penalty += extra * rw
+            turn -= extra * rw
+        r.cost += turn
+        extra = 0
         fresh = False
-        recall_sum += rot(ctx) * (1 - (1 - opts.retention) * math.exp(-since / opts.retention_half_turns))
+        r.t_turns += tm.turn(ctx)
+        r.recall_sum += c.rot(ctx) * (1 - (1 - opts.retention) * math.exp(-since / opts.retention_half_turns))
         since += 1
         if ctx > T:
-            _ri, ro, rw, rr = price.rates(ctx)
-            cost += ctx * rr + summ * ro  # summarizer call reads the whole context
+            _, ro, rw, rr = price.rates(ctx)
+            r.cost += ctx * rr + summ * ro  # summarizer call reads the whole context
+            r.t_compact += tm.compact(ctx)
             dropped = max(ctx - base - summ, 0)
             ctx = base + summ
             fresh = True
             since = 0
-            n_comp += 1
-            if pen is not None:
-                extra = int(pen.rho * dropped + pen.fixed_tokens)
+            r.compactions += 1
+            if with_penalty:
+                extra = int(c.pen.rho * dropped + c.pen.fixed_tokens)
                 _, ro2, _, rr2 = price.rates(ctx)
-                cost += pen.correction_turns * (ctx * rr2 + avg_out * ro2)
-    return cost, n_comp, recall_sum
+                r.penalty += c.pen.correction_turns * (ctx * rr2 + avg_out * ro2)
+                steps = extra / max(c.step_tokens, 1) + c.pen.correction_turns
+                r.t_redisc += steps * tm.median_turn_s
+    return r
+
+
+def run_all(traces: list[Trace], T: float, c: Ctx) -> Run:
+    tot = Run()
+    for tr in traces:
+        tot.add(replay(tr, T, c))
+    return tot
 
 
 def _median(xs, default):
     return int(statistics.median(xs)) if xs else default
 
 
-def grid_for(opts: SimOptions, max_window: int) -> list[int]:
-    stop = min(opts.grid_stop or max_window, max_window)
+def grid_for(opts: SimOptions, max_threshold: int) -> list[int]:
+    stop = min(opts.grid_stop or max_threshold, max_threshold)
     return list(range(opts.grid_start, stop + 1, opts.grid_step))
 
 
-def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | None = None) -> dict:
+def _point(run: Run, T: float | None, n_turns: int, vot: float) -> dict[str, Any]:
+    combined_cost = run.cost + run.penalty
+    return {
+        "threshold": None if T is None or math.isinf(T) else int(T),
+        "cost": run.cost,
+        "penalty": run.penalty,
+        "combined_cost": combined_cost,
+        "time_s": run.time_s,
+        "time_turns_s": run.t_turns,
+        "time_compact_s": run.t_compact,
+        "time_redisc_s": run.t_redisc,
+        "combined": combined_cost + run.time_s / 3600 * vot,
+        "compactions": run.compactions,
+        "recall": run.recall_sum / max(n_turns, 1),
+    }
+
+
+def compare(tier: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any]:
+    """Tier minus reference (default or current)."""
+    dc = tier["combined_cost"] - ref["combined_cost"]
+    return {
+        "d_cost": dc,
+        "d_cost_pct": dc / ref["combined_cost"] if ref["combined_cost"] else 0.0,
+        "d_time_s": tier["time_s"] - ref["time_s"],
+        "d_time_pct": (tier["time_s"] - ref["time_s"]) / ref["time_s"] if ref["time_s"] else 0.0,
+        "time_saved_context_s": ref["time_turns_s"] - tier["time_turns_s"],
+        "time_added_compaction_s": (tier["time_compact_s"] + tier["time_redisc_s"])
+        - (ref["time_compact_s"] + ref["time_redisc_s"]),
+        "compactions": tier["compactions"],
+        "ref_compactions": ref["compactions"],
+        "d_recall": tier["recall"] - ref["recall"],
+    }
+
+
+def _select(grid, combined, recall, compactions, opts, cap):
+    rec = recommend(grid, combined, recall, opts.recall_floor, opts.tolerance, opts.range_tolerance)
+    gr = gears(grid, combined, recall, opts.recall_floor, rec)
+    tr = tiers(grid, combined, recall, compactions, opts.recall_floor, rec["threshold"], opts.headroom_tolerance,
+               opts.headroom_step, opts.headroom_cap, cap)  # fmt: skip
+    gr["headroom"] = tr["headroom"]["threshold"]
+    return {"recommendation": rec, "gears": gr, "tiers": tr}
+
+
+def analyze(
+    sessions: list[Session],
+    pricing: PricingTable,
+    opts: SimOptions | None = None,
+    current: dict[tuple[str, str], tuple[int | None, str]] | None = None,
+) -> dict:
+    """`current` maps (harness, model) -> (configured threshold or None, description), read from config."""
     opts = opts or SimOptions()
     ttl = opts.ttl_seconds or pricing.default_ttl
     rot = rot_fn(opts.rot_table)
+    vot = opts.value_of_time
     groups: dict[tuple[str, str], list[Session]] = defaultdict(list)
     for s in sessions:
         groups[(s.model, s.role)].append(s)
     out_groups = []
     for (model, role), ss in sorted(groups.items()):
+        harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         price = pricing.lookup(model)
+        observed_window = max((s.context_window or 0) for s in ss)
+        window = observed_window or price.max_window
+        cap = effective_max(harness, window)
         base = opts.base_tokens or min(max(_median([s.turns[0].ctx for s in ss], 35_000), 10_000), 80_000)
         obs_summ = [len(c.summary_text) // 4 for s in ss for c in s.compactions if c.summary_text]
         summ = opts.summary_tokens or _median(obs_summ, 12_000)
         pen = opts.penalty or calibrate(ss, base, summ)
+        tm = fit(ss)
+        step_tokens = _median([x for s in ss for t in s.turns for x in t.tool_result_tokens], 2000) or 2000
+        c = Ctx(price, base, summ, ttl, pen, tm, step_tokens, rot, opts)
         traces = [make_trace(s, base) for s in ss]
-        grid = grid_for(opts, price.max_window)
+        grid = grid_for(opts, cap)
         n_turns = sum(len(t.g) for t in traces)
-        rows: dict[str, list[Any]] = {k: [] for k in ("cost", "penalty", "combined", "recall", "compactions")}
-        for T in grid:
-            c = p = 0.0
-            nc = 0
-            rs = 0.0
-            for tr in traces:
-                c0, k, r = replay(tr, T, price, base, summ, ttl, None, rot, opts)
-                c1, _, _ = replay(tr, T, price, base, summ, ttl, pen, rot, opts) if k else (c0, 0, 0)
-                c += c0
-                p += c1 - c0
-                nc += k
-                rs += r
-            rows["cost"].append(c)
-            rows["penalty"].append(p)
-            rows["combined"].append(c + p)
-            rows["recall"].append(rs / max(n_turns, 1))
-            rows["compactions"].append(nc)
-        baseline = sum(replay(tr, math.inf, price, base, summ, ttl, None, rot, opts)[0] for tr in traces)
-        rec = recommend(grid, rows["combined"], rows["recall"], opts.recall_floor, opts.tolerance, opts.range_tolerance)
-        gr = gears(grid, rows["combined"], rows["recall"], opts.recall_floor, rec)
-        tr_ = tiers(
-            grid,
-            rows["combined"],
-            rows["recall"],
-            rows["compactions"],
-            opts.recall_floor,
-            rec["threshold"],
-            opts.headroom_tolerance,
-            opts.headroom_step,
-            opts.headroom_cap,
-            price.max_window,
-        )
-        gr["headroom"] = tr_["headroom"]["threshold"]
-        pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
+        pts = [_point(run_all(traces, T, c), T, n_turns, vot) for T in grid]
+        rows: dict[str, list[Any]] = {
+            k: [p[k] for p in pts]
+            for k in ("cost", "penalty", "combined_cost", "combined", "recall", "compactions", "time_s",
+                      "time_turns_s", "time_compact_s", "time_redisc_s")
+        }  # fmt: skip
+        views = {
+            "cost_time": _select(grid, rows["combined"], rows["recall"], rows["compactions"], opts, cap),
+            "cost": _select(grid, rows["combined_cost"], rows["recall"], rows["compactions"], opts, cap),
+        }
+        main = views[opts.view]
+        # tier points with full detail
+        for v in views.values():
+            for name in ("standard", "headroom"):
+                t = v["tiers"][name]
+                t.update({k: val for k, val in pts[grid.index(t["threshold"])].items() if k != "threshold"})
+
+        d_thr, d_note = default_threshold(harness, model, window)
+        default = _point(run_all(traces, d_thr, c), d_thr, n_turns, vot)
+        default["note"] = d_note
+        cur_val, cur_desc = (current or {}).get((harness, model), (None, "not read"))
+        cur = None
+        if cur_val is not None:
+            eff = min(cur_val, cap)
+            cur = _point(run_all(traces, eff, c), eff, n_turns, vot)
+            cur["configured"] = cur_val
+            cur["source"] = cur_desc
+        no_action = default["compactions"] == 0
+        comparison = {}
+        for name in ("standard", "headroom"):
+            t = main["tiers"][name]
+            action = "no action needed" if no_action else ("keep default" if t["threshold"] >= d_thr else "set")
+            comparison[name] = {
+                "threshold": t["threshold"],
+                "action": action,
+                "vs_default": compare(t, default),
+                "vs_current": compare(t, cur) if cur else None,
+            }
+
+        pre = [x.pre_tokens for s in ss for x in s.compactions if x.pre_tokens]
         t_hist = _median(pre, 0) or None
-        th = float(t_hist) if t_hist else math.inf
-        hc = hp = hr = 0.0
-        for tr in traces:
-            c0, k, r = replay(tr, th, price, base, summ, ttl, None, rot, opts)
-            c1 = replay(tr, th, price, base, summ, ttl, pen, rot, opts)[0] if k else c0
-            hc, hp, hr = hc + c0, hp + (c1 - c0), hr + r
-        actual = sum(_actual_cost(s, price) for s in ss)
-        harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
+        hist_run = run_all(traces, float(t_hist) if t_hist else math.inf, c)
         out_groups.append(
             {
                 "harness": harness,
@@ -198,26 +298,42 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
                 "price_source": price.source,
                 "n_sessions": len(ss),
                 "n_turns": n_turns,
-                "max_window": price.max_window,
+                "max_window": window,
+                "window_source": "observed in logs" if observed_window else "pricing data",
+                "effective_max": cap,
                 "base_tokens": base,
                 "summary_tokens": summ,
                 "penalty_params": pen.to_dict(),
+                "time_model": tm.summary(),
+                "value_of_time": vot,
                 "observed_compactions": sum(len(s.compactions) for s in ss),
                 "peak_p50": _median([s.peak for s in ss], 0),
                 "peak_max": max(s.peak for s in ss),
                 "grid": grid,
                 **rows,
-                "baseline_cost": baseline,
-                "actual_cost": actual,
-                "recommendation": rec,
-                "gears": gr,
-                "tiers": tr_,
-                "history": {"threshold": t_hist, "combined": hc + hp, "cost": hc, "recall": hr / max(n_turns, 1)},
-                "hist": _hist([t.ctx for s in ss for t in s.turns], price.max_window),
+                "baseline_cost": run_all(traces, math.inf, c).cost,
+                "actual_cost": sum(_actual_cost(s, price) for s in ss),
+                "view": opts.view,
+                "views": views,
+                "recommendation": main["recommendation"],
+                "gears": main["gears"],
+                "tiers": main["tiers"],
+                "default": default,
+                "current": cur,
+                "current_note": cur_desc,
+                "no_action_needed": no_action,
+                "comparison": comparison,
+                "history": {
+                    "threshold": t_hist,
+                    "combined": _point(hist_run, None, n_turns, vot)["combined"],
+                    "cost": hist_run.cost,
+                    "recall": hist_run.recall_sum / max(n_turns, 1),
+                },
+                "hist": _hist([t.ctx for s in ss for t in s.turns], window),
             }
         )
     return {
-        "schema": 2,
+        "schema": 3,
         "mode": "lite",
         "data_through": max((t.ts for s in sessions for t in s.turns if t.ts), default=None),
         "options": {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()},

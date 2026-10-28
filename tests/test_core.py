@@ -5,8 +5,9 @@ from compactlab.eval.factcheck import check_summary
 from compactlab.model import Compaction, Session, Turn
 from compactlab.pricing import PricingTable
 from compactlab.sim.calibrate import PenaltyParams, repeat_stats
-from compactlab.sim.engine import DEFAULT_ROT, SimOptions, analyze, make_trace, replay, rot_fn
+from compactlab.sim.engine import DEFAULT_ROT, Ctx, SimOptions, analyze, make_trace, replay, rot_fn
 from compactlab.sim.select import recommend
+from compactlab.sim.timing import TimeModel
 
 PR = PricingTable.load()
 
@@ -37,41 +38,47 @@ def _trace(n=200, g=3000, gap=10):
     return s
 
 
+def _ctx(pen=None, tm=None):
+    return Ctx(PR.lookup("claude-opus-5-5"), 30_000, 12_000, 300, pen or PenaltyParams(rho=0, fixed_tokens=0,
+               correction_turns=0), tm or TimeModel(), 2000, rot_fn(DEFAULT_ROT), SimOptions())  # fmt: skip
+
+
 def test_replay_no_compaction_matches_closed_form():
     s = _trace()
-    price = PR.lookup("claude-opus-5-5")
     tr = make_trace(s, 30_000)
-    cost, k, _ = replay(tr, math.inf, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())
-    _ri, ro, rw, rr = price.rates(1)
+    r = replay(tr, math.inf, _ctx())
+    _, ro, rw, rr = PR.lookup("claude-opus-5-5").rates(1)
     exp = sum((30_000 + 3000 * i) * rr + 3000 * rw + 300 * ro for i in range(200))
-    assert k == 0 and abs(cost - exp) < 1e-6
+    assert r.compactions == 0 and abs(r.cost - exp) < 1e-6 and r.penalty == 0
 
 
 def test_compaction_count_and_idle_effect():
     s = _trace()
-    price = PR.lookup("claude-opus-5-5")
     tr = make_trace(s, 30_000)
-    args = (price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())
-    _, k, _ = replay(tr, 150_000, *args)
-    assert k >= 3
-    # long idle gaps make every prefix a cache write => strictly higher cost
+    r = replay(tr, 150_000, _ctx())
+    assert r.compactions >= 3
     idle = make_trace(s, 30_000)
     idle.gap = [400.0] * len(idle.gap)
-    assert replay(idle, 150_000, *args)[0] > replay(tr, 150_000, *args)[0]
+    assert replay(idle, 150_000, _ctx()).cost > r.cost
 
 
 def test_penalty_is_added_only_with_compactions():
     s = _trace()
-    price = PR.lookup("claude-opus-5-5")
     tr = make_trace(s, 30_000)
     pen = PenaltyParams(rho=0.1, fixed_tokens=5000, correction_turns=1)
-    base = replay(tr, 150_000, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())[0]
-    withp = replay(tr, 150_000, price, 30_000, 12_000, 300, pen, rot_fn(DEFAULT_ROT), SimOptions())[0]
-    assert withp > base
-    assert (
-        replay(tr, math.inf, price, 30_000, 12_000, 300, pen, rot_fn(DEFAULT_ROT), SimOptions())[0]
-        == replay(tr, math.inf, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())[0]
-    )
+    withp = replay(tr, 150_000, _ctx(pen))
+    assert withp.penalty > 0 and withp.t_redisc > 0
+    none = replay(tr, math.inf, _ctx(pen))
+    assert none.penalty == 0 and none.t_redisc == 0
+
+
+def test_time_tracks_context_and_compactions():
+    s = _trace()
+    tr = make_trace(s, 30_000)
+    tm = TimeModel()  # prior: grows with context
+    lo, hi = replay(tr, 150_000, _ctx(tm=tm)), replay(tr, math.inf, _ctx(tm=tm))
+    assert lo.t_turns < hi.t_turns  # smaller contexts are faster per turn
+    assert lo.t_compact > 0 and hi.t_compact == 0
 
 
 def test_repeat_stats_detects_rediscovery():

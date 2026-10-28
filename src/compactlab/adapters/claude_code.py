@@ -31,7 +31,7 @@ def _tool_key(block: dict[str, Any]) -> str:
 
 
 class ClaudeParser(Parser):
-    version = 2
+    version = 3
 
     def __init__(self, path: str):
         role = "subagent" if "subagents" in Path(path).parts else "main"
@@ -39,6 +39,7 @@ class ClaudeParser(Parser):
         self.seen: set[str] = set()
         self.pending_user = ""
         self.tool_turn: dict[str, int] = {}
+        self.last_input_ts: float | None = None  # last user / tool-result / system line
 
     def feed(self, d: dict[str, Any]) -> None:
         s = self.session
@@ -47,17 +48,27 @@ class ClaudeParser(Parser):
             self.note_unknown(s, str(typ))
         if s.parent_id is None and d.get("parentSessionId"):
             s.parent_id = str(d["parentSessionId"])
+        ts = parse_ts(d.get("timestamp"))
         if typ == "system" and d.get("subtype") == "compact_boundary":
             meta = d.get("compactMetadata") or {}
+            dur = (ts - self.last_input_ts) if (ts and self.last_input_ts) else None
             s.compactions.append(
-                Compaction(turn_index=len(s.turns), pre_tokens=meta.get("preTokens"), ts=parse_ts(d.get("timestamp")))
+                Compaction(
+                    turn_index=len(s.turns),
+                    pre_tokens=meta.get("preTokens"),
+                    ts=ts,
+                    duration_s=dur if dur is not None and 0 < dur <= 900 else None,
+                )
             )
+            self.last_input_ts = ts
             return
         m = d.get("message")
         if not isinstance(m, dict):
             return
         if m.get("role") == "user":
             self._user(d, m)
+            if ts:
+                self.last_input_ts = ts
         elif m.get("role") == "assistant":
             self._assistant(d, m)
 
@@ -102,6 +113,7 @@ class ClaudeParser(Parser):
             cache_read=cr,
             cache_write=cw,
             output=int(u.get("output_tokens") or 0),
+            start_ts=self.last_input_ts,
             model=str(m.get("model") or "unknown"),
             user_text=self.pending_user,
         )
@@ -134,6 +146,7 @@ class ClaudeParser(Parser):
             "seen": sorted(self.seen),
             "pending_user": self.pending_user,
             "tool_turn": self.tool_turn,
+            "last_input_ts": self.last_input_ts,
         }
 
     @classmethod
@@ -146,6 +159,7 @@ class ClaudeParser(Parser):
             p.seen = set(state.get("seen", []))
             p.pending_user = state.get("pending_user", "")
             p.tool_turn = dict(state.get("tool_turn", {}))
+            p.last_input_ts = state.get("last_input_ts")
         return p
 
 

@@ -19,6 +19,7 @@ class Turn:
     tool_result_tokens: list[int] = field(default_factory=list)  # parallel to tool_keys (estimated)
     user_text: str = ""  # user text that preceded this turn (may be empty)
     snippets: list[str] = field(default_factory=list)  # truncated tool commands/results, for fact checks
+    start_ts: float | None = None  # when the request was sent (last user/tool-result line before it)
 
 
 @dataclass
@@ -27,6 +28,7 @@ class Compaction:
     pre_tokens: int | None = None
     ts: float | None = None
     summary_text: str = ""
+    duration_s: float | None = None  # wall-clock spent compacting, if it can be inferred
 
 
 @dataclass

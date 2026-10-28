@@ -38,6 +38,13 @@ KNOWN_EVENTS = {
 PARENT_KEYS = ("forked_from_id", "forkedFromId", "parent_session_id", "parentSessionId")
 
 
+def _dur(start: float | None, end: float | None) -> float | None:
+    if start is None or end is None:
+        return None
+    d = end - start
+    return d if 0 < d <= 900 else None
+
+
 def _is_subagent(src: Any) -> bool:
     if isinstance(src, str):
         return src.strip().lower() == "subagent"
@@ -47,7 +54,7 @@ def _is_subagent(src: Any) -> bool:
 
 
 class CodexParser(Parser):
-    version = 2
+    version = 3
 
     def __init__(self, path: str):
         self.session = Session(id=Path(path).stem, harness="codex", role="main", path=path)
@@ -58,6 +65,7 @@ class CodexParser(Parser):
         self.pending_user = ""
         self.call_turn: dict[str, int] = {}
         self.replaying = False
+        self.last_input_ts: float | None = None  # last user message / tool output
 
     def feed(self, d: dict[str, Any]) -> None:
         s = self.session
@@ -94,16 +102,21 @@ class CodexParser(Parser):
                         ts=ts,
                         summary_text=msg,
                         pre_tokens=s.turns[-1].ctx if s.turns else None,
+                        duration_s=_dur(self.last_input_ts, ts),
                     )
                 )
+            self.last_input_ts = ts or self.last_input_ts
         elif typ == "response_item":
             self._item(p)
+            if p.get("type") == "function_call_output" or (p.get("type") == "message" and p.get("role") == "user"):
+                self.last_input_ts = ts or self.last_input_ts
         elif typ == "event_msg":
             et = str(p.get("type"))
             if et not in KNOWN_EVENTS:
                 self.note_unknown(s, f"event_msg:{et}")
             if et == "user_message":
                 self.pending_user = str(p.get("message") or "")
+                self.last_input_ts = ts or self.last_input_ts
             elif et == "token_count":
                 self._tokens(p, ts)
 
@@ -155,7 +168,14 @@ class CodexParser(Parser):
             self.pending_tools = []
             return
         t = Turn(
-            ts=ts, ctx=inp, cache_read=cached, cache_write=0, output=out, model=self.model, user_text=self.pending_user
+            ts=ts,
+            ctx=inp,
+            cache_read=cached,
+            cache_write=0,
+            output=out,
+            model=self.model,
+            user_text=self.pending_user,
+            start_ts=self.last_input_ts,
         )
         self.pending_user = ""
         for cid, key in self.pending_tools:
@@ -184,7 +204,16 @@ class CodexParser(Parser):
         p = cls(state["path"])
         if "session" in state:
             p.session = session_from_dict(state["session"])
-            for k in ("model", "leaf_id", "last_total", "pending_tools", "pending_user", "call_turn", "replaying"):
+            for k in (
+                "model",
+                "leaf_id",
+                "last_total",
+                "pending_tools",
+                "pending_user",
+                "call_turn",
+                "replaying",
+                "last_input_ts",
+            ):
                 setattr(p, k, state.get(k, getattr(p, k)))
         return p
 

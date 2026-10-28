@@ -18,6 +18,16 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
+def _lat(rng: random.Random, ctx: int) -> timedelta:
+    """Synthetic request latency: grows with context (prefill) plus noise."""
+    return timedelta(seconds=2.5 + 3.0 * ctx / 100_000 + rng.uniform(0, 4))
+
+
+def _clat(rng: random.Random, pre: int) -> timedelta:
+    """Synthetic compaction latency: summarizer call that reads the whole context."""
+    return timedelta(seconds=20 + 0.1 * pre / 1000 + rng.uniform(0, 10))
+
+
 def _steps(rng: random.Random, n: int, start: int, hist_limit: int | None):
     """Yield (ctx, gap_s, file, user_text, compacted_before). hist_limit simulates the user's old threshold."""
     ctx = start
@@ -59,6 +69,7 @@ def write_claude_code(
         ):
             t += timedelta(seconds=gap)
             if compacted:
+                t += _clat(rng, pre)
                 lines.append(
                     {
                         "type": "system",
@@ -94,6 +105,7 @@ def write_claude_code(
                 },
                 "content": [{"type": "tool_use", "id": f"tu_{sid}_{k}", "name": "Read", "input": {"file_path": key}}],
             }
+            t += _lat(rng, ctx)
             rec = {"type": "assistant", "timestamp": _iso(t), "isSidechain": sub, "message": msg}
             lines.append(rec)
             if k % 7 == 0:
@@ -132,9 +144,10 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
             {"timestamp": _iso(t), "type": "turn_context", "payload": {"model": model}},
         ]
         total = 0
-        for k, (ctx, gap, key, utext, compacted, _pre) in enumerate(_steps(rng, rng.randint(80, 160), 20_000, 300_000)):
+        for k, (ctx, gap, key, utext, compacted, pre) in enumerate(_steps(rng, rng.randint(80, 160), 20_000, 300_000)):
             t += timedelta(seconds=gap)
             if compacted:
+                t += _clat(rng, pre)
                 lines.append(
                     {
                         "timestamp": _iso(t),
@@ -183,6 +196,7 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
                 "last_token_usage": tok,
                 "model_context_window": 400_000,
             }
+            t += _lat(rng, ctx)
             ev = {"timestamp": _iso(t), "type": "event_msg", "payload": {"type": "token_count", "info": info}}
             lines += [ev, ev]  # Codex re-emits identical token_count events
         path.write_text("\n".join(json.dumps(x) for x in lines) + "\n")
