@@ -60,7 +60,7 @@ def _print_summary(res: dict) -> None:
     for g in res["groups"]:
         r = g["recommendation"]
         print(f"{g['model'][:28]:28} {g['role']:9} {g['n_sessions']:>5} {g['n_turns']:>7} {r['threshold']//1000:>6}k "
-              f"{r['range'][0]//1000:>5}k-{r['range'][1]//1000:<5}k {r['recall_at_best']:>7.3f}  {g['penalty_params']['source']}"
+              f"{str(r['range'][0]//1000)+'k-'+str(r['range'][1]//1000)+'k':>13} {r['recall_at_best']:>7.3f}  {g['penalty_params']['source']}"
               + ("" if r["floor_met"] else "  [recall floor NOT met]"))
 
 

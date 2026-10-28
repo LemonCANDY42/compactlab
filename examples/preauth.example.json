@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "expires": "2027-01-31",
+  "allow_retune": false,
+  "targets": [
+    {
+      "harness": "claude-code",
+      "file": "~/.claude/settings.json",
+      "keys": ["modelSettings.*.autoCompactWindow"],
+      "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
+      "min": 150000,
+      "max": 600000,
+      "max_change_pct": 60
+    }
+  ]
+}
