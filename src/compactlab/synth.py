@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 EPOCH = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
+# Real compaction summaries run to thousands of tokens; pad the synthetic one to ~10k tokens.
+SUMMARY_FILLER = "Context carried over: decisions, open tasks and file notes. " * 680
 FILES = [f"/proj/src/mod{i}.py" for i in range(12)]
 
 
@@ -73,7 +75,7 @@ def write_claude_code(
                         "message": {
                             "role": "user",
                             "content": "Summary: edited /proj/src/mod3.py; all tests "
-                            "pass; verified the build. Next: finish /proj/src/mod4.py.",
+                            "pass; verified the build. Next: finish /proj/src/mod4.py.\n" + SUMMARY_FILLER,
                         },
                     }
                 )
@@ -134,7 +136,11 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
             t += timedelta(seconds=gap)
             if compacted:
                 lines.append(
-                    {"timestamp": _iso(t), "type": "compacted", "payload": {"message": "Summary of work so far."}}
+                    {
+                        "timestamp": _iso(t),
+                        "type": "compacted",
+                        "payload": {"message": "Summary of work so far.\n" + SUMMARY_FILLER},
+                    }
                 )
             if utext:
                 lines.append(

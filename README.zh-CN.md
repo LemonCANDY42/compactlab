@@ -1,23 +1,37 @@
 # compactlab
 
-用你自己的 agent 会话历史做回放分析,按模型、按角色(主会话 / 子 agent)找出自动压缩(auto-compact)的最优阈值。默认完全离线。
-
-**状态:v0.1,早期版本。** 成本曲线来自对你的历史按价格表回放;召回率部分是**假设代理**,不是任何模型的实测曲线。详见 `docs/METHODOLOGY.md`。
+**你的 agent 历史记录会告诉你在哪里自动压缩。** 按模型、按角色(主会话 / 子 agent)衡量成本与长上下文衰减之间的取舍,再安全地调整 auto-compact 阈值。
 
 ```bash
-uv tool install .
-compactlab demo                       # 用合成数据生成 compactlab-demo/report.html
-compactlab scan                       # 扫描会话
-compactlab simulate --out result.json # 扫描阈值并给出推荐
-compactlab report --result result.json --out report.html
-compactlab apply --result result.json --claude-settings ~/.claude/settings.json  # 默认只做 dry-run
+uvx compactlab demo     # 用内置合成数据生成报告并打开,不需要历史记录、网络或 API key
 ```
 
-- 支持 Claude Code 与 Codex;其他 harness(dsh、opencode、pi)只预留了适配器接口。
-- 报告是单个自包含 HTML:挡位切换(Eco / Balanced / Recall / 自定义)、相对历史的预估节省、帕累托图、历史上下文分布、单个会话的真实曲线与回放曲线叠加。
-- `apply` 默认 dry-run;写入必须 `--write` 加授权(预授权文件,或显式 `--i-authorize`)。每次写入都有备份和清单,`revert` 只还原被改动的键。
-- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,无法按模型或角色区分)。
-- AI 评估(`eval`)默认关闭,需要显式开关、会先打印预估费用,并有硬预算上限。
-- 推送前运行 `python scripts/secrets_scan.py --all`。
+## 它解决什么问题
 
-MIT 许可。
+Claude Code 和 Codex 会在上下文达到某个 token 阈值时压缩对话。阈值太低,要频繁付摘要、缓存重写和找回丢失信息的成本;阈值太高,每一轮都要重读巨大的缓存前缀,长上下文本身也会变得不可靠。合适的数字取决于你自己的会话怎么增长、用什么模型、价格多少。compactlab 用你自己的会话日志在每个阈值下回放一遍,告诉你平衡点在哪里。
+
+## 结果分两档
+
+- **standard(标准)**:满足召回下限、回放成本加"找回惩罚"最低的阈值。
+- **headroom(冗余,默认)**:在最优值 12% 以内的最大阈值。多花一点钱,换更少的有损压缩。容差可调(`--headroom`),额外成本和少了多少次压缩都会写出来。
+
+## 两种模式
+
+- **lite(默认)**:只用日志和价格表,离线、零成本:回放模拟、成本模型、找回惩罚、摘要事实核查启发式。
+- **hyper(需显式开启)**:在 lite 基础上,通过 Claude Code 或 Codex 调用你选的模型,在候选阈值处重新生成摘要,用真实事实做探针,并用另一个模型当评审。先显示预估费用,需要 `--yes`,`--budget` 是硬上限。两套结果并排展示,不一致的地方会标出来。
+
+## 安全与隐私
+
+- 默认完全离线,不联网、不调用模型。
+- 报告和 `result.json` 只包含 token 数、模型名和会话 id,不包含对话内容和路径;`--redact` 可把 id 换成哈希。
+- `apply` 默认只出 dry-run diff;写入需要 `--write` 加预授权文件(或 `--i-authorize`),写入前自动备份,`revert` 只还原改过的键。
+- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分)。
+
+## 局限
+
+- lite 模式的召回率是**假设曲线**,不是任何模型的实测数据;hyper 模式测的是对 compactlab 摘录的抽样结果。
+- 回放成本用于比较不同阈值,不等于你的账单。
+- 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。
+- dsh、opencode、pi 的适配器在计划中,欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
+
+MIT 许可。英文完整说明见 [README.md](README.md)。

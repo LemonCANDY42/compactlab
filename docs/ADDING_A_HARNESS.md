@@ -16,7 +16,7 @@ from .base import Adapter, Parser, env_roots, parse_ts, register
 
 
 class MyParser(Parser):
-    version = 1                      # bump when parsing output changes (invalidates the scan cache)
+    version = 1  # bump when parsing output changes (invalidates the scan cache)
 
     def __init__(self, path: str):
         self.session = Session(id=Path(path).stem, harness="my-harness", role="main", path=path)
@@ -28,10 +28,10 @@ class MyParser(Parser):
             return
         ...
 
-    def finish(self) -> Session: ...          # return a copy; do not consume state
-    def dump(self) -> dict[str, Any]: ...     # JSON-serializable state, for the resumable cache
+    def finish(self) -> Session: ...  # return a copy; do not consume state
+    def dump(self) -> dict[str, Any]: ...  # JSON-serializable state, for the resumable cache
     @classmethod
-    def load(cls, state: dict[str, Any]) -> "MyParser": ...   # state may be just {"path": ...}
+    def load(cls, state: dict[str, Any]) -> "MyParser": ...  # state may be just {"path": ...}
 
 
 @register
