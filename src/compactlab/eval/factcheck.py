@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .model import Compaction, Session
+from ..model import Compaction, Session
 
 CLAIM_RE = re.compile(
     r"(all )?(unit |integration )?tests? (now )?(pass|passed|passing|green)|build (succeed|succeeded|passes|passed|is green)|"

@@ -5,7 +5,7 @@ import re
 import statistics
 from dataclasses import dataclass, asdict
 
-from .model import Session
+from ..model import Session
 
 WINDOW = 20  # turns inspected before/after a compaction
 MIN_OBSERVED = 5

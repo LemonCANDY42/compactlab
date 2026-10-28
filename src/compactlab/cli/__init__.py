@@ -7,13 +7,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__, apply as ap, synth
-from .adapters import adapter_names, get_adapter
-from .aieval import CONFIRM_FLAG, EvalError, estimate_cost, load_client, run_eval
-from .model import Session
-from .pricing import PricingTable
-from .report import render_html
-from .simulate import SimOptions, analyze
+from .. import __version__, synth
+from .. import apply as ap
+from ..adapters import adapter_names, get_adapter
+from ..eval.hyper import CONFIRM_FLAG, EvalError, estimate_cost, load_client, run_eval
+from ..model import Session
+from ..pricing import PricingTable
+from ..report.html import render_html
+from ..sim.engine import SimOptions, analyze
 
 DEFAULT_STATE = "~/.compactlab"
 

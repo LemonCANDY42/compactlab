@@ -2,12 +2,12 @@ import math
 
 from compactlab import synth
 from compactlab.adapters import get_adapter
-from compactlab.calibrate import PenaltyParams, repeat_stats
-from compactlab.factcheck import check_summary
+from compactlab.sim.calibrate import PenaltyParams, repeat_stats
+from compactlab.eval.factcheck import check_summary
 from compactlab.model import Compaction, Session, Turn
 from compactlab.pricing import PricingTable
-from compactlab.select import recommend
-from compactlab.simulate import SimOptions, analyze, make_trace, replay, rot_fn, DEFAULT_ROT
+from compactlab.sim.select import recommend
+from compactlab.sim.engine import SimOptions, analyze, make_trace, replay, rot_fn, DEFAULT_ROT
 
 PR = PricingTable.load()
 

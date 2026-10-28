@@ -8,8 +8,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .calibrate import PenaltyParams, calibrate
-from .model import Session
-from .pricing import Price, PricingTable
+from ..model import Session
+from ..pricing import Price, PricingTable
 from .select import gears, recommend
 
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]

@@ -1,6 +1,6 @@
 import pytest
 
-from compactlab.aieval import BudgetExceeded, EvalError, MockClient, estimate_cost, make_probes, run_eval
+from compactlab.eval.hyper import BudgetExceeded, EvalError, MockClient, estimate_cost, make_probes, run_eval
 from compactlab.model import Compaction, Session, Turn
 from compactlab.pricing import PricingTable
 

@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from .factcheck import Flag, check_summary
-from .model import Compaction, Session
-from .pricing import PricingTable
+from ..model import Compaction, Session
+from ..pricing import PricingTable
 
 CONFIRM_FLAG = "--i-understand-this-calls-an-llm"
 
