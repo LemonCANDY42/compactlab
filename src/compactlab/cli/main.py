@@ -145,14 +145,39 @@ def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
     return {"claude-code": a.claude_root, "codex": a.codex_root}
 
 
+def _progress(msg: str) -> None:
+    """One-line progress on stderr (only when it is a terminal)."""
+    if sys.stderr.isatty():
+        print(f"\r\033[K{msg}", end="", file=sys.stderr, flush=True)
+
+
 def load_sessions(a: argparse.Namespace) -> list[Session]:
+    import time as _time
+
     cache = None if a.no_cache else ScanCache(a.cache_dir)
     out: list[Session] = []
-    since = a.since_days or None
-    for h in a.harness or adapter_names():
-        out += list(get_adapter(h)(_roots(a).get(h)).sessions(since, cache))
-    if cache:
-        cache.save()
+    cut = _time.time() - a.since_days * 86400 if a.since_days else None
+    try:
+        for h in a.harness or adapter_names():
+            ad = get_adapter(h)(_roots(a).get(h))
+            files = list(ad.find_files())
+            for i, path in enumerate(files, 1):
+                if i % 20 == 0 or i == len(files):
+                    _progress(f"scanning {h}: {i}/{len(files)} files" + (f" (cache {cache.stats})" if cache else ""))
+                try:
+                    if cut and path.stat().st_mtime < cut:
+                        continue
+                    s = cache.parse(ad, path) if cache else ad.parse_file(path)
+                except OSError:
+                    continue
+                if s.turns:
+                    out.append(s)
+                if cache and i % 500 == 0:
+                    cache.save()  # keep progress if the scan is interrupted
+    finally:
+        if cache:
+            cache.save()
+        _progress("")
     return out
 
 
@@ -222,7 +247,9 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
             "or `compactlab demo` to see a report built from synthetic data."
         )
     pricing = _pricing(a)
-    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions))
+    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions),
+                  progress=lambda i, n, name: _progress(f"simulating {i}/{n}: {name}"))  # fmt: skip
+    _progress("")
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
     return res

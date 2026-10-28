@@ -185,11 +185,9 @@ class CodexParser(Parser):
         s.turns.append(t)
 
     def finish(self) -> Session:
-        from ..model import session_from_dict, session_to_dict
+        from ..model import snapshot
 
-        out = session_from_dict(session_to_dict(self.session))
-        out.compactions = [c for c in out.compactions if c.turn_index < len(out.turns)]
-        return out
+        return snapshot(self.session)
 
     def dump(self) -> dict[str, Any]:
         from ..model import session_to_dict

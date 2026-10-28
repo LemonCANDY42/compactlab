@@ -112,49 +112,70 @@ class Ctx:
     step_tokens: int
     rot: Any
     opts: SimOptions
+    _tabs: Any = None
+
+    def tables(self) -> tuple[list[float], list[float], list[float], int]:
+        """Lookup tables at 1k-token resolution (turn latency, recall rot) and the retention decay by turn."""
+        if self._tabs is None:
+            n = 2100  # up to 2.1M tokens
+            lat = [self.tm.turn(i * 1000) for i in range(n)]
+            rot = [self.rot(i * 1000) for i in range(n)]
+            o = self.opts
+            dec = [1 - (1 - o.retention) * math.exp(-k / o.retention_half_turns) for k in range(400)]
+            self._tabs = (lat, rot, dec, n - 1)
+        return self._tabs
 
 
 def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
     """Replay one trace at threshold T. Penalty cost/time are tracked separately from base cost."""
-    price, base, summ, opts, tm = c.price, c.base, c.summ, c.opts, c.tm
+    price, base, summ = c.price, c.base, c.summ
+    lat, rot, dec, top = c.tables()
+    short = price.rates(0)
+    long_above = price.long_above if price.long_above is not None else 10**12
+    long_ = price.rates(long_above + 1) if price.long_above is not None else short
+    ttl, rho, fixed, corr = c.ttl, c.pen.rho, c.pen.fixed_tokens, c.pen.correction_turns
+    step_tokens, med_turn = max(c.step_tokens, 1), c.tm.median_turn_s
+    ndec = len(dec)
     ctx = base
-    r = Run()
+    cost = penalty = t_turns = t_compact = t_redisc = recall = 0.0
+    comps = 0
     fresh = False
-    since = math.inf
+    since = ndec  # "long ago": decay factor 1
     extra = 0
-    avg_out = (sum(tr.o) / len(tr.o)) if tr.o else 0
-    for i in range(len(tr.g)):
-        g = tr.g[i] + extra
+    gs, os_, gaps = tr.g, tr.o, tr.gap
+    avg_out = (sum(os_) / len(os_)) if os_ else 0
+    for i in range(len(gs)):
+        g = gs[i] + extra
         prev = ctx
         ctx += g
-        _, ro, rw, rr = price.rates(ctx)
-        prefix_rate = rw if (fresh or tr.gap[i] > c.ttl) else rr
-        turn = prev * prefix_rate + g * rw + tr.o[i] * ro
+        _, ro, rw, rr = long_ if ctx > long_above else short
+        turn = prev * (rw if (fresh or gaps[i] > ttl) else rr) + g * rw + os_[i] * ro
         if extra:  # the share caused by re-discovered tokens is penalty, not base cost
-            r.penalty += extra * rw
+            penalty += extra * rw
             turn -= extra * rw
-        r.cost += turn
-        extra = 0
+            extra = 0
+        cost += turn
         fresh = False
-        r.t_turns += tm.turn(ctx)
-        r.recall_sum += c.rot(ctx) * (1 - (1 - opts.retention) * math.exp(-since / opts.retention_half_turns))
+        ki = ctx // 1000
+        if ki > top:
+            ki = top
+        t_turns += lat[ki]
+        recall += rot[ki] * (dec[since] if since < ndec else 1.0)
         since += 1
         if ctx > T:
-            _, ro, rw, rr = price.rates(ctx)
-            r.cost += ctx * rr + summ * ro  # summarizer call reads the whole context
-            r.t_compact += tm.compact(ctx)
-            dropped = max(ctx - base - summ, 0)
+            cost += ctx * rr + summ * ro  # summarizer call reads the whole context
+            t_compact += c.tm.compact(ctx)
+            dropped = ctx - base - summ
             ctx = base + summ
             fresh = True
             since = 0
-            r.compactions += 1
+            comps += 1
             if with_penalty:
-                extra = int(c.pen.rho * dropped + c.pen.fixed_tokens)
-                _, ro2, _, rr2 = price.rates(ctx)
-                r.penalty += c.pen.correction_turns * (ctx * rr2 + avg_out * ro2)
-                steps = extra / max(c.step_tokens, 1) + c.pen.correction_turns
-                r.t_redisc += steps * tm.median_turn_s
-    return r
+                extra = int(rho * max(dropped, 0) + fixed)
+                _, ro2, _, rr2 = long_ if ctx > long_above else short
+                penalty += corr * (ctx * rr2 + avg_out * ro2)
+                t_redisc += (extra / step_tokens + corr) * med_turn
+    return Run(cost, penalty, comps, recall, t_turns, t_compact, t_redisc)
 
 
 def run_all(traces: list[Trace], T: float, c: Ctx) -> Run:
@@ -221,6 +242,7 @@ def analyze(
     pricing: PricingTable,
     opts: SimOptions | None = None,
     current: dict[tuple[str, str], tuple[int | None, str]] | None = None,
+    progress: Any = None,
 ) -> dict:
     """`current` maps (harness, model) -> (configured threshold or None, description), read from config."""
     opts = opts or SimOptions()
@@ -231,7 +253,9 @@ def analyze(
     for s in sessions:
         groups[(s.model, s.role)].append(s)
     out_groups = []
-    for (model, role), ss in sorted(groups.items()):
+    for gi, ((model, role), ss) in enumerate(sorted(groups.items()), 1):
+        if progress:
+            progress(gi, len(groups), f"{model} · {role} ({len(ss)} sessions)")
         harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         price = pricing.lookup(model)
         observed_window = max((s.context_window or 0) for s in ss)
