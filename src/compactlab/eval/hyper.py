@@ -8,6 +8,7 @@ Two pieces:
   hyper_analyze()   re-summarizes sampled sessions at candidate thresholds, probes the summaries for
                     ground-truth facts, and reports measured recall next to lite's assumed recall.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -15,11 +16,11 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
-from .factcheck import Flag, check_summary
 from ..model import Compaction, Session
 from ..pricing import PricingTable
+from .factcheck import Flag, check_summary
 
 CONFIRM_FLAG = "--yes"
 
@@ -102,19 +103,32 @@ class BudgetGuard:
 def make_probes(s: Session, c: Compaction, limit: int = 5) -> list[Probe]:
     """Ground-truth probes from facts that are verifiably in the pre-compaction transcript."""
     seen: list[str] = []
-    for t in reversed(s.turns[max(0, c.turn_index - 60):c.turn_index]):
+    for t in reversed(s.turns[max(0, c.turn_index - 60) : c.turn_index]):
         for k in t.tool_keys:
-            name, _, arg = k.partition(":")
+            _name, _, arg = k.partition(":")
             if arg.startswith("/") and arg not in seen:
                 seen.append(arg)
-    probes = [Probe("file", f"The file {p!r} was accessed before the context was compacted. "
-                    f"Answer with its exact path if you remember it being worked on, else say 'unknown'.", [p])
-              for p in seen[:limit]]
+    probes = [
+        Probe(
+            "file",
+            f"The file {p!r} was accessed before the context was compacted. "
+            f"Answer with its exact path if you remember it being worked on, else say 'unknown'.",
+            [p],
+        )
+        for p in seen[:limit]
+    ]
     return probes
 
 
-def estimate_cost(n_probes: int, summary_chars: int, answer_model: str, judge_model: str,
-                  repeats: int, pricing: PricingTable, max_tokens: int = 200) -> float:
+def estimate_cost(
+    n_probes: int,
+    summary_chars: int,
+    answer_model: str,
+    judge_model: str,
+    repeats: int,
+    pricing: PricingTable,
+    max_tokens: int = 200,
+) -> float:
     in_a = summary_chars // 4 + 150
     a = BudgetGuard(1.0, pricing).cost(answer_model, in_a, max_tokens)
     j = BudgetGuard(1.0, pricing).cost(judge_model, in_a // 2 + 300, max_tokens) * repeats
@@ -125,9 +139,19 @@ def _norm(x: str) -> str:
     return re.sub(r"\s+", " ", x.strip().lower())
 
 
-def run_eval(s: Session, c: Compaction, client: LLMClient, *, answer_model: str, judge_model: str,
-             pricing: PricingTable, budget_usd: float, repeats: int = 3, confirm: bool = False,
-             probes: list[Probe] | None = None) -> EvalReport:
+def run_eval(
+    s: Session,
+    c: Compaction,
+    client: LLMClient,
+    *,
+    answer_model: str,
+    judge_model: str,
+    pricing: PricingTable,
+    budget_usd: float,
+    repeats: int = 3,
+    confirm: bool = False,
+    probes: list[Probe] | None = None,
+) -> EvalReport:
     if not confirm:
         raise EvalError(f"AI evaluation calls an LLM and costs money; pass {CONFIRM_FLAG} to run it")
     if answer_model == judge_model:
@@ -137,11 +161,13 @@ def run_eval(s: Session, c: Compaction, client: LLMClient, *, answer_model: str,
     rep.flags = check_summary(s, c)
     try:
         for p in probes if probes is not None else make_probes(s, c):
-            ans = guard.call(client, answer_model, f"Context summary:\n{c.summary_text}\n\nQuestion: {p.question}", 200).text
+            ans = guard.call(
+                client, answer_model, f"Context summary:\n{c.summary_text}\n\nQuestion: {p.question}", 200
+            ).text
             exact = any(_norm(t) in _norm(ans) for t in p.truth)
             votes = []
             for _ in range(max(repeats, 1)):
-                jp = (f"Ground truth: {p.truth}\nAnswer: {ans}\nReply with JSON {{\"correct\": true|false}} only.")
+                jp = f'Ground truth: {p.truth}\nAnswer: {ans}\nReply with JSON {{"correct": true|false}} only.'
                 raw = guard.call(client, judge_model, jp, 50).text
                 try:
                     votes.append(bool(json.loads(raw).get("correct")))
@@ -155,8 +181,10 @@ def run_eval(s: Session, c: Compaction, client: LLMClient, *, answer_model: str,
 
 class MockClient:
     """Deterministic offline client for tests and dry demos."""
+
     def __init__(self, known: set[str] | None = None):
-        self.known, self.log = known or set(), Counter()
+        self.known: set[str] = known or set()
+        self.log: Counter[str] = Counter()
 
     def complete(self, model: str, prompt: str, max_tokens: int) -> Completion:
         self.log[model] += 1
@@ -182,8 +210,10 @@ def load_client(spec: str) -> LLMClient:
 
 # ---------------- hyper_analyze: re-summarize at candidate thresholds ----------------
 
-SUMMARY_PROMPT = ("You are compacting an agent session. Write a faithful summary that preserves file paths, "
-                  "decisions, open tasks, errors and test results. Do not claim anything not shown.\n\n")
+SUMMARY_PROMPT = (
+    "You are compacting an agent session. Write a faithful summary that preserves file paths, "
+    "decisions, open tasks, errors and test results. Do not claim anything not shown.\n\n"
+)
 MAX_TRANSCRIPT_CHARS = 60_000
 
 
@@ -191,7 +221,7 @@ def transcript_text(s: Session, end: int, max_chars: int = MAX_TRANSCRIPT_CHARS)
     """Reconstruct what compactlab kept of turns [0, end): user text, tool calls, output snippets.
     This is an excerpt, not the full transcript (compactlab never stores full tool outputs)."""
     parts = []
-    for i, t in enumerate(s.turns[:end]):
+    for _i, t in enumerate(s.turns[:end]):
         if t.user_text:
             parts.append(f"[user] {t.user_text[:500]}")
         for k in t.tool_keys:
@@ -204,6 +234,7 @@ def transcript_text(s: Session, end: int, max_chars: int = MAX_TRANSCRIPT_CHARS)
 
 def cut_index(s: Session, threshold: int, base: int) -> int | None:
     from ..sim.engine import make_trace
+
     ctx = base
     for i, g in enumerate(make_trace(s, base).g):
         ctx += g
@@ -214,18 +245,32 @@ def cut_index(s: Session, threshold: int, base: int) -> int | None:
 
 @dataclass
 class HyperPlan:
-    pairs: list[tuple[str, str, Session, int, int]]   # (model, role, session, threshold, cut)
+    pairs: list[tuple[str, str, Session, int, int]]  # (model, role, session, threshold, cut)
     est_usd: float
 
 
-def plan_hyper(sessions: list[Session], result: dict, pricing: PricingTable, model: str, judge_model: str,
-               repeats: int = 3, sessions_per_group: int = 3, probes: int = 5) -> HyperPlan:
+def plan_hyper(
+    sessions: list[Session],
+    result: dict,
+    pricing: PricingTable,
+    model: str,
+    judge_model: str,
+    repeats: int = 3,
+    sessions_per_group: int = 3,
+    probes: int = 5,
+) -> HyperPlan:
     pairs = []
     est = 0.0
     g_by = {(g["model"], g["role"]): g for g in result["groups"]}
     for (m, role), g in sorted(g_by.items()):
-        cands = sorted({g["tiers"]["standard"]["threshold"], g["tiers"]["headroom"]["threshold"],
-                        g["gears"]["eco"], g["gears"]["recall"]})
+        cands = sorted(
+            {
+                g["tiers"]["standard"]["threshold"],
+                g["tiers"]["headroom"]["threshold"],
+                g["gears"]["eco"],
+                g["gears"]["recall"],
+            }
+        )
         ss = sorted((s for s in sessions if s.model == m and s.role == role), key=lambda s: -s.peak)
         for s in ss[:sessions_per_group]:
             for T in cands:
@@ -240,8 +285,18 @@ def plan_hyper(sessions: list[Session], result: dict, pricing: PricingTable, mod
     return HyperPlan(pairs, est)
 
 
-def hyper_analyze(plan: HyperPlan, result: dict, client: LLMClient, *, model: str, judge_model: str,
-                  pricing: PricingTable, budget_usd: float, repeats: int = 3, confirm: bool = False) -> dict:
+def hyper_analyze(
+    plan: HyperPlan,
+    result: dict,
+    client: LLMClient,
+    *,
+    model: str,
+    judge_model: str,
+    pricing: PricingTable,
+    budget_usd: float,
+    repeats: int = 3,
+    confirm: bool = False,
+) -> dict:
     if not confirm:
         raise EvalError(f"hyper mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
     if model == judge_model:
@@ -261,8 +316,12 @@ def hyper_analyze(plan: HyperPlan, result: dict, client: LLMClient, *, model: st
                 ans = guard.call(client, model, f"Context summary:\n{summ}\n\nQuestion: {p.question}", 200).text
                 votes = []
                 for _ in range(max(repeats, 1)):
-                    raw = guard.call(client, judge_model, f"Ground truth: {p.truth}\nAnswer: {ans}\n"
-                                     "Reply with JSON {\"correct\": true|false} only.", 50).text
+                    raw = guard.call(
+                        client,
+                        judge_model,
+                        f'Ground truth: {p.truth}\nAnswer: {ans}\nReply with JSON {{"correct": true|false}} only.',
+                        50,
+                    ).text
                     try:
                         votes.append(bool(json.loads(raw).get("correct")))
                     except (ValueError, AttributeError):
@@ -273,17 +332,25 @@ def hyper_analyze(plan: HyperPlan, result: dict, client: LLMClient, *, model: st
         stopped = str(e)
     out_groups = []
     for g in result["groups"]:
-        pts = []
+        pts: list[dict[str, Any]] = []
         for (m, role, T), vals in sorted(measured.items()):
             if (m, role) != (g["model"], g["role"]):
                 continue
             assumed = g["recall"][g["grid"].index(T)] if T in g["grid"] else None
-            pts.append({"threshold": T, "measured_recall": sum(vals) / len(vals), "samples": len(vals),
-                        "assumed_recall": assumed})
+            pts.append(
+                {
+                    "threshold": T,
+                    "measured_recall": sum(vals) / len(vals),
+                    "samples": len(vals),
+                    "assumed_recall": assumed,
+                }
+            )
         if not pts:
             continue
         floor = g["recommendation"]["recall_floor"]
-        dis = [p for p in pts if p["assumed_recall"] is not None and abs(p["measured_recall"] - p["assumed_recall"]) > 0.1]
+        dis = [
+            p for p in pts if p["assumed_recall"] is not None and abs(p["measured_recall"] - p["assumed_recall"]) > 0.1
+        ]
         head = g["tiers"]["headroom"]["threshold"]
         std = g["tiers"]["standard"]["threshold"]
         hp = next((p for p in pts if p["threshold"] == head), None)
@@ -291,14 +358,29 @@ def hyper_analyze(plan: HyperPlan, result: dict, client: LLMClient, *, model: st
         if hp and hp["measured_recall"] < floor:
             ok_pts = [p["threshold"] for p in pts if std <= p["threshold"] < head and p["measured_recall"] >= floor]
             adjusted = max(ok_pts) if ok_pts else std
-        out_groups.append({"model": g["model"], "role": g["role"], "points": pts, "disagreements": dis,
-                           "headroom_measured_ok": None if hp is None else hp["measured_recall"] >= floor,
-                           "headroom_adjusted_to": adjusted})
+        out_groups.append(
+            {
+                "model": g["model"],
+                "role": g["role"],
+                "points": pts,
+                "disagreements": dis,
+                "headroom_measured_ok": None if hp is None else hp["measured_recall"] >= floor,
+                "headroom_adjusted_to": adjusted,
+            }
+        )
         if adjusted is not None:
             g["tiers"]["headroom"]["lite_threshold"] = head
             g["tiers"]["headroom"]["threshold"] = adjusted
             g["gears"]["headroom"] = adjusted
     result["mode"] = "hyper"
-    result["hyper"] = {"model": model, "judge_model": judge_model, "repeats": repeats, "spent_usd": guard.spent,
-                       "calls": guard.calls, "budget_usd": budget_usd, "stopped": stopped, "groups": out_groups}
+    result["hyper"] = {
+        "model": model,
+        "judge_model": judge_model,
+        "repeats": repeats,
+        "spent_usd": guard.spent,
+        "calls": guard.calls,
+        "budget_usd": budget_usd,
+        "stopped": stopped,
+        "groups": out_groups,
+    }
     return result

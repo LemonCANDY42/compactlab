@@ -1,0 +1,23 @@
+name: Bug report
+description: Something is wrong in parsing, simulation, the report or apply/revert
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste transcripts, settings files or paths that contain your username.**
+        `compactlab doctor --json` and `compactlab scan --json` output are usually enough; redact anything private.
+  - type: input
+    id: version
+    attributes: {label: compactlab version, placeholder: "compactlab --version"}
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes: {label: What happened and what you expected}
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes: {label: Steps or a synthetic snippet that reproduces it, render: shell}
+  - type: textarea
+    id: doctor
+    attributes: {label: "`compactlab doctor --json` (redacted)", render: json}

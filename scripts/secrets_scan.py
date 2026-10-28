@@ -3,6 +3,7 @@
 
 Usage: python scripts/secrets_scan.py [--all]   (default: tracked files; --all also scans untracked, non-ignored)
 """
+
 import re
 import subprocess
 import sys
@@ -18,7 +19,9 @@ PATTERNS = {
     "private key block": P(["-----BEGIN ", r"[A-Z ]*PRIVATE KEY-----"]),
     "slack token": P(["xo", r"x[baprs]-[A-Za-z0-9-]{10,}"]),
     "bearer header": r"(?i)authorization:\s*bearer\s+[A-Za-z0-9._\-]{20,}",
-    "generic secret assignment": r"(?i)(api[_-]?key|secret|passwd|password|token)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
+    "generic secret assignment": (
+        r"(?i)(api[_-]?key|secret|passwd|password|token)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]"
+    ),
     "home path": r"/Users/[A-Za-z0-9._-]+/",
     "linux home path": r"/home/[a-z][a-z0-9_-]+/",
     "email address": r"[A-Za-z0-9._%+-]+@(?!example\.com|users\.noreply)[A-Za-z0-9.-]+\.[a-z]{2,}",

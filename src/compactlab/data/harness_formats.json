@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "updated": "2026-10-29",
+  "status_legend": {
+    "documented": "stated in the vendor's public docs",
+    "public-tool": "relied on by a public open-source parser (CodexBar, ccusage); not checked against vendor docs",
+    "assumed": "compactlab's own reading; needs verification against real files with the user's approval"
+  },
+  "harnesses": {
+    "claude-code": {
+      "log_roots": {"value": ["$CLAUDE_CONFIG_DIR/projects (comma-separated)", "~/.claude/projects", "~/.config/claude/projects"], "status": "public-tool", "source": "https://github.com/ryoppippi/ccusage"},
+      "config_dir_env": {"value": "CLAUDE_CONFIG_DIR", "status": "documented", "source": "https://code.claude.com/docs/en/settings"},
+      "subagent_files": {"value": "files under a subagents/ directory", "status": "public-tool", "source": "https://github.com/steipete/CodexBar"},
+      "usage_fields": {"value": "message.usage.{input_tokens, cache_read_input_tokens, cache_creation_input_tokens, output_tokens} on assistant lines", "status": "public-tool", "source": "https://github.com/ryoppippi/ccusage"},
+      "dedupe": {"value": "streamed responses repeat; key = message.id + requestId", "status": "public-tool", "source": "https://github.com/ryoppippi/ccusage"},
+      "compact_boundary": {"value": "type=system, subtype=compact_boundary, compactMetadata.preTokens; next user line isCompactSummary=true holds the summary", "status": "assumed", "source": ""},
+      "parent_session": {"value": "parentSessionId on lines of resumed/forked sessions", "status": "assumed", "source": ""},
+      "compact_setting": {"value": "modelSettings.<model>.autoCompactWindow: 100000..1000000 or \"auto\"; top-level autoCompactWindow; v2.1.288+", "status": "documented", "source": "https://code.claude.com/docs/en/settings-reference"}
+    },
+    "codex": {
+      "log_roots": {"value": ["$CODEX_HOME/sessions", "~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl", "$CODEX_HOME/archived_sessions"], "status": "public-tool", "source": "https://github.com/steipete/CodexBar"},
+      "line_shape": {"value": "{timestamp, type, payload}; types session_meta, turn_context, event_msg, response_item, compacted", "status": "public-tool", "source": "https://github.com/steipete/CodexBar"},
+      "token_counts": {"value": "event_msg/token_count: info.total_token_usage is cumulative, info.last_token_usage is per request; snapshots are re-emitted", "status": "public-tool", "source": "https://github.com/steipete/CodexBar"},
+      "input_includes_cached": {"value": "input_tokens includes cached_input_tokens (OpenAI usage semantics)", "status": "public-tool", "source": "https://github.com/ryoppippi/ccusage"},
+      "fork_lineage": {"value": "session_meta.forked_from_id; subagent source {subagent: ...} or \"subagent\"; copied parent prefix may embed ancestor session_meta and a zero-usage opening snapshot", "status": "public-tool", "source": "https://github.com/steipete/CodexBar"},
+      "replay_end": {"value": "copied ancestor history ends at the next turn_context", "status": "assumed", "source": ""},
+      "compaction_event": {"value": "type=compacted (payload.message) and/or event_msg context_compacted", "status": "assumed", "source": ""},
+      "compact_setting": {"value": "top-level model_auto_compact_token_limit (number) in config.toml; global, not per model", "status": "documented", "source": "https://learn.chatgpt.com/docs/config-file/config-reference"},
+      "context_window_setting": {"value": "model_context_window (number)", "status": "documented", "source": "https://learn.chatgpt.com/docs/config-file/config-reference"}
+    }
+  }
+}

@@ -3,6 +3,7 @@
 Modes: lite (default; offline, zero cost) and hyper (opt-in; adds LLM-driven checks, needs --yes and --budget).
 Tiers: headroom (default; a bit larger than the optimum for fewer lossy compactions) and standard (optimum).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,12 +61,23 @@ def _out(a: argparse.Namespace, obj: Any, text: str) -> None:
 
 # ---------- shared option groups ----------
 
+
 def _source(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("history source")
-    g.add_argument("--harness", action="append", choices=adapter_names(), help="limit to a harness (repeatable; default all)")
-    g.add_argument("--claude-root", action="append", help="Claude Code projects dir (default $CLAUDE_CONFIG_DIR/projects or ~/.claude/projects)")
-    g.add_argument("--codex-root", action="append", help="Codex sessions dir (default $CODEX_HOME/sessions or ~/.codex/sessions)")
-    g.add_argument("--since-days", type=float, default=30, help="only files modified in the last N days (0 = all; default 30)")
+    g.add_argument(
+        "--harness", action="append", choices=adapter_names(), help="limit to a harness (repeatable; default all)"
+    )
+    g.add_argument(
+        "--claude-root",
+        action="append",
+        help="Claude Code projects dir (default $CLAUDE_CONFIG_DIR/projects or ~/.claude/projects)",
+    )
+    g.add_argument(
+        "--codex-root", action="append", help="Codex sessions dir (default $CODEX_HOME/sessions or ~/.codex/sessions)"
+    )
+    g.add_argument(
+        "--since-days", type=float, default=30, help="only files modified in the last N days (0 = all; default 30)"
+    )
     g.add_argument("--no-cache", action="store_true", help="do not read or write the scan cache")
     g.add_argument("--cache-dir", default=f"{STATE}/cache", help="scan cache location (default ~/.compactlab/cache)")
     p.add_argument("--json", action="store_true", help="machine-readable output")
@@ -75,16 +87,29 @@ def _sim(p: argparse.ArgumentParser) -> None:
     _source(p)
     g = p.add_argument_group("simulation")
     g.add_argument("--pricing", help="pricing override JSON (same schema as the bundled data/pricing.json)")
-    g.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices; use bundled + --pricing only")
-    g.add_argument("--grid", default="100k:1m:25k", help="threshold sweep start:stop:step (stop capped per model window)")
-    g.add_argument("--recall-floor", type=float, default=0.90, help="minimum assumed (or measured) recall (default 0.90)")
-    g.add_argument("--headroom", type=float, default=0.12, help="headroom tier: max combined-score excess over optimum (default 0.12)")
+    g.add_argument(
+        "--offline-pricing", action="store_true", help="ignore refreshed prices; use bundled + --pricing only"
+    )
+    g.add_argument(
+        "--grid", default="100k:1m:25k", help="threshold sweep start:stop:step (stop capped per model window)"
+    )
+    g.add_argument(
+        "--recall-floor", type=float, default=0.90, help="minimum assumed (or measured) recall (default 0.90)"
+    )
+    g.add_argument(
+        "--headroom",
+        type=float,
+        default=0.12,
+        help="headroom tier: max combined-score excess over optimum (default 0.12)",
+    )
     g.add_argument("--headroom-cap", type=_k, help="never recommend a headroom threshold above this")
     g.add_argument("--cache-ttl", type=int, help="prompt-cache TTL in seconds (default from pricing file: 300)")
     g.add_argument("--summary-tokens", type=_k, help="compaction summary size (default: observed median, else 12k)")
     g.add_argument("--base-tokens", type=_k, help="post-compaction base context (default: observed, else 35k)")
     h = p.add_argument_group("hyper mode (opt-in, costs money)")
-    h.add_argument("--mode", choices=["lite", "hyper"], default="lite", help="lite: offline (default); hyper: adds LLM checks")
+    h.add_argument(
+        "--mode", choices=["lite", "hyper"], default="lite", help="lite: offline (default); hyper: adds LLM checks"
+    )
     h.add_argument("--executor", default="claude-code", help="claude-code | codex | mock | package.module:Class")
     h.add_argument("--model", default="claude-sonnet-5-5", help="model that re-summarizes and answers probes")
     h.add_argument("--judge-model", default="claude-haiku-5-5", help="judge model (must differ from --model)")
@@ -114,9 +139,18 @@ def _opts(a: argparse.Namespace) -> SimOptions:
         lo, hi, st = (_k(x) for x in a.grid.split(":"))
     except (ValueError, argparse.ArgumentTypeError) as e:
         raise CLIError(f"--grid must look like 100k:1m:25k ({e})") from e
-    return SimOptions(grid_start=lo, grid_stop=hi, grid_step=st, recall_floor=a.recall_floor, ttl_seconds=a.cache_ttl,
-                      summary_tokens=a.summary_tokens, base_tokens=a.base_tokens, headroom_tolerance=a.headroom,
-                      headroom_step=st, headroom_cap=a.headroom_cap)
+    return SimOptions(
+        grid_start=lo,
+        grid_stop=hi,
+        grid_step=st,
+        recall_floor=a.recall_floor,
+        ttl_seconds=a.cache_ttl,
+        summary_tokens=a.summary_tokens,
+        base_tokens=a.base_tokens,
+        headroom_tolerance=a.headroom,
+        headroom_step=st,
+        headroom_cap=a.headroom_cap,
+    )
 
 
 def _pricing(a: argparse.Namespace) -> PricingTable:
@@ -127,9 +161,12 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     sessions = load_sessions(a)
     if not sessions:
         roots = [str(r) for h in (a.harness or adapter_names()) for r in get_adapter(h)(_roots(a).get(h)).roots]
-        raise CLIError("no sessions with usage data found under:\n  " + "\n  ".join(roots) +
-                       "\nRun `compactlab doctor` to check locations, `--since-days 0` to include older files, "
-                       "or `compactlab demo` to see a report built from synthetic data.")
+        raise CLIError(
+            "no sessions with usage data found under:\n  "
+            + "\n  ".join(roots)
+            + "\nRun `compactlab doctor` to check locations, `--since-days 0` to include older files, "
+            "or `compactlab demo` to see a report built from synthetic data."
+        )
     pricing = _pricing(a)
     res = analyze(sessions, pricing, _opts(a))
     if a.mode == "hyper":
@@ -137,38 +174,68 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     return res
 
 
-def _hyper(a: argparse.Namespace, sessions: list[Session], res: dict[str, Any], pricing: PricingTable) -> dict[str, Any] | None:
+def _hyper(
+    a: argparse.Namespace, sessions: list[Session], res: dict[str, Any], pricing: PricingTable
+) -> dict[str, Any] | None:
     if a.budget is None:
         raise CLIError("--mode hyper needs --budget USD (a hard cap)")
     plan = plan_hyper(sessions, res, pricing, a.model, a.judge_model, a.repeats, a.sessions_per_group)
-    print(f"hyper plan: {len(plan.pairs)} re-summarizations via {a.executor} ({a.model}, judge {a.judge_model}); "
-          f"estimated ~${plan.est_usd:.2f}; hard cap ${a.budget:.2f}", file=sys.stderr)
+    print(
+        f"hyper plan: {len(plan.pairs)} re-summarizations via {a.executor} ({a.model}, judge {a.judge_model}); "
+        f"estimated ~${plan.est_usd:.2f}; hard cap ${a.budget:.2f}",
+        file=sys.stderr,
+    )
     if not a.yes:
-        print("not running hyper: review the estimate, then re-run with --yes (lite results are unaffected)", file=sys.stderr)
+        print(
+            "not running hyper: review the estimate, then re-run with --yes (lite results are unaffected)",
+            file=sys.stderr,
+        )
         return None
     from ..eval.executors import EXECUTORS
-    client = MockClient() if a.executor == "mock" else (EXECUTORS[a.executor]() if a.executor in EXECUTORS else load_client(a.executor))
+
+    client = (
+        MockClient()
+        if a.executor == "mock"
+        else (EXECUTORS[a.executor]() if a.executor in EXECUTORS else load_client(a.executor))
+    )
     try:
-        return hyper_analyze(plan, res, client, model=a.model, judge_model=a.judge_model, pricing=pricing,
-                             budget_usd=a.budget, repeats=a.repeats, confirm=True)
+        return hyper_analyze(
+            plan,
+            res,
+            client,
+            model=a.model,
+            judge_model=a.judge_model,
+            pricing=pricing,
+            budget_usd=a.budget,
+            repeats=a.repeats,
+            confirm=True,
+        )
     except EvalError as e:
         raise CLIError(str(e)) from e
 
 
 def _summary(res: dict[str, Any]) -> str:
-    lines = [f"mode: {res['mode']}" + (f"  (hyper spent ${res['hyper']['spent_usd']:.2f})" if res.get("hyper") else ""),
-             f"{'model':22} {'role':8} {'sess':>4} {'turns':>6}  {'standard':>8}  {'headroom':>8}  {'+cost':>6}  {'-compact':>8}  {'recall':>6}"]
+    lines = [
+        f"mode: {res['mode']}" + (f"  (hyper spent ${res['hyper']['spent_usd']:.2f})" if res.get("hyper") else ""),
+        f"{'model':22} {'role':8} {'sess':>4} {'turns':>6}  {'standard':>8}  {'headroom':>8}  "
+        f"{'+cost':>6}  {'-compact':>8}  {'recall':>6}",
+    ]
     for g in res["groups"]:
         st, hd = g["tiers"]["standard"], g["tiers"]["headroom"]
-        lines.append(f"{g['model'][:22]:22} {g['role']:8} {g['n_sessions']:>4} {g['n_turns']:>6}  "
-                     f"{st['threshold'] // 1000:>7}k  {hd['threshold'] // 1000:>7}k  {hd['extra_cost_pct'] * 100:>5.1f}%  "
-                     f"{hd['fewer_compactions']:>8}  {hd['recall']:>6.3f}"
-                     + ("" if g["recommendation"]["floor_met"] else "  [recall floor not met]"))
-    lines.append("headroom (default) trades a bounded extra cost for fewer compactions; recall is an assumed proxy in lite mode.")
+        lines.append(
+            f"{g['model'][:22]:22} {g['role']:8} {g['n_sessions']:>4} {g['n_turns']:>6}  "
+            f"{st['threshold'] // 1000:>7}k  {hd['threshold'] // 1000:>7}k  {hd['extra_cost_pct'] * 100:>5.1f}%  "
+            f"{hd['fewer_compactions']:>8}  {hd['recall']:>6.3f}"
+            + ("" if g["recommendation"]["floor_met"] else "  [recall floor not met]")
+        )
+    lines.append(
+        "headroom (default) trades a bounded extra cost for fewer compactions; recall is an assumed proxy in lite mode."
+    )
     return "\n".join(lines)
 
 
 # ---------- commands ----------
+
 
 def cmd_scan(a: argparse.Namespace) -> int:
     ss = load_sessions(a)
@@ -182,13 +249,23 @@ def cmd_scan(a: argparse.Namespace) -> int:
         d["peak"] = max(d["peak"], s.peak)
         for k, v in s.unknown_events.items():
             unknown[f"{s.harness}:{k}"] = unknown.get(f"{s.harness}:{k}", 0) + v
-    obj = {"sessions": len(ss), "groups": [{"harness": h, "role": r, "model": m, **d} for (h, r, m), d in sorted(rows.items())],
-           "unknown_event_types": unknown}
-    text = [f"{len(ss)} sessions", f"{'harness':12} {'role':9} {'model':26} {'sess':>5} {'turns':>7} {'compact':>8} {'peak':>7}"]
-    text += [f"{h:12} {r:9} {m[:26]:26} {d['sessions']:>5} {d['turns']:>7} {d['compactions']:>8} {d['peak'] // 1000:>6}k"
-             for (h, r, m), d in sorted(rows.items())]
+    obj = {
+        "sessions": len(ss),
+        "groups": [{"harness": h, "role": r, "model": m, **d} for (h, r, m), d in sorted(rows.items())],
+        "unknown_event_types": unknown,
+    }
+    text = [
+        f"{len(ss)} sessions",
+        f"{'harness':12} {'role':9} {'model':26} {'sess':>5} {'turns':>7} {'compact':>8} {'peak':>7}",
+    ]
+    text += [
+        f"{h:12} {r:9} {m[:26]:26} {d['sessions']:>5} {d['turns']:>7} {d['compactions']:>8} {d['peak'] // 1000:>6}k"
+        for (h, r, m), d in sorted(rows.items())
+    ]
     if unknown:
-        text.append("unrecognized event types (ignored, counted): " + ", ".join(f"{k}={v}" for k, v in sorted(unknown.items())))
+        text.append(
+            "unrecognized event types (ignored, counted): " + ", ".join(f"{k}={v}" for k, v in sorted(unknown.items()))
+        )
     _out(a, obj, "\n".join(text))
     return 0
 
@@ -198,9 +275,15 @@ def cmd_simulate(a: argparse.Namespace) -> int:
     if res is None:
         return 2
     Path(a.out).write_text(json.dumps(res, sort_keys=True))
-    _out(a, {"result": a.out, "mode": res["mode"], "groups": [{k: g[k] for k in ("model", "role", "tiers", "recommendation")}
-                                                                for g in res["groups"]]},
-         _summary(res) + f"\n\nwrote {a.out}")
+    _out(
+        a,
+        {
+            "result": a.out,
+            "mode": res["mode"],
+            "groups": [{k: g[k] for k in ("model", "role", "tiers", "recommendation")} for g in res["groups"]],
+        },
+        _summary(res) + f"\n\nwrote {a.out}",
+    )
     return 0
 
 
@@ -224,12 +307,20 @@ def _open(p: Path) -> None:
 
 def _apply_opts(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("apply")
-    g.add_argument("--tier", choices=["headroom", "standard", "eco", "recall"], default="headroom",
-                   help="which result to write (default headroom); pre-authorization bounds still win")
+    g.add_argument(
+        "--tier",
+        choices=["headroom", "standard", "eco", "recall"],
+        default="headroom",
+        help="which result to write (default headroom); pre-authorization bounds still win",
+    )
     g.add_argument("--claude-settings", help="Claude Code settings.json to modify")
     g.add_argument("--codex-config", help="Codex config.toml to modify (one global key, not per model)")
-    g.add_argument("--preauth", help="pre-authorization JSON: allowed files, key patterns, models, bounds (docs/SAFETY.md)")
-    g.add_argument("--i-authorize", action="store_true", help="explicit one-off authorization instead of a preauth file")
+    g.add_argument(
+        "--preauth", help="pre-authorization JSON: allowed files, key patterns, models, bounds (docs/SAFETY.md)"
+    )
+    g.add_argument(
+        "--i-authorize", action="store_true", help="explicit one-off authorization instead of a preauth file"
+    )
     g.add_argument("--models", nargs="*", help="models allowed with --i-authorize")
     g.add_argument("--min", type=_k, default=100_000, help="lower bound with --i-authorize (default 100k)")
     g.add_argument("--max", type=_k, default=1_000_000, help="upper bound with --i-authorize (default 1m)")
@@ -241,7 +332,9 @@ def _preauth(a: argparse.Namespace) -> ap.Preauth:
     if a.preauth:
         return ap.load_preauth(a.preauth)
     if not a.i_authorize:
-        raise ap.ApplyError("writing needs --preauth FILE, or --i-authorize with explicit --claude-settings/--codex-config and --models")
+        raise ap.ApplyError(
+            "writing needs --preauth FILE, or --i-authorize with explicit --claude-settings/--codex-config and --models"
+        )
     files = {h: Path(f) for h, f in (("claude-code", a.claude_settings), ("codex", a.codex_config)) if f}
     if not files or not a.models:
         raise ap.ApplyError("--i-authorize needs explicit config file paths and --models")
@@ -274,9 +367,14 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
     except ap.ApplyError as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
-    plan = {"tier": a.tier, "dry_run": not a.write, "changes": [
-        {"harness": c.harness, "file": str(c.file), "key": c.key, "old": c.old, "new": c.new} for c in changes],
-        "skipped": rejected}
+    plan = {
+        "tier": a.tier,
+        "dry_run": not a.write,
+        "changes": [
+            {"harness": c.harness, "file": str(c.file), "key": c.key, "old": c.old, "new": c.new} for c in changes
+        ],
+        "skipped": rejected,
+    }
     text = [f"skip: {r}" for r in rejected]
     text += [f"{c.harness}: {c.key}: {c.old!r} -> {c.new}  ({c.file})" for c in changes]
     if changes:
@@ -300,7 +398,7 @@ def cmd_apply(a: argparse.Namespace) -> int:
 
 def cmd_retune(a: argparse.Namespace) -> int:
     if not a.preauth:
-        print("refused: retune needs --preauth (with \"allow_retune\": true)", file=sys.stderr)
+        print('refused: retune needs --preauth (with "allow_retune": true)', file=sys.stderr)
         return 2
     res = run_analysis(a)
     return 2 if res is None else _do_apply(a, res, retune=True)
@@ -330,28 +428,53 @@ def _version(binary: str) -> str | None:
 
 
 def cmd_doctor(a: argparse.Namespace) -> int:
-    report: dict[str, Any] = {"compactlab": __version__, "python": platform.python_version(), "platform": platform.platform(),
-                              "harnesses": [], "pricing": {}, "cache": {}}
+    report: dict[str, Any] = {
+        "compactlab": __version__,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "harnesses": [],
+        "pricing": {},
+        "cache": {},
+    }
     bins = {"claude-code": "claude", "codex": "codex"}
     for name in adapter_names():
         ad = get_adapter(name)
         roots = ad.default_roots()
-        report["harnesses"].append({
-            "name": name, "cli": _version(bins.get(name, name)),
-            "log_roots": [{"path": str(r), "exists": r.exists(),
-                           "jsonl_files": sum(1 for _ in r.rglob("*.jsonl")) if r.exists() else 0} for r in roots],
-            "config": [{"path": str(c), "exists": c.exists()} for c in ad.config_paths()],
-        })
+        report["harnesses"].append(
+            {
+                "name": name,
+                "cli": _version(bins.get(name, name)),
+                "log_roots": [
+                    {
+                        "path": str(r),
+                        "exists": r.exists(),
+                        "jsonl_files": sum(1 for _ in r.rglob("*.jsonl")) if r.exists() else 0,
+                    }
+                    for r in roots
+                ],
+                "config": [{"path": str(c), "exists": c.exists()} for c in ad.config_paths()],
+            }
+        )
     rp = DEFAULT_REFRESHED.expanduser()
-    report["pricing"] = {"bundled": PricingTable.bundled().get("retrieved"), "refreshed_file": str(rp), "refreshed": rp.exists()}
+    report["pricing"] = {
+        "bundled": PricingTable.bundled().get("retrieved"),
+        "refreshed_file": str(rp),
+        "refreshed": rp.exists(),
+    }
     cf = Path(f"{STATE}/cache/scan-v1.json").expanduser()
     report["cache"] = {"path": str(cf), "exists": cf.exists(), "bytes": cf.stat().st_size if cf.exists() else 0}
     lines = [f"compactlab {__version__} · Python {report['python']} · {platform.system()}"]
     for h in report["harnesses"]:
         lines.append(f"\n{h['name']}: CLI {h['cli'] or 'not found'}")
-        lines += [f"  logs   {'ok ' if r['exists'] else '-- '} {r['path']}  ({r['jsonl_files']} files)" for r in h["log_roots"]]
+        lines += [
+            f"  logs   {'ok ' if r['exists'] else '-- '} {r['path']}  ({r['jsonl_files']} files)"
+            for r in h["log_roots"]
+        ]
         lines += [f"  config {'ok ' if c['exists'] else '-- '} {c['path']}" for c in h["config"]]
-    lines.append(f"\npricing: bundled snapshot {report['pricing']['bundled']}; refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}")
+    lines.append(
+        f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
+        f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
+    )
     lines.append(f"scan cache: {cf} ({'present' if cf.exists() else 'none'})")
     _out(a, report, "\n".join(lines))
     return 0
@@ -371,11 +494,25 @@ def cmd_pricing(a: argparse.Namespace) -> int:
     rows = []
     for k in keys:
         p = t.lookup(k)
-        rows.append({"model": k, "row": p.key, "input": p.input, "output": p.output, "cache_write": p.cache_write,
-                     "cache_read": p.cache_read, "window": p.max_window, "long_above": p.long_above, "source": p.source})
+        rows.append(
+            {
+                "model": k,
+                "row": p.key,
+                "input": p.input,
+                "output": p.output,
+                "cache_write": p.cache_write,
+                "cache_read": p.cache_read,
+                "window": p.max_window,
+                "long_above": p.long_above,
+                "source": p.source,
+            }
+        )
     text = [f"{'model':24} {'row':20} {'in':>6} {'out':>6} {'cw':>6} {'cr':>6} {'window':>8}  source"]
-    text += [f"{r['model'][:24]:24} {r['row'][:20]:20} {r['input']:>6g} {r['output']:>6g} {r['cache_write']:>6g} "
-             f"{r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}" for r in rows]
+    text += [
+        f"{r['model'][:24]:24} {r['row'][:20]:20} {r['input']:>6g} {r['output']:>6g} {r['cache_write']:>6g} "
+        f"{r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}"
+        for r in rows
+    ]
     _out(a, rows, "\n".join(text) + "\nUSD per million tokens.")
     return 0
 
@@ -394,11 +531,24 @@ def cmd_demo(a: argparse.Namespace) -> int:
     out = Path(a.out)
     synth.write_claude_code(out / "claude" / "projects", n_main=12, n_sub=6)
     synth.write_codex(out / "codex" / "sessions", n=6)
-    ns = argparse.Namespace(harness=None, claude_root=[str(out / "claude" / "projects")],
-                            codex_root=[str(out / "codex" / "sessions")], since_days=0, no_cache=True,
-                            cache_dir="", pricing=None, offline_pricing=True, grid="100k:1m:25k", recall_floor=0.90,
-                            headroom=0.12, headroom_cap=None, cache_ttl=None, summary_tokens=None, base_tokens=None,
-                            mode="lite")
+    ns = argparse.Namespace(
+        harness=None,
+        claude_root=[str(out / "claude" / "projects")],
+        codex_root=[str(out / "codex" / "sessions")],
+        since_days=0,
+        no_cache=True,
+        cache_dir="",
+        pricing=None,
+        offline_pricing=True,
+        grid="100k:1m:25k",
+        recall_floor=0.90,
+        headroom=0.12,
+        headroom_cap=None,
+        cache_ttl=None,
+        summary_tokens=None,
+        base_tokens=None,
+        mode="lite",
+    )
     res = run_analysis(ns)
     assert res is not None
     res["demo"] = True

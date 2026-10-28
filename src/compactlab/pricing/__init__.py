@@ -3,6 +3,7 @@
 Load order (later wins per model row): bundled snapshot -> refreshed cache (`compactlab pricing
 refresh`, skipped with offline=True) -> user override file. Every `Price` records where it came from.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ class Price:
     cache_write: float
     cache_read: float
     max_window: int = 200_000
-    long_above: int | None = None       # requests with ctx above this use the long_* prices
+    long_above: int | None = None  # requests with ctx above this use the long_* prices
     long_input: float = 0.0
     long_output: float = 0.0
     long_cache_write: float = 0.0
@@ -53,8 +54,9 @@ class PricingTable:
         return d
 
     @classmethod
-    def load(cls, override: str | Path | None = None, refreshed: str | Path | None = DEFAULT_REFRESHED,
-             offline: bool = False) -> PricingTable:
+    def load(
+        cls, override: str | Path | None = None, refreshed: str | Path | None = DEFAULT_REFRESHED, offline: bool = False
+    ) -> PricingTable:
         base = cls.bundled()
         layers: list[tuple[Path, str]] = []
         if refreshed and not offline:
@@ -91,9 +93,16 @@ class PricingTable:
             key, row = best if best else ("fallback", self.data["fallback"])
         lc = row.get("long_context") or {}
         return Price(
-            input=row["input"], output=row["output"], cache_write=row.get("cache_write", row["input"]),
-            cache_read=row.get("cache_read", row["input"]), max_window=int(row.get("max_window", 200_000)),
-            long_above=lc.get("above_tokens"), long_input=lc.get("input", 0), long_output=lc.get("output", 0),
-            long_cache_write=lc.get("cache_write", 0), long_cache_read=lc.get("cache_read", 0),
-            key=key, source=str(row.get("source", "fallback row" if key == "fallback" else "bundled")),
+            input=row["input"],
+            output=row["output"],
+            cache_write=row.get("cache_write", row["input"]),
+            cache_read=row.get("cache_read", row["input"]),
+            max_window=int(row.get("max_window", 200_000)),
+            long_above=lc.get("above_tokens"),
+            long_input=lc.get("input", 0),
+            long_output=lc.get("output", 0),
+            long_cache_write=lc.get("cache_write", 0),
+            long_cache_read=lc.get("cache_read", 0),
+            key=key,
+            source=str(row.get("source", "fallback row" if key == "fallback" else "bundled")),
         )

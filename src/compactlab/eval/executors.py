@@ -5,6 +5,7 @@ the reply. Flags are the documented non-interactive modes; check them against yo
 (`claude --help`, `codex exec --help`). Token counts come from the CLI's JSON when present, else are
 estimated from text length (marked `estimated`).
 """
+
 from __future__ import annotations
 
 import json
@@ -44,8 +45,11 @@ class ClaudeCodeExecutor:
         except ValueError:
             return Completion(out.strip(), len(prompt) // 4 + 1, len(out) // 4 + 1)
         u = j.get("usage") or {}
-        inp = int(u.get("input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0) + \
-            int(u.get("cache_creation_input_tokens") or 0)
+        inp = (
+            int(u.get("input_tokens") or 0)
+            + int(u.get("cache_read_input_tokens") or 0)
+            + int(u.get("cache_creation_input_tokens") or 0)
+        )
         text = str(j.get("result", ""))
         return Completion(text, inp or len(prompt) // 4 + 1, int(u.get("output_tokens") or len(text) // 4 + 1))
 

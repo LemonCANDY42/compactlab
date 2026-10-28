@@ -1,5 +1,7 @@
 import pytest
 
+from compactlab import synth
+
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path_factory, monkeypatch):
@@ -9,8 +11,6 @@ def isolated_home(tmp_path_factory, monkeypatch):
     for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
         monkeypatch.delenv(v, raising=False)
     return home
-
-from compactlab import synth
 
 
 @pytest.fixture(scope="session")

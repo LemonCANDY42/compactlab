@@ -4,6 +4,7 @@ Targets (verified against vendor docs, 2026-10):
   claude-code: modelSettings.<model>.autoCompactWindow in settings.json (int 100000..1000000 or "auto"; per model)
   codex:       top-level model_auto_compact_token_limit in config.toml (global; no per-model form)
 """
+
 from __future__ import annotations
 
 import difflib
@@ -14,9 +15,10 @@ import os
 import re
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 CLAUDE_LIMITS = (100_000, 1_000_000)
 CODEX_KEY = "model_auto_compact_token_limit"
@@ -60,8 +62,17 @@ def load_preauth(path: str | Path) -> Preauth:
         for req in ("harness", "file", "keys", "models", "min", "max"):
             if req not in t:
                 raise ApplyError(f"preauth target missing {req!r}")
-        ts.append(Target(t["harness"], _p(t["file"]), list(t["keys"]), list(t["models"]),
-                         int(t["min"]), int(t["max"]), t.get("max_change_pct")))
+        ts.append(
+            Target(
+                t["harness"],
+                _p(t["file"]),
+                list(t["keys"]),
+                list(t["models"]),
+                int(t["min"]),
+                int(t["max"]),
+                t.get("max_change_pct"),
+            )
+        )
     if not ts:
         raise ApplyError("preauth file has no targets")
     return Preauth(ts, bool(d.get("allow_retune", False)), str(path))
@@ -76,13 +87,14 @@ def explicit_preauth(files: dict[str, Path], models: list[str], lo: int, hi: int
 class Change:
     harness: str
     file: Path
-    key: str            # dotted key (claude) or bare key (codex)
+    key: str  # dotted key (claude) or bare key (codex)
     model: str
-    old: object         # None => absent
+    old: object  # None => absent
     new: int
 
 
 # ---------- planning ----------
+
 
 def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str]]:
     """recs: [{harness, model, value}]. Returns allowed changes and human-readable rejections."""
@@ -99,8 +111,10 @@ def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str
         if not any(fnmatch.fnmatchcase(key, pat) for pat in tgt.keys):
             rejected.append(f"{key}: not in authorized keys {tgt.keys}")
             continue
-        lo, hi = max(tgt.lo, CLAUDE_LIMITS[0]) if r["harness"] == "claude-code" else tgt.lo, \
-            min(tgt.hi, CLAUDE_LIMITS[1]) if r["harness"] == "claude-code" else tgt.hi
+        lo, hi = (
+            max(tgt.lo, CLAUDE_LIMITS[0]) if r["harness"] == "claude-code" else tgt.lo,
+            min(tgt.hi, CLAUDE_LIMITS[1]) if r["harness"] == "claude-code" else tgt.hi,
+        )
         v = int(r["value"])
         if not lo <= v <= hi:
             rejected.append(f"{key}: value {v} outside authorized bounds [{lo}, {hi}]")
@@ -121,12 +135,19 @@ def recs_from_result(result: dict, harness_of: dict[str, str] | None = None) -> 
     for g in result["groups"]:
         if g["role"] != "main":
             continue
-        recs.append({"harness": g.get("harness", "claude-code"), "model": g["model"],
-                     "value": g["recommendation"]["threshold"], "n_turns": g["n_turns"]})
+        recs.append(
+            {
+                "harness": g.get("harness", "claude-code"),
+                "model": g["model"],
+                "value": g["recommendation"]["threshold"],
+                "n_turns": g["n_turns"],
+            }
+        )
     return recs
 
 
 # ---------- file access ----------
+
 
 def _read_current(file: Path, harness: str, model: str):
     if not file.exists():
@@ -134,8 +155,11 @@ def _read_current(file: Path, harness: str, model: str):
     text = file.read_text()
     if harness == "claude-code":
         d = _load_json(text, file)
-        return d.get("modelSettings", {}).get(model, {}).get("autoCompactWindow") \
-            if isinstance(d.get("modelSettings", {}).get(model, {}), dict) else None
+        return (
+            d.get("modelSettings", {}).get(model, {}).get("autoCompactWindow")
+            if isinstance(d.get("modelSettings", {}).get(model, {}), dict)
+            else None
+        )
     m = _toml_top_re().search(_toml_top(text))
     return int(m.group(2).replace("_", "")) if m else None
 
@@ -144,7 +168,7 @@ def _load_json(text: str, file: Path) -> dict:
     try:
         d = json.loads(text) if text.strip() else {}
     except ValueError as e:
-        raise ApplyError(f"{file} is not strict JSON ({e}); refusing to touch it")
+        raise ApplyError(f"{file} is not strict JSON ({e}); refusing to touch it") from e
     if not isinstance(d, dict):
         raise ApplyError(f"{file}: top level is not an object")
     return d
@@ -161,7 +185,7 @@ def _dump_json(d: dict, original: str) -> str:
 
 def _toml_top(text: str) -> str:
     m = re.search(r"^[ \t]*\[", text, re.M)
-    return text[:m.start()] if m else text
+    return text[: m.start()] if m else text
 
 
 def _toml_top_re():
@@ -171,7 +195,7 @@ def _toml_top_re():
 def _set_toml(text: str, value: int | None) -> str:
     rx = _toml_top_re()
     top = _toml_top(text)
-    rest = text[len(top):]
+    rest = text[len(top) :]
     if value is None:
         top = re.sub(rf"^[ \t]*{CODEX_KEY}[ \t]*=[ \t]*[\d_]+[ \t]*(#.*)?\n", "", top, count=1, flags=re.M)
         return top + rest
@@ -179,7 +203,7 @@ def _set_toml(text: str, value: int | None) -> str:
         top = rx.sub(lambda m: f"{m.group(1)}{value}{m.group(3)}", top, count=1)
     else:
         body = top.rstrip("\n")
-        trailing = top[len(body):]
+        trailing = top[len(body) :]
         top = (body + "\n" if body else "") + f"{CODEX_KEY} = {value}" + (trailing or "\n")
         if rest and not trailing:
             top += "\n"
@@ -244,6 +268,7 @@ def formatting_note(rendered: dict[Path, tuple[str, str]], changes: list[Change]
 
 # ---------- write / revert ----------
 
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -268,7 +293,7 @@ def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
     mid = time.strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}"
     bdir = state_dir / "backups" / mid
     bdir.mkdir(parents=True, exist_ok=True)
-    entries = []
+    entries: list[dict[str, Any]] = []
     for f, (old_text, new_text) in rendered.items():
         bak = bdir / f"{len(entries)}-{f.name}.bak"
         bak.write_text(old_text)
@@ -283,15 +308,33 @@ def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
                 depth = _set_path(tmp, _split_key(ch.key, ch.model), ch.new)
             elif ch.harness == "claude-code":
                 depth = 3
-            ents.append({"harness": ch.harness, "key": ch.key, "model": ch.model, "old": ch.old, "new": ch.new,
-                         "created_depth": depth})
-        entries.append({"file": str(f), "existed": f.exists(), "backup": str(bak), "sha_before": _sha(old_text),
-                        "sha_after": _sha(new_text), "changes": ents})
+            ents.append(
+                {
+                    "harness": ch.harness,
+                    "key": ch.key,
+                    "model": ch.model,
+                    "old": ch.old,
+                    "new": ch.new,
+                    "created_depth": depth,
+                }
+            )
+        entries.append(
+            {
+                "file": str(f),
+                "existed": f.exists(),
+                "backup": str(bak),
+                "sha_before": _sha(old_text),
+                "sha_after": _sha(new_text),
+                "changes": ents,
+            }
+        )
     for f, (_, new_text) in rendered.items():
         _atomic_write(f, new_text)
     manifest = state_dir / "manifests" / f"{mid}.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text(json.dumps({"id": mid, "created": time.time(), "preauth": pre.source, "entries": entries}, indent=2))
+    manifest.write_text(
+        json.dumps({"id": mid, "created": time.time(), "preauth": pre.source, "entries": entries}, indent=2)
+    )
     return manifest
 
 

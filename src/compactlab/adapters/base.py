@@ -4,13 +4,14 @@ A harness adapter knows where its transcripts live and how to turn one JSONL fil
 normalized `Session`. Parsing is done by an incremental `Parser` so the scan cache can resume
 an append-only file from the last byte offset instead of re-reading it.
 """
+
 from __future__ import annotations
 
 import abc
 import json
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -47,7 +48,7 @@ class Adapter(abc.ABC):
     name: ClassVar[str] = ""
     parser_cls: ClassVar[type[Parser]]
 
-    def __init__(self, roots: list[str | os.PathLike[str]] | str | os.PathLike[str] | None = None):
+    def __init__(self, roots: Sequence[str | os.PathLike[str]] | str | os.PathLike[str] | None = None):
         if roots is None:
             self.roots = self.default_roots()
         elif isinstance(roots, (str, os.PathLike)):

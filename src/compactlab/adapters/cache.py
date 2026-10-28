@@ -6,6 +6,7 @@ the saved offset. Anything else -> full parse. The cache holds parsed excerpts o
 (tool commands, 400-char output snippets), so it is written with 0600 permissions under
 `~/.compactlab/cache` and can be disabled with `--no-cache` or wiped with `compactlab cache clear`.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -63,14 +64,20 @@ class ScanCache:
     def _consume(f: Any, start: int, parser: Any) -> int:
         f.seek(start)
         data = f.read()
-        end = data.rfind(b"\n") + 1          # never consume a partially written last line
+        end = data.rfind(b"\n") + 1  # never consume a partially written last line
         for rec in parse_lines(iter(data[:end].splitlines()), parser):
             parser.feed(rec)
         return start + end
 
     def _store(self, key: str, ver: int, head: str, st: os.stat_result, offset: int, parser: Any) -> Session:
-        self.entries[key] = {"parser": ver, "head": head, "size": st.st_size, "mtime_ns": st.st_mtime_ns,
-                             "offset": offset, "state": parser.dump()}
+        self.entries[key] = {
+            "parser": ver,
+            "head": head,
+            "size": st.st_size,
+            "mtime_ns": st.st_mtime_ns,
+            "offset": offset,
+            "state": parser.dump(),
+        }
         self._dirty = True
         return parser.finish()
 

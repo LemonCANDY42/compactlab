@@ -12,6 +12,7 @@ zero-usage opening snapshot (inherited context, not new usage), and an embedded 
 `session_meta` with a different id, after which replayed usage is dropped until the next
 `turn_context`. These are heuristics; see data/harness_formats.json for verification status.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,18 @@ from ..model import Compaction, Session, Turn
 from .base import Adapter, Parser, env_roots, parse_ts, register
 
 KNOWN_TYPES = {"session_meta", "turn_context", "event_msg", "response_item", "compacted"}
-KNOWN_EVENTS = {"token_count", "user_message", "agent_message", "agent_reasoning", "context_compacted",
-                "task_started", "task_complete", "turn_aborted", "exec_command_begin", "exec_command_end"}
+KNOWN_EVENTS = {
+    "token_count",
+    "user_message",
+    "agent_message",
+    "agent_reasoning",
+    "context_compacted",
+    "task_started",
+    "task_complete",
+    "turn_aborted",
+    "exec_command_begin",
+    "exec_command_end",
+}
 PARENT_KEYS = ("forked_from_id", "forkedFromId", "parent_session_id", "parentSessionId")
 
 
@@ -42,7 +53,7 @@ class CodexParser(Parser):
         self.session = Session(id=Path(path).stem, harness="codex", role="main", path=path)
         self.model = "unknown"
         self.leaf_id: str | None = None
-        self.last_total: list[int] | None = None   # [input, cached, output, total]
+        self.last_total: list[int] | None = None  # [input, cached, output, total]
         self.pending_tools: list[list[str]] = []
         self.pending_user = ""
         self.call_turn: dict[str, int] = {}
@@ -66,7 +77,7 @@ class CodexParser(Parser):
                 s.role = "subagent" if _is_subagent(p.get("source")) else s.role
                 s.parent_id = next((str(p[k]) for k in PARENT_KEYS if p.get(k)), None)
             elif sid and sid != self.leaf_id:
-                self.replaying = True          # embedded ancestor metadata: what follows is copied history
+                self.replaying = True  # embedded ancestor metadata: what follows is copied history
         elif typ == "turn_context":
             self.model = str(p.get("model") or self.model)
             self.replaying = False
@@ -77,8 +88,14 @@ class CodexParser(Parser):
             if s.compactions and s.compactions[-1].turn_index == len(s.turns):
                 s.compactions[-1].summary_text = s.compactions[-1].summary_text or msg
             else:
-                s.compactions.append(Compaction(turn_index=len(s.turns), ts=ts, summary_text=msg,
-                                                pre_tokens=s.turns[-1].ctx if s.turns else None))
+                s.compactions.append(
+                    Compaction(
+                        turn_index=len(s.turns),
+                        ts=ts,
+                        summary_text=msg,
+                        pre_tokens=s.turns[-1].ctx if s.turns else None,
+                    )
+                )
         elif typ == "response_item":
             self._item(p)
         elif typ == "event_msg":
@@ -134,11 +151,12 @@ class CodexParser(Parser):
         else:
             return
         if self.replaying or (inp == 0 and out == 0):
-            s.skipped_inherited += 1   # copied parent prefix or zero-usage inherited opening
+            s.skipped_inherited += 1  # copied parent prefix or zero-usage inherited opening
             self.pending_tools = []
             return
-        t = Turn(ts=ts, ctx=inp, cache_read=cached, cache_write=0, output=out, model=self.model,
-                 user_text=self.pending_user)
+        t = Turn(
+            ts=ts, ctx=inp, cache_read=cached, cache_write=0, output=out, model=self.model, user_text=self.pending_user
+        )
         self.pending_user = ""
         for cid, key in self.pending_tools:
             t.tool_keys.append(key)
@@ -148,18 +166,21 @@ class CodexParser(Parser):
 
     def finish(self) -> Session:
         from ..model import session_from_dict, session_to_dict
+
         out = session_from_dict(session_to_dict(self.session))
         out.compactions = [c for c in out.compactions if c.turn_index < len(out.turns)]
         return out
 
     def dump(self) -> dict[str, Any]:
         from ..model import session_to_dict
+
         st = {k: v for k, v in self.__dict__.items() if k != "session"}
         return {"path": self.session.path, "session": session_to_dict(self.session), **st}
 
     @classmethod
     def load(cls, state: dict[str, Any]) -> CodexParser:
         from ..model import session_from_dict
+
         p = cls(state["path"])
         if "session" in state:
             p.session = session_from_dict(state["session"])

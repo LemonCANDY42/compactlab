@@ -7,6 +7,7 @@ Supported sources:
   litellm     model_prices_and_context_window.json  {id: {input_cost_per_token, output_cost_per_token,
               cache_read_input_token_cost, cache_creation_input_token_cost, max_input_tokens, ...}}  (per token)
 """
+
 from __future__ import annotations
 
 import json
@@ -27,28 +28,38 @@ KEEP = re.compile(r"^(claude-|gpt-|o\d|codex)", re.I)
 def _row(cost: dict[str, Any], context: Any) -> dict[str, Any] | None:
     if "input" not in cost or "output" not in cost:
         return None
-    row: dict[str, Any] = {"input": float(cost["input"]), "output": float(cost["output"]),
-                           "cache_write": float(cost.get("cache_write", cost["input"])),
-                           "cache_read": float(cost.get("cache_read", cost["input"]))}
+    row: dict[str, Any] = {
+        "input": float(cost["input"]),
+        "output": float(cost["output"]),
+        "cache_write": float(cost.get("cache_write", cost["input"])),
+        "cache_read": float(cost.get("cache_read", cost["input"])),
+    }
     if context:
         row["max_window"] = int(context)
     tiers = cost.get("tiers") or []
     if tiers and isinstance(tiers[0], dict) and (tiers[0].get("tier") or {}).get("type") == "context":
         t = tiers[0]
-        row["long_context"] = {"above_tokens": int(t["tier"]["size"]), "input": float(t.get("input", row["input"])),
-                               "output": float(t.get("output", row["output"])),
-                               "cache_write": float(t.get("cache_write", row["cache_write"])),
-                               "cache_read": float(t.get("cache_read", row["cache_read"]))}
+        row["long_context"] = {
+            "above_tokens": int(t["tier"]["size"]),
+            "input": float(t.get("input", row["input"])),
+            "output": float(t.get("output", row["output"])),
+            "cache_write": float(t.get("cache_write", row["cache_write"])),
+            "cache_read": float(t.get("cache_read", row["cache_read"])),
+        }
     elif isinstance(cost.get("context_over_200k"), dict):
         t = cost["context_over_200k"]
-        row["long_context"] = {"above_tokens": 200_000, **{k: float(t.get(k, row[k])) for k in
-                                                           ("input", "output", "cache_write", "cache_read")}}
+        row["long_context"] = {
+            "above_tokens": 200_000,
+            **{k: float(t.get(k, row[k])) for k in ("input", "output", "cache_write", "cache_read")},
+        }
     return row
 
 
 def parse_models_dev(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
-    providers = data.values() if all(isinstance(v, dict) and "models" in v for v in data.values()) else [{"models": data}]
+    providers = (
+        data.values() if all(isinstance(v, dict) and "models" in v for v in data.values()) else [{"models": data}]
+    )
     for prov in providers:
         for mid, m in (prov.get("models") or {}).items():
             if not isinstance(m, dict) or not KEEP.search(mid) or mid in out:
@@ -78,32 +89,43 @@ def parse_litellm(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
         row = _row(cost, m.get("max_input_tokens"))
         if row and m.get("input_cost_per_token_above_200k_tokens") is not None:
             row["long_context"] = {
-                "above_tokens": 200_000, "input": _m(m["input_cost_per_token_above_200k_tokens"]),
+                "above_tokens": 200_000,
+                "input": _m(m["input_cost_per_token_above_200k_tokens"]),
                 "output": (m.get("output_cost_per_token_above_200k_tokens") or m["output_cost_per_token"]) * 1e6,
-                "cache_write": (m.get("cache_creation_input_token_cost_above_200k_tokens")
-                                or m.get("cache_creation_input_token_cost") or m["input_cost_per_token"]) * 1e6,
-                "cache_read": (m.get("cache_read_input_token_cost_above_200k_tokens")
-                               or m.get("cache_read_input_token_cost") or m["input_cost_per_token"]) * 1e6}
+                "cache_write": (
+                    m.get("cache_creation_input_token_cost_above_200k_tokens")
+                    or m.get("cache_creation_input_token_cost")
+                    or m["input_cost_per_token"]
+                )
+                * 1e6,
+                "cache_read": (
+                    m.get("cache_read_input_token_cost_above_200k_tokens")
+                    or m.get("cache_read_input_token_cost")
+                    or m["input_cost_per_token"]
+                )
+                * 1e6,
+            }
         if row:
             out[mid.lower()] = row
     return out
 
 
 PARSERS: dict[str, Callable[[dict[str, Any]], dict[str, dict[str, Any]]]] = {
-    "models.dev": parse_models_dev, "litellm": parse_litellm}
+    "models.dev": parse_models_dev,
+    "litellm": parse_litellm,
+}
 
 
 def fetch(url: str, timeout: float = 20.0) -> dict[str, Any]:
     if not url.startswith("https://"):
         raise ValueError("pricing refresh only fetches https URLs")
     req = urllib.request.Request(url, headers={"User-Agent": "compactlab-pricing-refresh"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (https enforced above)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         data: dict[str, Any] = json.loads(r.read())
     return data
 
 
-def refresh(source: str, out: Path, url: str | None = None,
-            fetcher: Callable[[str], dict[str, Any]] = fetch) -> int:
+def refresh(source: str, out: Path, url: str | None = None, fetcher: Callable[[str], dict[str, Any]] = fetch) -> int:
     url = url or SOURCES[source]
     rows = PARSERS[source](fetcher(url))
     if not rows:
@@ -112,6 +134,11 @@ def refresh(source: str, out: Path, url: str | None = None,
         r["source"] = f"{source} {date.today().isoformat()}"
     out = out.expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"version": 2, "retrieved": date.today().isoformat(), "source_url": url,
-                               "models": rows}, indent=1, sort_keys=True))
+    out.write_text(
+        json.dumps(
+            {"version": 2, "retrieved": date.today().isoformat(), "source_url": url, "models": rows},
+            indent=1,
+            sort_keys=True,
+        )
+    )
     return len(rows)

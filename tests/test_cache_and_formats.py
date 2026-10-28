@@ -57,18 +57,31 @@ def _w(path, recs):
 
 
 def test_unknown_events_recorded_not_fatal(tmp_path):
-    _w(tmp_path / "a.jsonl", [
-        {"type": "brand-new-kind", "x": 1},
-        {"type": "assistant", "message": {"id": "m1", "role": "assistant", "model": "claude-opus-5-5",
-                                          "usage": {"input_tokens": 5, "cache_read_input_tokens": 1000}}},
-    ])
+    _w(
+        tmp_path / "a.jsonl",
+        [
+            {"type": "brand-new-kind", "x": 1},
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "m1",
+                    "role": "assistant",
+                    "model": "claude-opus-5-5",
+                    "usage": {"input_tokens": 5, "cache_read_input_tokens": 1000},
+                },
+            },
+        ],
+    )
     (s,) = get_adapter("claude-code")(tmp_path).sessions()
     assert s.unknown_events == {"brand-new-kind": 1} and len(s.turns) == 1
 
 
 def test_claude_dedupes_by_message_and_request_id(tmp_path):
-    a = {"type": "assistant", "requestId": "r1", "message": {"id": "m1", "role": "assistant", "model": "x",
-                                                            "usage": {"input_tokens": 10}}}
+    a = {
+        "type": "assistant",
+        "requestId": "r1",
+        "message": {"id": "m1", "role": "assistant", "model": "x", "usage": {"input_tokens": 10}},
+    }
     b = dict(a, requestId="r2")
     _w(tmp_path / "a.jsonl", [a, a, b])
     (s,) = get_adapter("claude-code")(tmp_path).sessions()
@@ -77,24 +90,38 @@ def test_claude_dedupes_by_message_and_request_id(tmp_path):
 
 def tok(inp, out, total_in, total_out, ts="2026-09-01T00:00:00Z"):
     last = {"input_tokens": inp, "cached_input_tokens": 0, "output_tokens": out}
-    tot = {"input_tokens": total_in, "cached_input_tokens": 0, "output_tokens": total_out, "total_tokens": total_in + total_out}
-    return {"timestamp": ts, "type": "event_msg", "payload": {"type": "token_count", "info": {
-        "total_token_usage": tot, "last_token_usage": last}}}
+    tot = {
+        "input_tokens": total_in,
+        "cached_input_tokens": 0,
+        "output_tokens": total_out,
+        "total_tokens": total_in + total_out,
+    }
+    return {
+        "timestamp": ts,
+        "type": "event_msg",
+        "payload": {"type": "token_count", "info": {"total_token_usage": tot, "last_token_usage": last}},
+    }
 
 
 def test_codex_fork_prefix_and_inherited_opening(tmp_path):
-    _w(tmp_path / "rollout-x.jsonl", [
-        {"type": "session_meta", "payload": {"id": "child", "forked_from_id": "parent", "source": {"subagent": "x"}}},
-        tok(0, 0, 50_000, 900),                                   # inherited opening, zero usage
-        {"type": "session_meta", "payload": {"id": "parent"}},    # embedded ancestor: replay follows
-        tok(40_000, 300, 40_000, 300),
-        tok(45_000, 300, 85_000, 600),
-        {"type": "turn_context", "payload": {"model": "gpt-5-codex"}},
-        tok(52_000, 200, 137_000, 800),
-        tok(52_000, 200, 137_000, 800),                           # identical re-emission
-        {"type": "weird_new_line", "payload": {}},
-        {"type": "event_msg", "payload": {"type": "brand_new_event"}},
-    ])
+    _w(
+        tmp_path / "rollout-x.jsonl",
+        [
+            {
+                "type": "session_meta",
+                "payload": {"id": "child", "forked_from_id": "parent", "source": {"subagent": "x"}},
+            },
+            tok(0, 0, 50_000, 900),  # inherited opening, zero usage
+            {"type": "session_meta", "payload": {"id": "parent"}},  # embedded ancestor: replay follows
+            tok(40_000, 300, 40_000, 300),
+            tok(45_000, 300, 85_000, 600),
+            {"type": "turn_context", "payload": {"model": "gpt-5-codex"}},
+            tok(52_000, 200, 137_000, 800),
+            tok(52_000, 200, 137_000, 800),  # identical re-emission
+            {"type": "weird_new_line", "payload": {}},
+            {"type": "event_msg", "payload": {"type": "brand_new_event"}},
+        ],
+    )
     (s,) = get_adapter("codex")(tmp_path).sessions()
     assert s.id == "child" and s.parent_id == "parent" and s.role == "subagent"
     assert [t.ctx for t in s.turns] == [52_000]

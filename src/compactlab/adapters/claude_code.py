@@ -4,6 +4,7 @@ Transcripts: `$CLAUDE_CONFIG_DIR/projects` (comma-separated dirs allowed), else 
 and the legacy `~/.config/claude/projects`. Files under a `subagents/` directory are subagent runs.
 See `data/harness_formats.json` for the format facts this relies on and their verification status.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,8 +49,9 @@ class ClaudeParser(Parser):
             s.parent_id = str(d["parentSessionId"])
         if typ == "system" and d.get("subtype") == "compact_boundary":
             meta = d.get("compactMetadata") or {}
-            s.compactions.append(Compaction(turn_index=len(s.turns), pre_tokens=meta.get("preTokens"),
-                                            ts=parse_ts(d.get("timestamp"))))
+            s.compactions.append(
+                Compaction(turn_index=len(s.turns), pre_tokens=meta.get("preTokens"), ts=parse_ts(d.get("timestamp")))
+            )
             return
         m = d.get("message")
         if not isinstance(m, dict):
@@ -94,9 +96,15 @@ class ClaudeParser(Parser):
         ctx = int(u.get("input_tokens") or 0) + cr + cw
         if ctx == 0:
             return
-        t = Turn(ts=parse_ts(d.get("timestamp")), ctx=ctx, cache_read=cr, cache_write=cw,
-                 output=int(u.get("output_tokens") or 0), model=str(m.get("model") or "unknown"),
-                 user_text=self.pending_user)
+        t = Turn(
+            ts=parse_ts(d.get("timestamp")),
+            ctx=ctx,
+            cache_read=cr,
+            cache_write=cw,
+            output=int(u.get("output_tokens") or 0),
+            model=str(m.get("model") or "unknown"),
+            user_text=self.pending_user,
+        )
         self.pending_user = ""
         content = m.get("content")
         if isinstance(content, list):
@@ -112,18 +120,26 @@ class ClaudeParser(Parser):
 
     def finish(self) -> Session:
         from ..model import session_from_dict, session_to_dict
+
         out = session_from_dict(session_to_dict(self.session))
         out.compactions = [c for c in out.compactions if c.turn_index < len(out.turns)]
         return out
 
     def dump(self) -> dict[str, Any]:
         from ..model import session_to_dict
-        return {"path": self.session.path, "session": session_to_dict(self.session), "seen": sorted(self.seen),
-                "pending_user": self.pending_user, "tool_turn": self.tool_turn}
+
+        return {
+            "path": self.session.path,
+            "session": session_to_dict(self.session),
+            "seen": sorted(self.seen),
+            "pending_user": self.pending_user,
+            "tool_turn": self.tool_turn,
+        }
 
     @classmethod
     def load(cls, state: dict[str, Any]) -> ClaudeParser:
         from ..model import session_from_dict
+
         p = cls(state["path"])
         if "session" in state:
             p.session = session_from_dict(state["session"])

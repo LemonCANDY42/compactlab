@@ -1,0 +1,17 @@
+name: New harness adapter
+description: Propose support for another agent harness (dsh, opencode, pi, ...)
+labels: [adapter, help wanted]
+body:
+  - type: input
+    id: harness
+    attributes: {label: Harness and version}
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes:
+      label: Where it stores session logs and how usage is recorded
+      description: Link to docs or source. Describe fields; do not paste real logs.
+    validations: {required: true}
+  - type: textarea
+    id: compaction
+    attributes: {label: How compaction appears in the log, and which config key controls the threshold (if any)}

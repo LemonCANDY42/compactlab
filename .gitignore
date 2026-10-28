@@ -6,3 +6,16 @@ dist/
 *.egg-info/
 out/
 .DS_Store
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+# never commit real history or outputs derived from it
+compactlab-result.json
+compactlab-report.html
+compactlab-demo/
+*.jsonl
+!tests/fixtures/**/*.jsonl
+.compactlab/
+settings.json
+config.toml

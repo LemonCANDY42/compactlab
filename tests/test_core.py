@@ -1,13 +1,12 @@
 import math
 
-from compactlab import synth
 from compactlab.adapters import get_adapter
-from compactlab.sim.calibrate import PenaltyParams, repeat_stats
 from compactlab.eval.factcheck import check_summary
 from compactlab.model import Compaction, Session, Turn
 from compactlab.pricing import PricingTable
+from compactlab.sim.calibrate import PenaltyParams, repeat_stats
+from compactlab.sim.engine import DEFAULT_ROT, SimOptions, analyze, make_trace, replay, rot_fn
 from compactlab.sim.select import recommend
-from compactlab.sim.engine import SimOptions, analyze, make_trace, replay, rot_fn, DEFAULT_ROT
 
 PR = PricingTable.load()
 
@@ -43,7 +42,7 @@ def test_replay_no_compaction_matches_closed_form():
     price = PR.lookup("claude-opus-5-5")
     tr = make_trace(s, 30_000)
     cost, k, _ = replay(tr, math.inf, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())
-    ri, ro, rw, rr = price.rates(1)
+    _ri, ro, rw, rr = price.rates(1)
     exp = sum((30_000 + 3000 * i) * rr + 3000 * rw + 300 * ro for i in range(200))
     assert k == 0 and abs(cost - exp) < 1e-6
 
@@ -69,15 +68,19 @@ def test_penalty_is_added_only_with_compactions():
     base = replay(tr, 150_000, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())[0]
     withp = replay(tr, 150_000, price, 30_000, 12_000, 300, pen, rot_fn(DEFAULT_ROT), SimOptions())[0]
     assert withp > base
-    assert replay(tr, math.inf, price, 30_000, 12_000, 300, pen, rot_fn(DEFAULT_ROT), SimOptions())[0] == \
-        replay(tr, math.inf, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())[0]
+    assert (
+        replay(tr, math.inf, price, 30_000, 12_000, 300, pen, rot_fn(DEFAULT_ROT), SimOptions())[0]
+        == replay(tr, math.inf, price, 30_000, 12_000, 300, None, rot_fn(DEFAULT_ROT), SimOptions())[0]
+    )
 
 
 def test_repeat_stats_detects_rediscovery():
     s = Session("x", "claude-code", "main", "p")
     for i in range(6):
         s.turns.append(Turn(ts=i, ctx=1000, tool_keys=[f"Read:/a{i}"], tool_result_tokens=[100]))
-    s.turns.append(Turn(ts=7, ctx=1000, tool_keys=["Read:/a1"], tool_result_tokens=[500], user_text="you forgot the config"))
+    s.turns.append(
+        Turn(ts=7, ctx=1000, tool_keys=["Read:/a1"], tool_result_tokens=[500], user_text="you forgot the config")
+    )
     reps, toks, corr = repeat_stats(s, 6, 7)
     assert (reps, toks, corr) == (1, 500, 1)
 

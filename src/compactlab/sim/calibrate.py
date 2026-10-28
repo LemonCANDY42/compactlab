@@ -1,9 +1,10 @@
 """Estimate the re-discovery penalty from compactions that already happened in the history."""
+
 from __future__ import annotations
 
 import re
 import statistics
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 from ..model import Session
 
@@ -13,17 +14,19 @@ MIN_OBSERVED = 5
 CORRECTION_RE = re.compile(
     r"(\bi (already )?(told|said|mentioned)\b|\byou forgot\b|\bas i said\b|\bnot what i\b|"
     r"\bwe (already )?(did|discussed|decided)\b|\balready (told|said|did)\b|"
-    r"我说过|我刚才说|你忘了|不是这个|已经说过|之前说过|刚才不是)", re.I)
+    r"我说过|我刚才说|你忘了|不是这个|已经说过|之前说过|刚才不是)",
+    re.I,
+)
 
 REDISCOVERY_TOOLS = ("Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "read_file", "shell", "exec_command")
 
 
 @dataclass
 class PenaltyParams:
-    rho: float = 0.04              # re-read tokens per dropped context token
-    fixed_tokens: int = 6000       # extra tokens re-added per compaction regardless of size
+    rho: float = 0.04  # re-read tokens per dropped context token
+    fixed_tokens: int = 6000  # extra tokens re-added per compaction regardless of size
     correction_turns: float = 0.3  # extra user-correction turns per compaction
-    source: str = "prior"          # "prior" | "observed"
+    source: str = "prior"  # "prior" | "observed"
     n_observed: int = 0
 
     def to_dict(self) -> dict:
@@ -43,10 +46,9 @@ def repeat_stats(s: Session, start: int, end: int) -> tuple[int, int, int]:
     reps = toks = corr = 0
     for t in s.turns[start:end]:
         for i, k in enumerate(t.tool_keys):
-            if _is_rediscovery(k):
-                if k in seen:
-                    reps += 1
-                    toks += t.tool_result_tokens[i] if i < len(t.tool_result_tokens) else 2000
+            if _is_rediscovery(k) and k in seen:
+                reps += 1
+                toks += t.tool_result_tokens[i] if i < len(t.tool_result_tokens) else 2000
             seen.add(k)
         if t.user_text and CORRECTION_RE.search(t.user_text):
             corr += 1
@@ -72,5 +74,6 @@ def calibrate(sessions: list[Session], base_tokens: int, summary_tokens: int) ->
     if n < MIN_OBSERVED:
         return PenaltyParams(n_observed=n)
     rho = min(max(sum(excess_tok) / sum(dropped), 0.0), 0.5)
-    return PenaltyParams(rho=rho, fixed_tokens=0, correction_turns=statistics.fmean(excess_corr),
-                         source="observed", n_observed=n)
+    return PenaltyParams(
+        rho=rho, fixed_tokens=0, correction_turns=statistics.fmean(excess_corr), source="observed", n_observed=n
+    )

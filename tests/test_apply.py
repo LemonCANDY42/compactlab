@@ -4,14 +4,23 @@ import pytest
 
 from compactlab import apply as ap
 
-SETTINGS = '{\n  "theme": "dark",\n  "permissions": {"allow": ["Bash(ls)"]},\n  "modelSettings": {"claude-opus-5-5": {"effortLevel": "high"}}\n}\n'
+SETTINGS = (
+    '{\n  "theme": "dark",\n  "permissions": {"allow": ["Bash(ls)"]},\n'
+    '  "modelSettings": {"claude-opus-5-5": {"effortLevel": "high"}}\n}\n'
+)
 TOML = 'model = "gpt-5-codex"\n# comment\n\n[profiles.x]\nmodel_auto_compact_token_limit = 1\n'
 
 
 def pre(tmp_path, **kw):
     f = tmp_path / "settings.json"
-    t = {"harness": "claude-code", "file": str(f), "keys": ["modelSettings.*.autoCompactWindow"],
-         "models": ["claude-opus-5-5"], "min": 150000, "max": 600000}
+    t = {
+        "harness": "claude-code",
+        "file": str(f),
+        "keys": ["modelSettings.*.autoCompactWindow"],
+        "models": ["claude-opus-5-5"],
+        "min": 150000,
+        "max": 600000,
+    }
     t.update(kw)
     p = tmp_path / "pre.json"
     p.write_text(json.dumps({"version": 1, "targets": [t]}))
@@ -31,9 +40,11 @@ def test_dry_run_plan_does_not_write(tmp_path):
 def test_rejections(tmp_path):
     f, pre_ = pre(tmp_path)
     f.write_text(SETTINGS)
-    recs = [{"harness": "claude-code", "model": "claude-opus-5-5", "value": 700000},
-            {"harness": "claude-code", "model": "claude-sonnet-5-5", "value": 300000},
-            {"harness": "codex", "model": "gpt-5-codex", "value": 300000}]
+    recs = [
+        {"harness": "claude-code", "model": "claude-opus-5-5", "value": 700000},
+        {"harness": "claude-code", "model": "claude-sonnet-5-5", "value": 300000},
+        {"harness": "codex", "model": "gpt-5-codex", "value": 300000},
+    ]
     ch, rej = ap.plan_changes(recs, pre_)
     assert not ch and len(rej) == 3
 
@@ -81,7 +92,10 @@ def test_revert_skips_user_changed_key(tmp_path):
     d["modelSettings"]["claude-opus-5-5"]["autoCompactWindow"] = 450000
     f.write_text(json.dumps(d, indent=2) + "\n")
     log = ap.revert(m)
-    assert "skipped" in log[0] and json.loads(f.read_text())["modelSettings"]["claude-opus-5-5"]["autoCompactWindow"] == 450000
+    assert (
+        "skipped" in log[0]
+        and json.loads(f.read_text())["modelSettings"]["claude-opus-5-5"]["autoCompactWindow"] == 450000
+    )
 
 
 def test_new_file_and_prune_on_revert(tmp_path):
@@ -104,7 +118,7 @@ def test_codex_toml_top_level_only(tmp_path):
     f = tmp_path / "config.toml"
     f.write_text(TOML)
     pre_ = ap.explicit_preauth({"codex": f}, ["gpt-5-codex"], 100000, 900000)
-    ch, rej = ap.plan_changes([{"harness": "codex", "model": "gpt-5-codex", "value": 300000}], pre_)
+    ch, _rej = ap.plan_changes([{"harness": "codex", "model": "gpt-5-codex", "value": 300000}], pre_)
     assert ch and ch[0].old is None  # the key under [profiles.x] is not the top-level key
     m = ap.write_changes(ch, tmp_path / "s", pre_)
     new = f.read_text()

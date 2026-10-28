@@ -1,34 +1,47 @@
 # Architecture
 
 ```
-adapters/            claude_code.py, codex.py (+ base.Adapter, registry)
-model.py             Turn, Compaction, Session (normalized events)
-pricing.py + data/   versioned price table, user override, long-context tiers
-calibrate.py         re-discovery penalty from observed compactions (else a labelled prior)
-simulate.py          trace building, replay(), threshold sweep, grouping by (model, role)
-select.py            recommendation, Pareto frontier, gears (eco / balanced / recall)
-factcheck.py         offline heuristics on compaction summaries
-aieval.py            opt-in LLM probes + judge, cost estimate, hard budget (stub clients)
-apply.py             pre-authorization, planning, diff, backup/manifest, key-level revert
-report.py            self-contained HTML (inline CSS/JS/SVG)
-cli.py               scan | simulate | report | apply | retune | revert | eval | demo
-synth.py             synthetic transcripts for tests and `demo`
+src/compactlab/
+  adapters/   base.py (Adapter, Parser, registry) · claude_code.py · codex.py · cache.py (incremental scan cache)
+  model/      Turn, Compaction, Session + (de)serialization
+  pricing/    PricingTable with provenance (bundled -> refreshed -> user) · refresh.py (models.dev / LiteLLM)
+  sim/        engine.py (traces, replay, sweep) · calibrate.py (re-discovery penalty) · select.py (recommend,
+              Pareto, gears, tiers)
+  eval/       factcheck.py (offline heuristics) · hyper.py (probes, judge, budget, re-summarize) · executors.py
+  report/     html.py + template.html (single offline file)
+  apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
+  cli/        main.py (argparse commands)
+  data/       pricing.json, harness_formats.json (each with source + date)
+  synth.py    synthetic transcripts for tests and `demo`
 ```
 
-Data flow: adapters → `Session[]` → `analyze()` → `result.json` (schema 1) → `report` / `apply`.
-`result.json` is the stable seam: the report and `apply` read nothing else.
+```mermaid
+flowchart LR
+  A[JSONL logs] -->|adapters + scan cache| B[Session list]
+  B --> C[calibrate penalty]
+  B --> D[replay sweep per model/role]
+  C --> D
+  P[pricing + provenance] --> D
+  D --> E[select: standard, headroom, gears, Pareto]
+  E --> R[(result.json)]
+  R -->|optional hyper: re-summarize, probe, judge| R
+  R --> H[report.html]
+  R --> X[apply dry-run / write / revert]
+```
 
-## Adding a harness
+`result.json` (schema 2) is the seam: the report and `apply` read nothing else, so a result can be reviewed,
+shared (it contains no transcript text) and applied later.
 
-Subclass `Adapter`, implement `find_files()` and `parse_file()` (tolerate unknown lines), decorate with
-`@register`. Emit `Turn.ctx` as total input tokens seen by the model (uncached + cache read + cache write),
-one `Turn` per billed call, and `Compaction.turn_index` as the first turn after the boundary.
+## Boundaries
 
-## Safety properties
+- Adapters know file formats only. They emit one `Turn` per billed request and count what they do not recognize.
+- `sim` is pure: sessions + prices + options in, numbers out. No I/O.
+- `eval.hyper` performs model calls only through an `LLMClient`; `executors.py` is the only place that shells out
+  to a harness CLI. `pricing.refresh` is the only place that fetches a URL.
+- `apply` is the only code that writes outside `~/.compactlab` and the output paths you pass.
 
-- No network anywhere except inside a user-supplied `LLMClient`.
-- `apply` never writes without `--write` plus a pre-authorization file or `--i-authorize`; it refuses
-  non-strict JSON, rejects values outside bounds/unlisted models/keys, writes atomically, and keeps a
-  backup and manifest. Revert restores only keys it changed and skips keys edited since (unless `--force`).
-- Tests for apply/revert use temp copies only. The tool reads real transcripts only when a user runs
-  `scan/simulate/report/retune/eval` without overriding the roots.
+## Scan cache
+
+Per file: size, mtime_ns, SHA-1 of the first 4 KiB, offset of the last complete line, parser state.
+Unchanged → reuse; appended with the same head → resume from the offset (a torn last line is never consumed);
+otherwise → full parse. Bumping a parser's `version` invalidates its entries.

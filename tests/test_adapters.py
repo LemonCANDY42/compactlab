@@ -1,4 +1,4 @@
-from compactlab.adapters import get_adapter, adapter_names
+from compactlab.adapters import adapter_names, get_adapter
 
 
 def test_registry():

@@ -25,8 +25,17 @@ def test_requires_confirm_and_different_judge():
 
 def test_runs_with_mock_and_flags():
     s, c = session()
-    rep = run_eval(s, c, MockClient(), answer_model="claude-sonnet-5-5", judge_model="claude-haiku-5-5",
-                   pricing=PR, budget_usd=1, repeats=3, confirm=True)
+    rep = run_eval(
+        s,
+        c,
+        MockClient(),
+        answer_model="claude-sonnet-5-5",
+        judge_model="claude-haiku-5-5",
+        pricing=PR,
+        budget_usd=1,
+        repeats=3,
+        confirm=True,
+    )
     assert len(rep.results) == 5 and rep.exact_rate == 1.0 and rep.judged_rate == 1.0
     assert rep.calls == 5 * 4 and rep.spent_usd > 0
     assert any(f.kind == "unsupported_claim" for f in rep.flags)
@@ -35,8 +44,16 @@ def test_runs_with_mock_and_flags():
 def test_budget_cap_is_hard():
     s, c = session()
     with pytest.raises(BudgetExceeded):
-        run_eval(s, c, MockClient(), answer_model="claude-fable-5-1", judge_model="claude-haiku-5-5",
-                 pricing=PR, budget_usd=1e-7, confirm=True)
+        run_eval(
+            s,
+            c,
+            MockClient(),
+            answer_model="claude-fable-5-1",
+            judge_model="claude-haiku-5-5",
+            pricing=PR,
+            budget_usd=1e-7,
+            confirm=True,
+        )
 
 
 def test_estimate_scales_with_repeats():
