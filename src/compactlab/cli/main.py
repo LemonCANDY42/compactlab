@@ -201,6 +201,16 @@ def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, 
     return out
 
 
+def _load_result(path: str) -> dict[str, Any]:
+    p = Path(path).expanduser()
+    if not p.exists():
+        raise CLIError(f"{p} does not exist. Create it first with: compactlab simulate --out {path}")
+    res: dict[str, Any] = json.loads(p.read_text())
+    if res.get("schema", 0) < 3:
+        raise CLIError(f"{p} was made by an older compactlab (schema {res.get('schema')}); re-run compactlab simulate")
+    return res
+
+
 def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     sessions = load_sessions(a)
     if not sessions:
@@ -419,6 +429,7 @@ def cmd_simulate(a: argparse.Namespace) -> int:
     res = run_analysis(a)
     if res is None:
         return 2
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(res, sort_keys=True))
     _out(
         a,
@@ -433,9 +444,10 @@ def cmd_simulate(a: argparse.Namespace) -> int:
 
 
 def cmd_report(a: argparse.Namespace) -> int:
-    res = json.loads(Path(a.result).read_text()) if a.result else run_analysis(a)
+    res = _load_result(a.result) if a.result else run_analysis(a)
     if res is None:
         return 2
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(render_html(res, redact=a.redact))
     print(f"wrote {a.out}")
     if a.open:
@@ -541,7 +553,7 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
 
 
 def cmd_apply(a: argparse.Namespace) -> int:
-    return _do_apply(a, json.loads(Path(a.result).read_text()))
+    return _do_apply(a, _load_result(a.result))
 
 
 def cmd_retune(a: argparse.Namespace) -> int:
@@ -678,7 +690,7 @@ def cmd_cache(a: argparse.Namespace) -> int:
 def cmd_recommend(a: argparse.Namespace) -> int:
     from ..recommend import Snippet, check, generate
 
-    res = json.loads(Path(a.result).read_text()) if a.result else run_analysis(a)
+    res = _load_result(a.result) if a.result else run_analysis(a)
     if res is None:
         return 2
     harness = a.harness[0] if a.harness and len(a.harness) == 1 else None
