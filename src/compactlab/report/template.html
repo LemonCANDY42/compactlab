@@ -28,88 +28,196 @@ select,input[type=search]{font:inherit;font-size:13px;background:var(--card);col
 table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
 th{cursor:pointer;color:var(--mut);font-weight:500}.scroll{overflow:auto;max-height:420px}
 ul.n{margin:12px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.seg.sm button{padding:3px 10px;font-size:12px}
+.zh{color:var(--mut)}.banner{margin-top:14px;padding:10px 14px;border-radius:10px;border:1px solid var(--acc2);color:var(--fg)}
+.ctlrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+tr.sel td{font-weight:650}td.act{text-align:left}
 </style></head><body><main>
-<h1>compactlab</h1>
-<p class="sub mut" id="meta"></p>
-<details class="note"><summary>How to read this (assumptions)</summary><p id="caveat"></p></details>
+<div class="top"><div><h1>compactlab</h1><p class="sub mut" id="meta"></p></div>
+<div class="seg sm" role="group" aria-label="Language" id="langs"></div></div>
+<details class="note"><summary id="howto"></summary><p id="caveat"></p></details>
 <div class="pills" id="tabs" role="tablist"></div>
 <section class="panel" id="ctl"></section>
-<h2>Trade-off</h2>
+<h2 id="hCmp"></h2>
+<div class="fig scroll" id="fCmp"></div>
+<h2 id="hTrade"></h2>
 <div class="grid2"><div class="fig" id="fPareto"></div><div class="fig" id="fCost"></div></div>
-<h2>Lite vs deep</h2>
+<h2 id="hTime"></h2>
+<div class="fig" id="fTime"></div>
+<h2 id="hDeep"></h2>
 <div class="fig" id="fDeep"></div>
-<h2>Your history</h2>
+<h2 id="hHist"></h2>
 <div class="grid2"><div class="fig" id="fHist"></div><div class="fig" id="fSess"></div></div>
-<h2>Sessions</h2>
-<p><input type="search" id="q" placeholder="Filter sessions"> <span class="mut" id="cnt"></span></p>
+<h2 id="hSess"></h2>
+<p><input type="search" id="q"> <span class="mut" id="cnt"></span></p>
 <div class="fig scroll"><table id="st"></table></div>
 </main>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D=JSON.parse(document.getElementById('data').textContent);
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
-const fk=v=>v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k',fd=v=>'$'+(v>=100?Math.round(v).toLocaleString():v.toFixed(2)),pc=v=>(v>=0?'+':'−')+Math.abs(v*100).toFixed(0)+'%';
+const fk=v=>v==null?'–':v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k';
+const fd=v=>(v<0?'−':'')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString():Math.abs(v).toFixed(2));
+const fds=v=>(v>=0?'+':'−')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString():Math.abs(v).toFixed(2));
+const pc=v=>(v>=0?'+':'−')+Math.abs(v*100).toFixed(0)+'%';
+const fh=s=>{const a=Math.abs(s),sg=s>=0?'+':'−';return a>=3600?sg+(a/3600).toFixed(1)+'h':sg+Math.round(a/60)+'m'};
+const fha=s=>s>=3600?(s/3600).toFixed(1)+'h':Math.round(s/60)+'m';
 const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-$('#meta').innerHTML=(D.demo?'<span class="badge">synthetic demo data</span> ':'')+'<span class="badge">'+D.mode+' mode</span> '+esc(D.generated)+' · '+D.groups.length+' model/role groups · '+D.sessions.length+' sessions';
-$('#caveat').innerHTML='Costs come from replaying your own history against a price table ('+esc(D.pricing_note)+'). Recall is an <b>assumed</b> proxy (context-rot table × summary retention), not a measured curve for any model; it only acts as a floor. Estimated savings are relative to a replay of your historical behaviour, not to your invoice. Treat the result as a starting point to try.';
-function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
-const S={gi:0,gear:'headroom',T:null};
+// ---------- i18n: every string in English and Chinese; default shows both ----------
+const I={
+ synthetic:['synthetic demo data','合成演示数据'], mode:[m=>m+' mode',m=>m+' 模式'],
+ groups:[n=>n+' model/role groups',n=>n+' 个模型/角色分组'], sessions:[n=>n+' sessions',n=>n+' 个会话'],
+ howto:['How to read this (assumptions)','怎么读这份报告(假设)'],
+ caveat:['Costs come from replaying your own history against a price table. Time comes from your own timestamps (turn and compaction latency fits). Recall is an <b>assumed</b> proxy (context-rot table × summary retention), not a measured curve for any model; it only acts as a floor. Every Δ is against the harness default, i.e. what happens if you change nothing. Treat the result as a starting point to try.',
+         '成本来自用价格表回放你自己的历史;时间来自你自己的时间戳(拟合每轮与压缩耗时)。召回率是<b>假设</b>的代理值(上下文衰减表 × 摘要保留率),不是任何模型的实测曲线,只用作下限。所有差值都相对于 harness 默认值,也就是什么都不改时的情况。把结果当作值得一试的起点。'],
+ gear:['Gear','挡位'], eco:['Eco','省钱'], standard:['Standard','标准'], headroom:['Headroom','冗余'], recall:['Recall','召回'], custom:['Custom','自定义'],
+ view:['Score','评分'], cost_time:['Cost + time','成本 + 时间'], cost:['Cost only','仅成本'],
+ threshold:['Threshold','阈值'],
+ kCost:['Cost vs default','成本(对默认)'], kTime:['Wall-clock vs default','耗时(对默认)'], kRecall:['Assumed recall','假设召回率'],
+ kTiers:['Tiers','两档结果'], kComp:['Compactions','压缩次数'],
+ dDefault:[(t,n)=>'default '+t+' · '+n+' compactions',(t,n)=>'默认 '+t+' · 压缩 '+n+' 次'],
+ dRecall:[(h,f)=>'default '+h+' · floor '+f,(h,f)=>'默认 '+h+' · 下限 '+f],
+ dTiers:[(c,n)=>'standard → headroom: '+c+' cost, '+n+' fewer compactions',(c,n)=>'标准 → 冗余:成本 '+c+',少压缩 '+n+' 次'],
+ dComp:[(d,s,t)=>'default '+d+' · '+s+' sessions · '+t+' turns',(d,s,t)=>'默认 '+d+' · '+s+' 个会话 · '+t+' 轮'],
+ noAction:['No action needed: with the harness default these sessions never compact. Leave the setting alone.','无需调整:按 harness 默认设置,这些会话从未触发压缩,保持原样即可。'],
+ hCmp:['Compared with the default','与默认设置对比'], hTrade:['Trade-off','取舍'], hTime:['Time','时间'], hDeep:['Lite vs deep','lite 与 deep 对比'], hHist:['Your history','你的历史'], hSess:['Sessions','会话'],
+ cTier:['tier','档位'], cWin:['window','阈值'], cAct:['action','建议'], cDc:['Δcost vs default','成本差(对默认)'], cDt:['Δwall-clock','耗时差'], cSaved:['saved by smaller context','小上下文省下'], cAdded:['added by compactions','压缩增加'], cComp:['compactions','压缩次数'], cRec:['recall','召回'],
+ rDefault:['default','默认'], rCurrent:['current','当前'], rSel:['selected','当前选择'],
+ aSet:['set','设置'], aKeep:['keep default','保持默认'], aNo:['no action needed','无需调整'],
+ cmpNote:[(n,c)=>'Default: '+n+(c?' Current: '+c+'.':''),(n,c)=>'默认依据:'+n+(c?' 当前:'+c+'。':'')],
+ pTitle:['Pareto frontier','帕累托前沿'], pSub:['Each dot is a threshold. Up and to the left is better: cheaper and safer (assumed recall).','每个点是一个阈值。越靠左上越好:更省钱、更安全(假设召回率)。'],
+ pOpt:['Pareto-optimal','帕累托最优'], pDom:['dominated','被支配'], pSelL:['selected','当前选择'], pOther:['other gears','其他挡位'], pDef:['default / floor','默认 / 下限'], pDeep:['deep: measured recall','deep:实测召回'],
+ coTitle:['Cost by threshold','各阈值成本'], coSub:['Replay cost, re-discovery penalty, and the score that drives the tiers.','回放成本、找回惩罚,以及决定分档的评分。'],
+ lCost:['cost','成本'], lPen:['penalty','惩罚'], lScore:['score','评分'], lRange:['recommended range','推荐区间'], lDefault:['default','默认'],
+ tTitle:['Wall-clock by threshold (vs default)','各阈值耗时(对默认)'],
+ tSub:['Time saved by smaller contexts minus time added by compactions and re-discovery, from your own timestamps.','更小的上下文省下的时间,减去压缩和找回增加的时间,基于你自己的时间戳。'],
+ tSaved:['saved by smaller context','小上下文省下'], tAdded:['added by compactions + re-discovery','压缩 + 找回增加'], tNet:['net change (negative = faster)','净变化(负数更快)'],
+ tConf:[(c,n,cc,cn)=>'Turn-latency fit: '+c+' ('+n+' timed turns). Compaction-latency fit: '+cc+' ('+cn+' samples). Value of time: $'+D.groups[S.gi].value_of_time+'/h.',(c,n,cc,cn)=>'每轮耗时拟合:'+c+'('+n+' 个可计时轮次)。压缩耗时拟合:'+cc+'('+cn+' 个样本)。时间价值:$'+D.groups[S.gi].value_of_time+'/小时。'],
+ conf_ok:['ok','可信'], conf_low:['low confidence','置信度低'], conf_prior:['prior (no usable data)','先验值(无可用数据)'],
+ dLite:['This report is <b>lite</b> only: recall is an assumed proxy. Run <code>compactlab simulate --mode deep --budget N</code> to measure recall at candidate thresholds (costs money; estimate shown first).','这份报告只有 <b>lite</b> 结果:召回率是假设值。运行 <code>compactlab simulate --mode deep --budget N</code> 可以在候选阈值处实测召回(会花钱,先显示预估)。'],
+ dNone:['No deep samples for this group.','这个分组没有 deep 样本。'],
+ dHead:[(m,j,r,s,b)=>m+' summarizes, '+j+' judges ('+r+' votes). Spent '+s+' of '+b+'.',(m,j,r,s,b)=>m+' 生成摘要,'+j+' 评审('+r+' 票)。已花 '+s+',预算 '+b+'。'],
+ dAssumed:['assumed (lite)','假设(lite)'], dMeasured:['measured (deep)','实测(deep)'], dSamples:['samples','样本'], dDis:['disagree','不一致'],
+ dLowered:[t=>'Measured recall at the lite headroom fell below the floor; headroom lowered to '+t+'.',t=>'lite 冗余档的实测召回低于下限,冗余档已降到 '+t+'。'],
+ hTitle:['Where your tokens sit','你的 token 分布'], hSub:['Share of turns and of read tokens by context size. Bars right of the line are what a lower threshold would cut.','按上下文大小统计的轮次占比和读取 token 占比。线右侧就是更低阈值会砍掉的部分。'],
+ hTurns:['share of turns','轮次占比'], hRead:['share of read tokens','读取 token 占比'], hAbove:[(p,t)=>p+'% of read tokens above '+t,(p,t)=>p+'% 的读取 token 高于 '+t],
+ sTitle:['History vs. estimate','历史与估算'], sSub:[t=>'Actual context (grey) and the same session replayed at '+t+' (colour).',t=>'真实上下文(灰)和同一会话在 '+t+' 下的回放(彩色)。'],
+ sAct:[n=>'actual ('+n+' compactions)',n=>'实际(压缩 '+n+' 次)'], sRep:[n=>'replayed ('+n+' compactions)',n=>'回放(压缩 '+n+' 次)'], sPeak:['peak','峰值'], sTurns:['turns','轮'],
+ filter:['Filter sessions','筛选会话'], of:[(a,b)=>a+' of '+b,(a,b)=>a+' / '+b],
+ colSession:['session','会话'], colHarness:['harness','工具'], colRole:['role','角色'], colModel:['model','模型'], colTurns:['turns','轮次'], colPeak:['peak','峰值'], colComp:['compactions','压缩'], colCtx:['context','上下文'],
+ nPrior:[n=>'Penalty uses a prior ('+n+' observed compactions; ≥5 needed to calibrate).',n=>'惩罚参数用的是先验值(观察到 '+n+' 次压缩,至少 5 次才能校准)。'],
+ nObs:[n=>'Penalty calibrated from '+n+' observed compactions.',n=>'惩罚参数由 '+n+' 次已观察到的压缩校准。'],
+ nPrice:[(k,s)=>'Prices: row “'+k+'” from '+s+'.',(k,s)=>'价格:“'+k+'” 这一行,来源 '+s+'。'],
+ nAssume:[(b,s,w,h)=>'Assumed base '+b+', summary '+s+', window '+w+'. Headroom = largest threshold within '+h+'% of the optimum and above the floor.',(b,s,w,h)=>'假设基础上下文 '+b+',摘要 '+s+',窗口 '+w+'。冗余档 = 在最优值 '+h+'% 以内且不低于召回下限的最大阈值。'],
+ nFloor:['No threshold met the recall floor; showing highest-recall candidates.','没有阈值达到召回下限,显示召回最高的候选。'],
+ nEdge:['Optimum is at the lowest grid value; widen the grid or revisit the penalty assumptions.','最优值落在网格最低点,可以放宽网格或检查惩罚假设。'],
+ none:['No sessions found.','没有找到会话。']
+};
+const S={gi:0,gear:'headroom',T:null,view:null,lang:'both',sid:null};
+try{const l=localStorage.getItem('compactlab.lang');if(l)S.lang=l}catch(e){}
+function t(k,...a){const v=I[k];if(!v)return k;const f=x=>typeof x==='function'?x(...a):x;
+  return S.lang==='en'?f(v[0]):S.lang==='zh'?f(v[1]):f(v[0])+' · '+f(v[1])}
+function tp(k,...a){const v=I[k],f=x=>typeof x==='function'?x(...a):x;
+  return S.lang==='en'?f(v[0]):S.lang==='zh'?f(v[1]):f(v[0])+'<br><span class="zh">'+f(v[1])+'</span>'}
+function el(n,a,x){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
 const G=()=>D.groups[S.gi];
-function setGear(g){S.gear=g;if(g!=='custom')S.T=G().gears[g];render()}
+const V=()=>G().views[S.view];
+const SC=g=>S.view==='cost'?g.combined_cost:g.combined;
+function pt(g,i){return {threshold:g.grid[i],combined_cost:g.combined_cost[i],combined:g.combined[i],time_s:g.time_s[i],time_turns_s:g.time_turns_s[i],time_compact_s:g.time_compact_s[i],time_redisc_s:g.time_redisc_s[i],compactions:g.compactions[i],recall:g.recall[i]}}
+function cmp(a,r){return {dc:a.combined_cost-r.combined_cost,dcp:r.combined_cost?(a.combined_cost-r.combined_cost)/r.combined_cost:0,dt:a.time_s-r.time_s,
+  saved:r.time_turns_s-a.time_turns_s,added:(a.time_compact_s+a.time_redisc_s)-(r.time_compact_s+r.time_redisc_s),dr:a.recall-r.recall}}
+function action(g,thr){return g.no_action_needed?'aNo':(thr>=g.default.threshold?'aKeep':'aSet')}
+function setGear(k){S.gear=k;if(k!=='custom')S.T=V().gears[k];render()}
 function frame(W,H,m){const svg=el('svg',{viewBox:`0 0 ${W} ${H}`});return {svg,x0:m.l,x1:W-m.r,y0:H-m.b,y1:m.t}}
 function axes(f,X,Y,xt,yt,xf,yf){for(const v of yt){f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(v),y2:Y(v),class:'grid'}));f.svg.append(el('text',{x:f.x0-6,y:Y(v)+3.5,'text-anchor':'end'},yf(v)))}
   for(const v of xt)f.svg.append(el('text',{x:X(v),y:f.y0+16,'text-anchor':'middle'},xf(v)));f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:f.y0,y2:f.y0,class:'ax'}))}
 const ticks=(lo,hi,n)=>Array.from({length:n+1},(_,i)=>lo+(hi-lo)*i/n);
-function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,h=g.history;
-  const gears=[['eco','Eco'],['standard','Standard'],['headroom','Headroom'],['recall','Recall'],['custom','Custom']];
-  const cost=g.combined[i],hc=h.combined,sv=1-cost/hc,sv0=1-cost/g.baseline_cost_total;
-  $('#ctl').innerHTML=`<div class="gearrow"><div class="seg" role="group" aria-label="Gear">${gears.map(([k,l])=>`<button data-g="${k}" aria-pressed="${S.gear===k}">${l}</button>`).join('')}</div>
-  <div class="slider"><span>Threshold</span><input type="range" min="0" max="${g.grid.length-1}" value="${i}" id="rng" aria-label="Threshold"><b style="color:var(--fg)">${fk(S.T)}</b></div></div>
+const leg=items=>'<div class="legend">'+items.map(([c,l,h])=>`<span><i style="background:${c};${h?'height:8px':''}"></i>${l}</span>`).join('')+'</div>';
+function statics(){
+  document.documentElement.lang=S.lang==='zh'?'zh':'en';
+  $('#meta').innerHTML=(D.demo?'<span class="badge">'+t('synthetic')+'</span> ':'')+'<span class="badge">'+t('mode',D.mode)+'</span> '+esc(D.generated)+' · '+t('groups',D.groups.length)+' · '+t('sessions',D.sessions.length);
+  $('#howto').textContent=t('howto');$('#caveat').innerHTML=tp('caveat');
+  for(const k of ['hCmp','hTrade','hTime','hDeep','hHist','hSess'])$('#'+k).textContent=t(k);
+  $('#q').placeholder=t('filter');
+  $('#langs').innerHTML=[['both','中 / EN'],['en','EN'],['zh','中文']].map(([k,l])=>`<button data-l="${k}" aria-pressed="${S.lang===k}">${l}</button>`).join('');
+  document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}statics();render();renderS()});
+  document.querySelectorAll('#tabs button').forEach((b,i)=>b.textContent=D.groups[i].model+' · '+D.groups[i].role)}
+function controls(){const g=G(),i=g.grid.indexOf(S.T),r=V().recommendation,p=pt(g,i),d=g.default,c=cmp(p,d),tr=V().tiers;
+  const gears=['eco','standard','headroom','recall','custom'];
+  $('#ctl').innerHTML=`<div class="gearrow"><div class="seg" role="group" aria-label="${t('gear')}">${gears.map(k=>`<button data-g="${k}" aria-pressed="${S.gear===k}">${t(k)}</button>`).join('')}</div>
+  <div class="slider"><span>${t('threshold')}</span><input type="range" min="0" max="${g.grid.length-1}" value="${i}" id="rng" aria-label="${t('threshold')}"><b style="color:var(--fg)">${fk(S.T)}</b></div></div>
+  <div class="ctlrow"><span class="mut">${t('view')}</span><div class="seg sm" id="views">${['cost_time','cost'].map(k=>`<button data-v="${k}" aria-pressed="${S.view===k}">${t(k)}</button>`).join('')}</div></div>
+  ${g.no_action_needed?'<div class="banner">'+tp('noAction')+'</div>':''}
   <div class="kpis">
-   <div><div class="k">Estimated spend vs. your history</div><div class="v ${sv>=0?'good':'bad'}">${pc(-sv)}</div><div class="d">${fd(cost)} vs ${fd(hc)} (${h.threshold?'median compaction ≈ '+fk(h.threshold):'no compaction observed'})</div></div>
-   <div><div class="k">vs. never compacting</div><div class="v ${sv0>=0?'good':'bad'}">${pc(-sv0)}</div><div class="d">${fd(g.baseline_cost_total)}</div></div>
-   <div><div class="k">Assumed recall</div><div class="v ${g.recall[i]>=r.recall_floor?'':'bad'}">${g.recall[i].toFixed(3)}</div><div class="d">history ${h.recall.toFixed(3)} · floor ${r.recall_floor}</div></div>
-   <div><div class="k">Tiers</div><div class="v">${fk(g.tiers.standard.threshold)} → ${fk(g.tiers.headroom.threshold)}</div><div class="d">standard → headroom: ${pc(g.tiers.headroom.extra_cost_pct)} cost, ${g.tiers.headroom.fewer_compactions} fewer compactions${g.tiers.headroom.lite_threshold?' · deep lowered from '+fk(g.tiers.headroom.lite_threshold):''}</div></div>
-   <div><div class="k">Compactions in replay</div><div class="v">${g.compactions[i]}</div><div class="d">${g.n_sessions} sessions · ${g.n_turns.toLocaleString()} turns</div></div></div>
-  <ul class="n">${notes(g).map(n=>'<li>'+esc(n)+'</li>').join('')}</ul>`;
-  document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setGear(b.dataset.g));
+   <div><div class="k">${t('kCost')}</div><div class="v ${c.dc<=0?'good':'bad'}">${pc(c.dcp)}</div><div class="d">${fds(c.dc)} · ${t('dDefault',fk(d.threshold),d.compactions)}</div></div>
+   <div><div class="k">${t('kTime')}</div><div class="v ${c.dt<=0?'good':'bad'}">${fh(c.dt)}</div><div class="d">${t('cSaved')} ${fha(Math.max(c.saved,0))} · ${t('cAdded')} ${fha(Math.max(c.added,0))}</div></div>
+   <div><div class="k">${t('kRecall')}</div><div class="v ${p.recall>=r.recall_floor?'':'bad'}">${p.recall.toFixed(3)}</div><div class="d">${t('dRecall',d.recall.toFixed(3),r.recall_floor)}</div></div>
+   <div><div class="k">${t('kTiers')}</div><div class="v">${fk(tr.standard.threshold)} → ${fk(tr.headroom.threshold)}</div><div class="d">${t('dTiers',pc(tr.headroom.extra_cost_pct),tr.headroom.fewer_compactions)}</div></div>
+   <div><div class="k">${t('kComp')}</div><div class="v">${p.compactions}</div><div class="d">${t('dComp',d.compactions,g.n_sessions,g.n_turns.toLocaleString())}</div></div></div>
+  <ul class="n">${notes(g).map(n=>'<li>'+n+'</li>').join('')}</ul>`;
+  document.querySelectorAll('#ctl .gearrow .seg button').forEach(b=>b.onclick=()=>setGear(b.dataset.g));
+  document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;if(S.gear!=='custom')S.T=V().gears[S.gear];render()});
   $('#rng').oninput=e=>{S.gear='custom';S.T=g.grid[+e.target.value];render()}}
-function notes(g){const n=[],pp=g.penalty_params,r=g.recommendation;
-  if(!r.floor_met)n.push(r.note);
-  if(r.threshold===g.grid[0])n.push('Optimum is at the lowest grid value; widen the grid or revisit the penalty assumptions.');
-  n.push(pp.source==='prior'?'Penalty uses a prior ('+pp.n_observed+' observed compactions; ≥5 needed to calibrate).':'Penalty calibrated from '+pp.n_observed+' observed compactions.');
-  n.push('Prices: row “'+g.price_key+'” from '+g.price_source+'.');
-  n.push('Assumed base '+fk(g.base_tokens)+', summary '+fk(g.summary_tokens)+', window '+fk(g.max_window)+'. Gears: Eco = cheapest Pareto point meeting the floor; Standard = combined-score optimum; Headroom (default) = largest threshold within '+Math.round(g.tiers.headroom.rule.tolerance*100)+'% of the optimum and above the floor; Recall = highest assumed recall.');return n}
-function pareto(){const g=G(),box=$('#fPareto');box.innerHTML='<h3>Pareto frontier</h3><p>Each dot is a threshold. Up and to the left is better: cheaper and safer (assumed recall).</p>';
-  const f=frame(460,300,{l:48,r:14,t:10,b:30});const xs=g.combined,ys=g.recall;
-  let x0=Math.min(...xs,g.history.combined),x1=Math.max(...xs,g.history.combined),y0=Math.min(...ys,g.history.recall),y1=Math.max(...ys,g.history.recall);
+function notes(g){const n=[],pp=g.penalty_params,r=V().recommendation;
+  if(!r.floor_met)n.push(t('nFloor'));
+  if(r.threshold===g.grid[0])n.push(t('nEdge'));
+  n.push(pp.source==='prior'?t('nPrior',pp.n_observed):t('nObs',pp.n_observed));
+  n.push(esc(t('nPrice',g.price_key,g.price_source)));
+  n.push(t('nAssume',fk(g.base_tokens),fk(g.summary_tokens),fk(g.max_window),Math.round(V().tiers.headroom.rule.tolerance*100)));return n}
+function comparison(){const g=G(),d=g.default,box=$('#fCmp');
+  const rows=[[t('rDefault'),d,null,'']];
+  if(g.current)rows.push([t('rCurrent'),g.current,cmp(g.current,d),'']);
+  for(const k of ['standard','headroom']){const thr=V().tiers[k].threshold;rows.push([t(k),pt(g,g.grid.indexOf(thr)),null,action(g,thr)])}
+  if(S.gear==='custom'||!['standard','headroom'].includes(S.gear))rows.push([t('rSel'),pt(g,g.grid.indexOf(S.T)),null,action(g,S.T)]);
+  const head=['cTier','cWin','cAct','cDc','cDt','cSaved','cAdded','cComp','cRec'].map(k=>'<th>'+tp(k)+'</th>').join('');
+  box.innerHTML='<table><tr>'+head+'</tr>'+rows.map(([name,p,_,act],ri)=>{const c=ri===0?null:cmp(p,d);const no=act==='aNo';
+    const sel=p.threshold===S.T&&ri>0;
+    return `<tr class="${sel?'sel':''}"><td>${name}</td><td>${no?'–':fk(p.threshold??p.configured)}</td><td class="act">${act?t(act):'–'}</td>`+
+      (c?`<td>${fds(c.dc)} (${pc(c.dcp)})</td><td>${fh(c.dt)}</td><td>${fha(Math.max(c.saved,0))}</td><td>${fha(Math.max(c.added,0))}</td><td>${p.compactions} <span class="mut">(${d.compactions})</span></td><td>${p.recall.toFixed(3)} <span class="mut">(${(c.dr>=0?'+':'')+c.dr.toFixed(3)})</span></td>`
+        :`<td>${fd(p.combined_cost)}</td><td>${fha(p.time_s)}</td><td>–</td><td>–</td><td>${p.compactions}</td><td>${p.recall.toFixed(3)}</td>`)+'</tr>'}).join('')+'</table>'+
+    '<p class="mut" style="margin:8px 0 0">'+esc(S.lang==='en'?I.cmpNote[0](d.note,g.current?g.current.source:(g.current_note||'')):S.lang==='zh'?I.cmpNote[1](d.note_zh||d.note,g.current?g.current.source:(g.current_note||'')):I.cmpNote[0](d.note,g.current?g.current.source:(g.current_note||''))+' · '+I.cmpNote[1](d.note_zh||d.note,''))+'</p>'}
+function pareto(){const g=G(),box=$('#fPareto'),sc=SC(g);box.innerHTML='<h3>'+t('pTitle')+'</h3><p>'+tp('pSub')+'</p>';
+  const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=sc,ys=g.recall,dx=S.view==='cost'?g.default.combined_cost:g.default.combined;
+  let x0=Math.min(...xs,dx),x1=Math.max(...xs,dx),y0=Math.min(...ys,g.default.recall),y1=Math.max(...ys,g.default.recall);
   const px=(x1-x0||1)*.06,py=(y1-y0||.01)*.12;x0-=px;x1+=px;y0-=py;y1+=py;
   const X=v=>f.x0+(v-x0)/(x1-x0)*(f.x1-f.x0),Y=v=>f.y0-(v-y0)/(y1-y0)*(f.y0-f.y1);
   axes(f,X,Y,ticks(x0,x1,4),ticks(y0,y1,4),fd,v=>v.toFixed(3));
-  const fr=g.gears.pareto.map(t=>g.grid.indexOf(t)).sort((a,b)=>xs[a]-xs[b]);
-  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(g.recommendation.recall_floor),y2:Y(g.recommendation.recall_floor),stroke:'var(--warn)','stroke-dasharray':'4 4','stroke-width':.8}));
+  const fr=V().gears.pareto.map(x=>g.grid.indexOf(x)).sort((a,b)=>xs[a]-xs[b]);
+  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(V().recommendation.recall_floor),y2:Y(V().recommendation.recall_floor),stroke:'var(--warn)','stroke-dasharray':'4 4','stroke-width':.8}));
   f.svg.append(el('polyline',{points:fr.map(i=>X(xs[i])+','+Y(ys[i])).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.5,opacity:.7}));
-  g.grid.forEach((t,i)=>{const on=fr.includes(i);f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:on?4:2.6,fill:on?'var(--acc)':'var(--ghost)'}))});
+  g.grid.forEach((_,i)=>{const on=fr.includes(i);f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:on?4:2.6,fill:on?'var(--acc)':'var(--ghost)'}))});
   const hy=deepOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--fg)','stroke-width':1.3}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--fg)','stroke-dasharray':'2 2','stroke-width':.8}))});
-  ['eco','standard','headroom','recall'].forEach(k=>{const i=g.grid.indexOf(g.gears[k]);if(i>=0&&k!==S.gear)f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:7,fill:'none',stroke:'var(--mut)','stroke-width':1.2}))});
+  ['eco','standard','headroom','recall'].forEach(k=>{const i=g.grid.indexOf(V().gears[k]);if(i>=0&&k!==S.gear)f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:7,fill:'none',stroke:'var(--mut)','stroke-width':1.2}))});
   const si=g.grid.indexOf(S.T);f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:8,fill:'var(--acc2)',opacity:.9}));f.svg.append(el('text',{x:X(xs[si])+11,y:Y(ys[si])-9,style:'fill:var(--fg);font-weight:600'},fk(S.T)));
-  f.svg.append(el('rect',{x:X(g.history.combined)-4,y:Y(g.history.recall)-4,width:8,height:8,fill:'var(--warn)'}));f.svg.append(el('text',{x:X(g.history.combined)+8,y:Y(g.history.recall)+14,style:'fill:var(--warn)'},'your history'));
-  f.svg.append(el('text',{x:f.x1,y:f.y1+8,'text-anchor':'end'},'x: cost + penalty (USD)'));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--acc)"></i>Pareto-optimal</span><span><i style="background:var(--ghost)"></i>dominated</span><span><i style="background:var(--acc2)"></i>selected</span><span>○ other gears</span><span><i style="background:var(--warn)"></i>your history / floor</span>'+(deepOf(g)?'<span><i style="background:var(--fg)"></i>deep: measured recall</span>':'')+'</div>')}
+  f.svg.append(el('rect',{x:X(dx)-4,y:Y(g.default.recall)-4,width:8,height:8,fill:'var(--warn)'}));f.svg.append(el('text',{x:X(dx)-8,y:Y(g.default.recall)+16,'text-anchor':'end',style:'fill:var(--warn)'},t('rDefault')+' '+fk(g.default.threshold)));
+  f.svg.append(el('text',{x:f.x1,y:f.y1+8,'text-anchor':'end'},'x: '+t(S.view)));
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--acc)',t('pOpt')],['var(--ghost)',t('pDom')],['var(--acc2)',t('pSelL')],['transparent','○ '+t('pOther')],['var(--warn)',t('pDef')]].concat(hy?[['var(--fg)',t('pDeep')]]:[])))}
 function deepOf(g){return D.deep&&D.deep.groups.find(x=>x.model===g.model&&x.role===g.role)}
-function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);if(!D.deep){b.innerHTML='<h3>Lite vs deep</h3><p>This report is <b>lite</b> only: recall is an assumed proxy. Run <code>compactlab simulate --mode deep --budget N</code> to measure recall at candidate thresholds (costs money; estimate shown first).</p>';return}
-  if(!hy){b.innerHTML='<h3>Lite vs deep</h3><p>No deep samples for this group.</p>';return}
-  b.innerHTML='<h3>Lite vs deep</h3><p>'+esc(D.deep.model)+' summarizes, '+esc(D.deep.judge_model)+' judges ('+D.deep.repeats+' votes). Spent '+fd(D.deep.spent_usd)+' of '+fd(D.deep.budget_usd)+'.'+(D.deep.stopped?' Stopped early: '+esc(D.deep.stopped):'')+'</p><table><tr><th>threshold</th><th>assumed (lite)</th><th>measured (deep)</th><th>samples</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">disagree</span>':''}</td></tr>`).join('')+'</table>'+(hy.headroom_adjusted_to?'<p class="bad">Measured recall at the lite headroom fell below the floor; headroom lowered to '+fk(hy.headroom_adjusted_to)+'.</p>':'')}
-function costs(){const g=G(),box=$('#fCost');box.innerHTML='<h3>Cost by threshold</h3><p>Replay cost, re-discovery penalty and their sum.</p>';
-  const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=g.grid,hi=Math.max(...g.combined)*1.06;
+function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);if(!D.deep){b.innerHTML='<p>'+tp('dLite')+'</p>';return}
+  if(!hy){b.innerHTML='<p>'+t('dNone')+'</p>';return}
+  b.innerHTML='<p>'+esc(t('dHead',D.deep.model,D.deep.judge_model,D.deep.repeats,fd(D.deep.spent_usd),fd(D.deep.budget_usd)))+(D.deep.stopped?' '+esc(D.deep.stopped):'')+'</p><table><tr><th>'+t('threshold')+'</th><th>'+t('dAssumed')+'</th><th>'+t('dMeasured')+'</th><th>'+t('dSamples')+'</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">'+t('dDis')+'</span>':''}</td></tr>`).join('')+'</table>'+(hy.headroom_adjusted_to?'<p class="bad">'+t('dLowered',fk(hy.headroom_adjusted_to))+'</p>':'')}
+function line(f,X,Y,xs,v,c,w,d){f.svg.append(el('polyline',{points:xs.map((x,i)=>X(x)+','+Y(v[i])).join(' '),fill:'none',stroke:c,'stroke-width':w,'stroke-dasharray':d||''}))}
+function costs(){const g=G(),box=$('#fCost'),sc=SC(g);box.innerHTML='<h3>'+t('coTitle')+'</h3><p>'+tp('coSub')+'</p>';
+  const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=g.grid,hi=Math.max(...sc,g.default[S.view==='cost'?'combined_cost':'combined'])*1.06;
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
-  const r=g.recommendation;f.svg.append(el('rect',{x:X(r.range[0]),y:f.y1,width:Math.max(X(r.range[1])-X(r.range[0]),3),height:f.y0-f.y1,fill:'var(--band)'}));
+  const r=V().recommendation;f.svg.append(el('rect',{x:X(r.range[0]),y:f.y1,width:Math.max(X(r.range[1])-X(r.range[0]),3),height:f.y0-f.y1,fill:'var(--band)'}));
   const st=Math.ceil(xs.length/6);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(0,hi,4),fk,fd);
-  const line=(v,c,w,d)=>f.svg.append(el('polyline',{points:xs.map((t,i)=>X(t)+','+Y(v[i])).join(' '),fill:'none',stroke:c,'stroke-width':w,'stroke-dasharray':d||''}));
-  line(g.cost,'var(--ghost)',1.5);line(g.penalty,'var(--warn)',1.2,'3 3');line(g.combined,'var(--acc)',2.2);
-  const si=xs.indexOf(S.T);f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-width':1.5}));f.svg.append(el('circle',{cx:X(S.T),cy:Y(g.combined[si]),r:4,fill:'var(--acc2)'}));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--ghost)"></i>cost</span><span><i style="background:var(--warn)"></i>penalty</span><span><i style="background:var(--acc)"></i>combined</span><span><i style="background:var(--band);height:8px"></i>recommended range</span></div>')}
-function hist(){const g=G(),box=$('#fHist'),h=g.hist;box.innerHTML='<h3>Where your tokens sit</h3><p>Share of turns and of read tokens by context size. Bars to the right of the line are what a lower threshold would cut.</p>';
+  line(f,X,Y,xs,g.cost,'var(--ghost)',1.5);line(f,X,Y,xs,g.penalty,'var(--warn)',1.2,'3 3');line(f,X,Y,xs,sc,'var(--acc)',2.2);
+  const dv=g.default[S.view==='cost'?'combined_cost':'combined'];f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(dv),y2:Y(dv),stroke:'var(--warn)','stroke-dasharray':'2 3','stroke-width':1}));
+  const si=xs.indexOf(S.T);f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-width':1.5}));f.svg.append(el('circle',{cx:X(S.T),cy:Y(sc[si]),r:4,fill:'var(--acc2)'}));
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('lCost')],['var(--warn)',t('lPen')],['var(--acc)',t('lScore')+' ('+t(S.view)+')'],['var(--warn)',t('lDefault')+' '+fk(g.default.threshold)],['var(--band)',t('lRange'),1]]))}
+function timeChart(){const g=G(),d=g.default,box=$('#fTime'),tm=g.time_model,xs=g.grid;
+  const saved=xs.map((_,i)=>d.time_turns_s-g.time_turns_s[i]),added=xs.map((_,i)=>(g.time_compact_s[i]+g.time_redisc_s[i])-(d.time_compact_s+d.time_redisc_s)),net=xs.map((_,i)=>g.time_s[i]-d.time_s);
+  const conf=c=>t('conf_'+c);
+  box.innerHTML='<h3>'+t('tTitle')+'</h3><p>'+tp('tSub')+'</p>';
+  const f=frame(940,260,{l:52,r:14,t:10,b:30}),all=[...saved,...added,...net,0],lo=Math.min(...all),hi=Math.max(...all),pad=(hi-lo||1)*.08;
+  const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-(v-(lo-pad))/((hi+pad)-(lo-pad))*(f.y0-f.y1);
+  const st=Math.ceil(xs.length/10);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(lo-pad,hi+pad,4),fk,fh);
+  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(0),y2:Y(0),stroke:'var(--mut)','stroke-width':.8}));
+  line(f,X,Y,xs,saved,'var(--acc2)',1.6);line(f,X,Y,xs,added,'var(--warn)',1.6);line(f,X,Y,xs,net,'var(--acc)',2.4);
+  f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-dasharray':'4 3'}));
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--acc2)',t('tSaved')],['var(--warn)',t('tAdded')],['var(--acc)',t('tNet')]])+'<p class="'+(tm.turn_confidence==='ok'&&tm.compact_confidence==='ok'?'mut':'bad')+'" style="margin:8px 0 0;font-size:12px">'+esc(t('tConf',conf(tm.turn_confidence),tm.n_turn_samples,conf(tm.compact_confidence),tm.n_compact_samples))+'</p>')}
+function hist(){const g=G(),box=$('#fHist'),h=g.hist;box.innerHTML='<h3>'+t('hTitle')+'</h3><p>'+tp('hSub')+'</p>';
   const f=frame(460,300,{l:40,r:14,t:10,b:30}),n=h.turns.length,mx=Math.max(...h.turns,...h.share)*1.1||1,bw=(f.x1-f.x0)/n;
   const Y=v=>f.y0-v/mx*(f.y0-f.y1),X=v=>f.x0+v/(n*h.bin)*(f.x1-f.x0);
   axes(f,X,Y,Array.from({length:Math.min(n,8)+1},(_,i)=>Math.round(i*n/Math.min(n,8))*h.bin),ticks(0,mx,4),fk,v=>Math.round(v*100)+'%');
@@ -117,33 +225,33 @@ function hist(){const g=G(),box=$('#fHist'),h=g.hist;box.innerHTML='<h3>Where yo
   f.svg.append(el('polyline',{points:h.share.map((v,i)=>(f.x0+(i+.5)*bw)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.8}));
   f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-width':1.5,'stroke-dasharray':'4 3'}));
   const over=h.share.reduce((a,v,i)=>a+((i+1)*h.bin>S.T?v:0),0);
-  f.svg.append(el('text',{x:Math.min(X(S.T)+6,f.x1-130),y:f.y1+10,style:'fill:var(--acc2)'},Math.round(over*100)+'% of read tokens above '+fk(S.T)));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--ghost);height:8px"></i>share of turns</span><span><i style="background:var(--acc)"></i>share of read tokens</span></div>')}
+  f.svg.append(el('text',{x:Math.min(X(S.T)+6,f.x1-170),y:f.y1+10,style:'fill:var(--acc2)'},S.lang==='zh'?I.hAbove[1](Math.round(over*100),fk(S.T)):I.hAbove[0](Math.round(over*100),fk(S.T))));
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('hTurns'),1],['var(--acc)',t('hRead')]]))}
 function simulate(sess,g,T){const out=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
   for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.round(pp.rho*d+pp.fixed_tokens)}out.push(c)}return {out,k}}
 function sessPick(){const g=G(),box=$('#fSess'),ss=D.sessions.filter(s=>s.model===g.model&&s.role===g.role).sort((a,b)=>b.peak-a.peak).slice(0,30);
   const cur=S.sid&&ss.find(s=>s.id===S.sid)?S.sid:(ss[0]||{}).id;S.sid=cur;
-  box.innerHTML=`<h3>History vs. estimate</h3><p>Actual context (grey) and the same session replayed at ${fk(S.T)} (colour).</p><select id="sp">${ss.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.id.slice(0,24))} · peak ${fk(s.peak)} · ${s.turns} turns</option>`).join('')}</select>`;
+  box.innerHTML=`<h3>${t('sTitle')}</h3><p>${tp('sSub',fk(S.T))}</p><select id="sp">${ss.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.id.slice(0,24))} · ${fk(s.peak)} · ${s.turns}</option>`).join('')}</select>`;
   const s=ss.find(x=>x.id===cur);if(!s)return;const sim=simulate(s,g,S.T),n=s.curve.length;
   const f=frame(460,260,{l:40,r:14,t:10,b:26}),hi=Math.max(...s.curve,...sim.out,S.T)*1.06;
   const X=i=>f.x0+i/((n-1)||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
-  axes(f,X,Y,[0,Math.round((n-1)/2),n-1],ticks(0,hi,4),i=>'t'+Math.round(i/(n-1||1)*100)+'%',fk);
+  axes(f,X,Y,[0,Math.round((n-1)/2),n-1],ticks(0,hi,4),i=>Math.round(i/(n-1||1)*100)+'%',fk);
   f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(S.T),y2:Y(S.T),stroke:'var(--acc2)','stroke-dasharray':'4 3','stroke-width':1}));
   f.svg.append(el('polyline',{points:s.curve.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--ghost)','stroke-width':1.8}));
   f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6}));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',`<div class="legend"><span><i style="background:var(--ghost)"></i>actual (${s.compactions} compactions)</span><span><i style="background:var(--acc)"></i>replayed (${sim.k} compactions)</span><span><i style="background:var(--acc2)"></i>threshold</span></div>`);
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('sAct',s.compactions)],['var(--acc)',t('sRep',sim.k)],['var(--acc2)',t('threshold')]]));
   $('#sp').onchange=e=>{S.sid=e.target.value;sessPick()}}
-function render(){controls();pareto();costs();hist();sessPick();deepPanel()}
-function pick(i){S.gi=i;S.gear='headroom';S.T=G().gears.headroom;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
-D.groups.forEach(g=>{g.baseline_cost_total=g.baseline_cost+0});
-D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.textContent=g.model+' · '+g.role;b.onclick=()=>pick(i);$('#tabs').append(b)});
-if(D.groups.length)pick(0);else $('#ctl').textContent='No sessions found.';
+function render(){controls();comparison();pareto();costs();timeChart();hist();sessPick();deepPanel()}
+function pick(i){S.gi=i;S.view=S.view||G().view||'cost_time';S.gear='headroom';S.T=V().gears.headroom;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
+D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.onclick=()=>pick(i);$('#tabs').append(b)});
+statics();
+if(D.groups.length)pick(0);else $('#ctl').textContent=t('none');
 let sortK='peak',asc=false;
 function spark(c){if(c.length<2)return'';const w=110,h=20,mx=Math.max(...c);return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline fill="none" stroke="var(--acc)" stroke-width="1.1" points="${c.map((v,i)=>(i/(c.length-1)*w).toFixed(1)+','+(h-1-v/mx*(h-2)).toFixed(1)).join(' ')}"/></svg>`}
 function renderS(){const q=$('#q').value.toLowerCase();const rows=D.sessions.filter(s=>(s.id+s.model+s.role+s.harness).toLowerCase().includes(q));
-  rows.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*(asc?1:-1));$('#cnt').textContent=rows.length+' of '+D.sessions.length;
-  const cols=[['id','session'],['harness','harness'],['role','role'],['model','model'],['turns','turns'],['peak','peak'],['compactions','compactions']];
-  $('#st').innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}</th>`).join('')+'<th>context</th></tr>'+rows.slice(0,500).map(s=>`<tr><td>${esc(s.id.slice(0,28))}</td><td>${s.harness}</td><td>${s.role}</td><td>${esc(s.model)}</td><td>${s.turns}</td><td>${fk(s.peak)}</td><td>${s.compactions}</td><td>${spark(s.curve)}</td></tr>`).join('');
+  rows.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*(asc?1:-1));$('#cnt').textContent=t('of',rows.length,D.sessions.length);
+  const cols=[['id','colSession'],['harness','colHarness'],['role','colRole'],['model','colModel'],['turns','colTurns'],['peak','colPeak'],['compactions','colComp']];
+  $('#st').innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${t(c[1])}</th>`).join('')+'<th>'+t('colCtx')+'</th></tr>'+rows.slice(0,500).map(s=>`<tr><td>${esc(s.id.slice(0,28))}</td><td>${s.harness}</td><td>${s.role}</td><td>${esc(s.model)}</td><td>${s.turns}</td><td>${fk(s.peak)}</td><td>${s.compactions}</td><td>${spark(s.curve)}</td></tr>`).join('');
   document.querySelectorAll('#st th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;asc=sortK===k?!asc:false;sortK=k;renderS()})}
 $('#q').oninput=renderS;renderS();
 </script></body></html>

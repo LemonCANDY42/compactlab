@@ -3,22 +3,42 @@
   "updated": "2026-10-29",
   "claude-code": {
     "rules": [
-      {"match": ["opus-4-6", "sonnet-4-6"], "threshold": 200000,
-       "note": "Sonnet 4.6 / Opus 4.6 without extended context compact at the 200K boundary (with [1m] they use the 1M rule)"},
-      {"match": ["fable", "sonnet-5", "haiku-5-5", "opus-4-7", "opus-4-8", "opus-5"], "threshold": 967000,
-       "note": "models with a native 1M window compact at about 967K tokens by default"}
+      {
+        "match": [
+          "opus-4-6",
+          "sonnet-4-6"
+        ],
+        "threshold": 200000,
+        "note": "Sonnet 4.6 / Opus 4.6 without extended context compact at the 200K boundary (with [1m] they use the 1M rule)",
+        "note_zh": "Sonnet 4.6 / Opus 4.6 未开扩展上下文时在 200K 边界压缩(带 [1m] 时按 1M 规则)"
+      },
+      {
+        "match": [
+          "fable",
+          "sonnet-5",
+          "haiku-5-5",
+          "opus-4-7",
+          "opus-4-8",
+          "opus-5"
+        ],
+        "threshold": 967000,
+        "note": "models with a native 1M window compact at about 967K tokens by default",
+        "note_zh": "原生 1M 窗口的模型默认在约 967K token 时压缩"
+      }
     ],
     "otherwise": "window",
     "otherwise_note": "other models compact when the conversation reaches the model's context limit",
     "caveats": "CLAUDE_CODE_DISABLE_1M_CONTEXT=1 makes 1M models compact at 200K; cloud sessions compact as they approach the limit; unrecognized model IDs assume 200K.",
     "source": "https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds",
-    "status": "documented"
+    "status": "documented",
+    "otherwise_note_zh": "其他模型在对话达到模型上下文上限时压缩"
   },
   "codex": {
     "rule": "fraction_of_window",
     "fraction": 0.9,
     "note": "with model_auto_compact_token_limit unset, the limit is 90% of the resolved context window; a configured value is clamped to that 90%",
     "source": "https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs (ModelInfo::auto_compact_token_limit)",
-    "status": "public-source"
+    "status": "public-source",
+    "note_zh": "未设置 model_auto_compact_token_limit 时,上限为上下文窗口的 90%;设置的值也会被截到这 90%"
   }
 }

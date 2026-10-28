@@ -19,7 +19,7 @@ def defaults() -> dict[str, Any]:
 
 
 def default_threshold(harness: str, model: str, window: int) -> tuple[int, str]:
-    """(threshold, explanation). Never above the window."""
+    """(threshold, explanation). Never above the window. See default_note_zh() for the Chinese note."""
     d = defaults().get(harness)
     m = model.lower()
     if harness == "claude-code" and d:
@@ -65,3 +65,14 @@ def read_current(harness: str, model: str, path: Path | None) -> tuple[int | Non
             return None, "not set (harness default)"
         return int(mm.group(1).replace("_", "")), f"model_auto_compact_token_limit in {path.name}"
     return None, "unsupported harness"
+
+
+def default_note_zh(harness: str, model: str) -> str:
+    d = defaults().get(harness) or {}
+    m = model.lower()
+    if harness == "claude-code" and d:
+        for r in d["rules"]:
+            if any(p in m for p in r["match"]):
+                return str(r.get("note_zh", r["note"]))
+        return str(d.get("otherwise_note_zh", d.get("otherwise_note", "")))
+    return str(d.get("note_zh", d.get("note", "")))

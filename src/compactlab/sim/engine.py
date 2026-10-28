@@ -11,7 +11,7 @@ from typing import Any
 
 from ..model import Session
 from ..pricing import Price, PricingTable
-from .baseline import default_threshold, effective_max
+from .baseline import default_note_zh, default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate
 from .select import gears, recommend, tiers
 from .timing import TimeModel, fit
@@ -267,7 +267,8 @@ def analyze(
         d_thr, d_note = default_threshold(harness, model, window)
         default = _point(run_all(traces, d_thr, c), d_thr, n_turns, vot)
         default["note"] = d_note
-        cur_val, cur_desc = (current or {}).get((harness, model), (None, "not read"))
+        default["note_zh"] = default_note_zh(harness, model)
+        cur_val, cur_desc = (current or {}).get((harness, model), (None, ""))
         cur = None
         if cur_val is not None:
             eff = min(cur_val, cap)

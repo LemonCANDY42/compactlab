@@ -366,7 +366,13 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
             notes += [T[x]["thin_time"].format(n=tmod["n_turn_samples"]) for x in langs]
         if not g["recommendation"]["floor_met"]:
             notes.append("recall floor not met / 未达到召回下限")
-        notes.append(f"default: {d['note']}" + (f"; current: {g['current_note']}" if g.get("current_note") else ""))
+        if "en" in langs:
+            notes.append(f"default: {d['note']}" + (f"; current: {g['current_note']}" if g.get("current_note") else ""))
+        if "zh" in langs:
+            notes.append(
+                f"默认依据:{d.get('note_zh', d['note'])}"
+                + (f";当前:{g['current_note']}" if g.get("current_note") else "")
+            )
         lines += [f"  · {n}" for n in notes]
     lines.append("")
     lines += [T[x]["note"] for x in langs]
