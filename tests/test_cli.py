@@ -29,7 +29,8 @@ def sim(tmp_path, claude_root, codex_root):
 def test_simulate_report(tmp_path, claude_root, codex_root, capsys):
     r = sim(tmp_path, claude_root, codex_root)
     res = json.loads(r.read_text())
-    assert all("gears" in g and "history" in g for g in res["groups"])
+    assert res["schema"] == 4
+    assert all(set(g["profiles"]) == {"cost", "balanced", "time"} and "history" in g for g in res["groups"])
     html = tmp_path / "r.html"
     assert main(["report", "--result", str(r), "--out", str(html)]) == 0
     t = html.read_text()
@@ -185,7 +186,7 @@ def test_no_sessions_message(tmp_path, capsys):
     assert "compactlab demo" in capsys.readouterr().err
 
 
-def test_apply_default_tier_is_headroom(tmp_path, claude_root, codex_root, capsys):
+def test_apply_default_profile_is_balanced(tmp_path, claude_root, codex_root, capsys):
     r = sim(tmp_path, claude_root, codex_root)
     capsys.readouterr()
     res = json.loads(r.read_text())
@@ -196,8 +197,8 @@ def test_apply_default_tier_is_headroom(tmp_path, claude_root, codex_root, capsy
         main(["apply", "--result", str(r), "--claude-settings", str(s), "--models", "claude-opus-5-5", "--json"]) == 0
     )
     plan = json.loads(capsys.readouterr().out)
-    assert plan["tier"] == "headroom" and plan["dry_run"]
-    assert plan["changes"][0]["new"] == g["tiers"]["headroom"]["threshold"]
+    assert plan["profile"] == "balanced" and plan["dry_run"]
+    assert plan["changes"][0]["new"] == g["profiles"]["balanced"]["threshold"]
     assert (
         main(
             [
@@ -209,13 +210,13 @@ def test_apply_default_tier_is_headroom(tmp_path, claude_root, codex_root, capsy
                 "--models",
                 "claude-opus-5-5",
                 "--json",
-                "--tier",
-                "standard",
+                "--profile",
+                "cost",
             ]
         )
         == 0
     )
-    assert json.loads(capsys.readouterr().out)["changes"][0]["new"] == g["tiers"]["standard"]["threshold"]
+    assert json.loads(capsys.readouterr().out)["changes"][0]["new"] == g["profiles"]["cost"]["threshold"]
 
 
 def test_demo(tmp_path):

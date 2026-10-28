@@ -9,7 +9,7 @@ Measure cost vs. context-rot trade-offs per model and per role, then tune auto-c
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 
-<img src="docs/assets/demo.svg" alt="compactlab demo printing standard and headroom thresholds per model and role (synthetic data)" width="760">
+<img src="docs/assets/demo.svg" alt="compactlab demo printing cost, balanced and time thresholds per model and role (synthetic data)" width="760">
 
 ```bash
 uvx compactlab demo
@@ -27,7 +27,7 @@ a huge, cached-but-not-free prefix, and long contexts get less reliable. The rig
 sessions grow, your models and their prices. compactlab replays your own session logs at every threshold and tells
 you where the trade-off sits, per model and per role (main agent vs subagent).
 
-![compactlab HTML report: gear switch, tier summary, Pareto frontier and cost curve (synthetic demo data)](docs/assets/report.png)
+![compactlab HTML report: profile switch, side-by-side comparison, Pareto frontier and cost curve (synthetic demo data)](docs/assets/report.png)
 
 ## Quickstart
 
@@ -43,47 +43,64 @@ uvx compactlab apply --result result.json --claude-settings ~/.claude/settings.j
 
 ## What you get
 
-For each model and role, two results, each compared with **the harness default** (what happens if you change
-nothing) and with **your current setting** when compactlab can read it:
+For each model and role, three **profiles**, side by side, each compared with **the harness default** (what happens
+if you change nothing) and with **your current setting** when compactlab can read it. A profile is the price you put
+on an hour of agent wall-clock, plus guardrails:
 
-- **standard**: the threshold with the lowest score (replayed cost + re-discovery penalty + time) that meets a
-  recall floor.
-- **headroom** (default): the largest threshold within 12% of that optimum. You pay a little more and get fewer
-  lossy compactions. The tolerance is a flag (`--headroom`).
-- **no action needed**: shown instead of a number when the default never compacts in those sessions.
+| Profile | Value of time | Guardrails |
+| --- | --- | --- |
+| `cost` | $10/h (money first) | none on window size; warns below 25% of the max window and when compaction wait grows by more than 30 min/day |
+| `balanced` (default) | $100/h | never below 25% of the max window; at most 30 min/day of added compaction wait |
+| `time` | $400/h (time first) | never below 35% of the max window; at most 30 min/day of added compaction wait |
 
-Every result reports Δcost, Δwall-clock (time saved by smaller contexts minus time added by compactions and
-re-discovery, fitted from your own timestamps), compactions and recall against the default. Time enters the score
-at `--value-of-time` USD per hour (default 10; `--view cost` ranks by cost alone). Thin timing data is flagged.
+Within its guardrails, each profile picks the largest threshold whose score (list-price replay cost + re-discovery
+penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
+`--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
+profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
+number when the default never compacts in those sessions, and **keep default** when a profile would not beat it.
 
-Sample output (**synthetic demo data**, not a benchmark; output is bilingual by default, `--lang en` shown):
+Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
+added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
+default and your current setting. Costs are list-price estimates (no discounts, plans or credits). Recall in lite mode
+is an assumed proxy, not a measurement. When a group has too few timed compactions (fewer than 20) its latency fit is
+not used: it borrows the pooled fit of all sessions of that harness, or a deliberately pessimistic prior, and says so.
+
+Sample output (**synthetic demo data**, not a benchmark; output is bilingual by default, `--lang en` shown; `*` marks
+the selected profile):
 
 ```
-claude-opus-5-5 · main · 6 sessions · 1308 turns · window 1000k
-  tier               window action                       Δcost vs default     Δtime   compactions           recall
-  default              967k -                                 $363 (base)         0             8            0.871
-  current              600k -                                 -$88 (-24%)     -0.6h     15 (vs 8)   0.908 (+0.037)
-  standard             150k set                              -$200 (-55%)     -2.8h     85 (vs 8)   0.920 (+0.049)
-  headroom             275k set                              -$185 (-51%)     -2.2h     38 (vs 8)   0.925 (+0.054)
+claude-opus-5-5 · main · 6 sessions · 1308 turns · 10 days · window 1000k
+  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
+  default              967k -                             $403 (base)                0            0.8            0.871
+  current              600k -                            -$102 (-25%)        -1m (-0m)            1.4            0.909
+  balanced*            325k set                          -$199 (-49%)      -0.3h (-2m)            3.0   0.925 (+0.054)
+  cost                 175k set                          -$233 (-58%)      -0.2h (-1m)            6.5   0.922 (+0.051)
+  time                 625k set                          -$101 (-25%)      -0.2h (-1m)            1.2   0.906 (+0.034)
+  · vs current: cost -$131 (-43%) -0.2h; balanced -$96 (-32%) -0.2h; time +$1 (+0%) -0.2h
+  · time model: turn latency from this group's data, compaction latency from this group's data (22 own samples)
+  · balanced: guardrail moved the pick from 175k to 325k
+  · cost: below 25% of the max window; expect frequent lossy compactions
+  · time: guardrail moved the pick from 325k to 625k
 
-claude-opus-5-5 · subagent · 3 sessions · 143 turns · window 1000k
-  tier               window action                       Δcost vs default     Δtime   compactions           recall
-  default              967k -                                  $18 (base)         0             0            0.937
-  current              600k -                                   +$0 (+0%)       +0m      0 (vs 0)   0.937 (+0.000)
-  standard                - no action needed                            -         -             0            0.937
-  headroom                - no action needed                            -         -             0            0.937
+claude-opus-5-5 · subagent · 3 sessions · 143 turns · 4 days · window 1000k
+  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
+  default              967k -                              $18 (base)                0            0.0            0.937
+  current              600k -                               +$0 (+0%)        +0m (+0m)            0.0            0.937
+  balanced*               - no action needed                        -                -            0.0            0.937
+  cost                    - no action needed                        -                -            0.0            0.937
+  time                    - no action needed                        -                -            0.0            0.937
   · no action needed: the default never compacts in these sessions
-  · time estimate low-confidence (141 timed turns)
 
-gpt-5-codex · main · 6 sessions · 871 turns · window 400k
-  tier               window action                       Δcost vs default     Δtime   compactions           recall
-  default              360k -                                  $42 (base)         0            16            0.929
-  standard             225k set                                -$7 (-17%)       -1m    29 (vs 16)   0.930 (+0.001)
-  headroom             325k set                                 -$2 (-4%)       -2m    18 (vs 16)   0.930 (+0.001)
+gpt-5-codex · main · 6 sessions · 871 turns · 5 days · window 400k
+  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
+  default              360k -                              $43 (base)                0            3.1            0.929
+  balanced*            350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
+  cost                 325k set                             -$2 (-4%)      +0.1h (+1m)            3.5   0.930 (+0.001)
+  time                 350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
 ```
 
-The HTML report is one offline file, in Chinese and English (switchable). It has gear switching (Eco / Standard /
-Headroom / Recall / Custom), a cost + time or cost-only view, the default/current comparison table, a Pareto
+The HTML report is one offline file, in Chinese and English (switchable). It has a profile switch (Cost / Balanced /
+Time / Custom threshold), the three profiles side by side against the default and your current setting, a Pareto
 frontier, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
 next to the same session replayed at the chosen threshold.
 
@@ -98,7 +115,8 @@ compactlab recommend --check                          # are the keys still verif
 ```
 
 Each snippet names its target file and carries a merge one-liner that leaves other keys alone, the evidence it came
-from (groups, delta vs default, time confidence) and a revert hint. Values never exceed the model's window or your
+from (groups, delta vs default, time per day, where the time model came from) and a revert hint. `--profile` picks the
+profile (default balanced); `--all-profiles` prints all three. Values never exceed the model's window or your
 caps, and groups that need no change are listed as omitted. `recommend` only prints or copies; `apply` is still the
 only command that writes, under pre-authorization. The report has the same panel with copy buttons.
 
@@ -128,7 +146,7 @@ compactlab simulate --mode deep --executor claude-code --model claude-sonnet-5-5
   --judge-model claude-haiku-5-5 --budget 3            # prints the estimate; add --yes to run
 ```
 
-If measured recall at the headroom threshold falls below the floor, deep lowers headroom and says so.
+If measured recall at a profile's threshold falls below the floor, deep lowers that profile and says so.
 
 ## How it works
 
@@ -139,7 +157,7 @@ flowchart LR
   P[prices with provenance] --> R
   S --> C[calibrate re-discovery penalty]
   C --> R
-  R --> T[standard + headroom tiers, Pareto]
+  R --> T[cost / balanced / time profiles + guardrails, Pareto]
   T --> J[(result.json)]
   J --> H[report.html]
   J --> A[apply: dry-run, backup, revert]
@@ -176,7 +194,8 @@ Neither harness lets subagents have their own threshold, so `apply` writes the m
 
 - Lite-mode recall is an **assumed** curve, not a measurement of any model. Deep mode measures recall on samples
   of compactlab's excerpts, not the full transcript the harness would summarize.
-- Replayed cost is for comparing thresholds, not a reconstruction of your invoice. Wall-clock estimates come from
+- Replayed cost is a list-price estimate for comparing thresholds, not a reconstruction of your invoice
+  (subscriptions, discounts and credits are ignored). Wall-clock estimates come from
   log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
   row; refresh or override them as needed.
@@ -189,8 +208,10 @@ Neither harness lets subagents have their own threshold, so `apply` writes the m
 **Will it change my settings?** Not unless you pass `--write` with an authorization, and even then only the
 allow-listed key, with a backup.
 
-**Why not just use the lowest-cost threshold?** Cost alone favors compacting early. Every compaction loses detail,
-so the default leaves headroom. Use `--tier standard` if you want the optimum.
+**Why not just use the lowest-cost threshold?** Cost alone favors compacting early, and every compaction costs
+minutes of waiting and some lost detail. On real histories a cost-first pick can mean several times more compactions
+than the default. The default `balanced` profile prices your time at $100/h and never goes below a quarter of the
+window; `--profile cost` is there if money is what you want to minimize.
 
 **Does it work without any history?** `compactlab demo` uses bundled synthetic sessions.
 

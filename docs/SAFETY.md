@@ -13,7 +13,8 @@
   - `--preauth FILE`, a pre-authorization file (below), or
   - `--i-authorize` with explicit `--claude-settings` / `--codex-config`, `--models`, `--min`, `--max`.
 - `retune` (re-analyze + apply) works only with a pre-authorization file that sets `"allow_retune": true`.
-- The default value written is the **headroom** tier; `--tier standard|eco|recall` picks another.
+- The default value written is the **balanced** profile; `--profile cost|time` picks another, and
+  `--value-of-time` changes its price of time.
   Pre-authorization bounds always win: a value outside them is skipped, never clamped silently.
 
 ## Pre-authorization file

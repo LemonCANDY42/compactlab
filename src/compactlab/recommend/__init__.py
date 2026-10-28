@@ -13,8 +13,9 @@ from datetime import date
 from importlib import resources
 from typing import Any, ClassVar
 
+from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES
+
 SCOPES = ("global", "project", "agent")
-TIERS = ("headroom", "standard")
 FORMATS = ("json", "toml", "yaml", "env", "shell")
 
 _REG: dict[str, type[Recommender]] = {}
@@ -32,7 +33,7 @@ def knobs() -> dict[str, Any]:
 class Snippet:
     harness: str
     scope: str
-    tier: str
+    profile: str
     format: str
     title: str
     target: str
@@ -73,7 +74,7 @@ class Recommender(abc.ABC):
 
     @abc.abstractmethod
     def generate(
-        self, result: dict[str, Any], scope: str, tier: str, fmt: str | None, provider: str
+        self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str
     ) -> list[Snippet | Omitted]:
         """Snippets for this harness. fmt None = the scope's native format."""
 
@@ -96,28 +97,35 @@ def k(v: int | None) -> str:
     return "-" if v is None else f"{v // 1000}k"
 
 
-def evidence(g: dict[str, Any], tier: str) -> str:
-    cmp = g["comparison"][tier]
+def evidence(g: dict[str, Any], profile: str) -> str:
+    cmp = g["comparison"][profile]
     vd = cmp["vs_default"]
-    t = g["tiers"][tier]
+    t = g["profiles"][profile]
     d = g["default"]
     tm = g.get("time_model", {})
     sign = "+" if vd["d_cost"] >= 0 else "-"
     return (
-        f"{g['model']} · {g['role']}: {g['n_sessions']} sessions, {g['n_turns']} turns; default {k(d['threshold'])} -> "
-        f"{tier} {k(t['threshold'])}: cost {sign}${abs(vd['d_cost']):,.0f} ({vd['d_cost_pct'] * 100:+.0f}%), "
-        f"time {vd['d_time_s'] / 3600:+.1f}h, compactions {vd['compactions']} vs {vd['ref_compactions']}, "
-        f"recall {t['recall']:.3f} vs {d['recall']:.3f} (assumed); time confidence {tm.get('turn_confidence', '?')}"
+        f"{g['model']} · {g['role']}: {g['n_sessions']} sessions, {g['n_turns']} turns, {g['days']:.0f} days; "
+        f"default {k(d['threshold'])} -> {profile} (${t['value_of_time']:g}/h) {k(t['threshold'])}: "
+        f"list-price cost {sign}${abs(vd['d_cost']):,.0f} ({vd['d_cost_pct'] * 100:+.0f}%), "
+        f"time {vd['d_time_s'] / 3600:+.1f}h ({vd['d_time_min_per_day']:+.0f} min/day), "
+        f"compactions/day {vd['compactions_per_day']:.1f} vs {vd['ref_compactions_per_day']:.1f}, "
+        f"recall {t['recall']:.3f} vs {d['recall']:.3f} (lite proxy); "
+        f"time model {tm.get('turn_source', '?')}/{tm.get('compact_source', '?')}"
     )
 
 
-def safe_value(g: dict[str, Any], tier: str, result: dict[str, Any], lo: int, hi: int) -> tuple[int | None, str]:
+def resolve_profile(result: dict[str, Any], profile: str | None) -> str:
+    return profile or (result.get("options") or {}).get("profile") or DEFAULT_PROFILE
+
+
+def safe_value(g: dict[str, Any], profile: str, result: dict[str, Any], lo: int, hi: int) -> tuple[int | None, str]:
     """Value to emit, or (None, reason). Never outside [lo, hi], the window/effective max, or the configured cap."""
-    cmp = g["comparison"][tier]
+    cmp = g["comparison"][profile]
     if cmp["action"] != "set":
         return None, f"{g['model']} · {g['role']}: {cmp['action']}"
-    v = int(g["tiers"][tier]["threshold"])
-    cap = (result.get("options") or {}).get("headroom_cap")
+    v = int(g["profiles"][profile]["threshold"])
+    cap = (result.get("options") or {}).get("max_threshold")
     limit = min(x for x in (hi, g.get("effective_max"), g.get("max_window"), cap) if x)
     if v < lo or v > limit:
         return None, f"{g['model']} · {g['role']}: {v} outside allowed range [{lo}, {limit}]; not emitted"
@@ -128,34 +136,36 @@ def generate(
     result: dict[str, Any],
     harness: str | None = None,
     scope: str = "global",
-    tier: str = "headroom",
+    profile: str | None = None,
     fmt: str | None = None,
     provider: str = "default",
 ) -> list[Snippet | Omitted]:
+    """Snippets for one profile (default: the result's selected profile)."""
+    profile = resolve_profile(result, profile)
     out: list[Snippet | Omitted] = []
     for name, cls in sorted(recommenders().items()):
         if harness and name != harness:
             continue
         if not any(g["harness"] == name for g in result["groups"]):
             continue
-        out += cls().generate(result, scope, tier, fmt, provider)
+        out += cls().generate(result, scope, profile, fmt, provider)
     return out
 
 
 def generate_all(result: dict[str, Any]) -> list[dict[str, Any]]:
-    """Every harness × scope × tier × native/alternative format, for the report's copy panel."""
+    """Every harness × scope × profile × native/alternative format, for the report's copy panel."""
     rows: list[dict[str, Any]] = []
     for name, cls in sorted(recommenders().items()):
         if not any(g["harness"] == name for g in result["groups"]):
             continue
         for scope in SCOPES:
-            for tier in TIERS:
+            for profile in PROFILE_NAMES:
                 for fmt in cls.formats.get(scope, ()):
-                    for item in cls().generate(result, scope, tier, fmt, "default"):
+                    for item in cls().generate(result, scope, profile, fmt, "default"):
                         if isinstance(item, Snippet):
                             rows.append(item.to_dict())
                         else:
-                            rows.append({"harness": item.harness, "scope": scope, "tier": tier, "format": fmt,
+                            rows.append({"harness": item.harness, "scope": scope, "profile": profile, "format": fmt,
                                          "omitted": item.reason})  # fmt: skip
     return rows
 

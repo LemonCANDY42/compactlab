@@ -20,12 +20,13 @@ def _iso(dt: datetime) -> str:
 
 def _lat(rng: random.Random, ctx: int) -> timedelta:
     """Synthetic request latency: grows with context (prefill) plus noise."""
-    return timedelta(seconds=2.5 + 3.0 * ctx / 100_000 + rng.uniform(0, 4))
+    return timedelta(seconds=2.5 + 0.8 * ctx / 100_000 + rng.uniform(0, 4))
 
 
 def _clat(rng: random.Random, pre: int) -> timedelta:
-    """Synthetic compaction latency: summarizer call that reads the whole context."""
-    return timedelta(seconds=20 + 0.1 * pre / 1000 + rng.uniform(0, 10))
+    """Synthetic compaction latency: a summarizer call that reads the whole context and writes a long summary
+    (real logs show minutes, not seconds, for large contexts)."""
+    return timedelta(seconds=90 + 0.4 * pre / 1000 + rng.uniform(0, 30))
 
 
 def _steps(rng: random.Random, n: int, start: int, hist_limit: int | None):

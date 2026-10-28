@@ -60,7 +60,7 @@ def terminal_svg(text: str) -> str:
     # keep the hero short: first model/role block plus the closing lines
     blocks = text.split("\n\n")
     first = [ln for ln in blocks[1].splitlines() if not ln.strip().startswith("· default")]
-    tail = [ln for ln in text.splitlines() if ln.startswith(("headroom is", "SYNTHETIC"))]
+    tail = [ln for ln in text.splitlines() if ln.startswith(("Profile shown first", "SYNTHETIC"))]
     lines = ["$ uvx compactlab demo --lang en", blocks[0], *first, "  ...", *tail]
     lh, pad, w = 22, 20, 1000
     h = pad * 2 + 30 + lh * len(lines)
@@ -90,7 +90,7 @@ text{{font:13.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-spa
 
 def social_html(result: dict) -> str:
     g = next(x for x in result["groups"] if x["role"] == "main")
-    st, hd = g["tiers"]["standard"], g["tiers"]["headroom"]
+    p = g["profiles"]
     k = lambda v: f"{v // 1000}k"  # noqa: E731
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{{margin:0;width:1280px;height:640px;background:#0e0f11;color:#ececed;
@@ -107,9 +107,9 @@ p{{font-size:34px;line-height:1.3;color:#b9bcc2;margin:18px 0 0;max-width:1000px
 <div><h1>compactlab</h1><p>Your agent history says where to auto-compact. Cost vs context-rot trade-offs per model
 and role, then tune Claude Code / Codex safely.</p></div>
 <div class="row">
-<div class="card"><div class="l">standard</div><div class="v a">{k(st["threshold"])}</div></div>
-<div class="card"><div class="l">headroom (default)</div><div class="v b">{k(hd["threshold"])}</div></div>
-<div class="card"><div class="l">extra cost</div><div class="v">+{hd["extra_cost_pct"] * 100:.0f}%</div></div>
+<div class="card"><div class="l">cost</div><div class="v a">{k(p["cost"]["threshold"])}</div></div>
+<div class="card"><div class="l">balanced (default)</div><div class="v b">{k(p["balanced"]["threshold"])}</div></div>
+<div class="card"><div class="l">time</div><div class="v a">{k(p["time"]["threshold"])}</div></div>
 <div class="n">offline · open source · MIT<br>numbers: synthetic demo data</div>
 </div></div></body></html>"""
 

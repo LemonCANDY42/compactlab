@@ -263,14 +263,7 @@ def plan_deep(
     est = 0.0
     g_by = {(g["model"], g["role"]): g for g in result["groups"]}
     for (m, role), g in sorted(g_by.items()):
-        cands = sorted(
-            {
-                g["tiers"]["standard"]["threshold"],
-                g["tiers"]["headroom"]["threshold"],
-                g["gears"]["eco"],
-                g["gears"]["recall"],
-            }
-        )
+        cands = sorted({p["threshold"] for p in g["profiles"].values()})
         ss = sorted((s for s in sessions if s.model == m and s.role == role), key=lambda s: -s.peak)
         for s in ss[:sessions_per_group]:
             for T in cands:
@@ -301,6 +294,8 @@ def deep_analyze(
         raise EvalError(f"deep mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
     if model == judge_model:
         raise EvalError("judge model must differ from the summarizing/answering model")
+    from ..sim.engine import override_profile
+
     guard = BudgetGuard(budget_usd, pricing)
     measured: dict[tuple[str, str, int], list[float]] = {}
     stopped = ""
@@ -351,27 +346,26 @@ def deep_analyze(
         dis = [
             p for p in pts if p["assumed_recall"] is not None and abs(p["measured_recall"] - p["assumed_recall"]) > 0.1
         ]
-        head = g["tiers"]["headroom"]["threshold"]
-        std = g["tiers"]["standard"]["threshold"]
-        hp = next((p for p in pts if p["threshold"] == head), None)
-        adjusted = None
-        if hp and hp["measured_recall"] < floor:
-            ok_pts = [p["threshold"] for p in pts if std <= p["threshold"] < head and p["measured_recall"] >= floor]
-            adjusted = max(ok_pts) if ok_pts else std
+        adjusted: dict[str, int] = {}
+        for name, prof in g["profiles"].items():
+            thr = prof["threshold"]
+            hp = next((p for p in pts if p["threshold"] == thr), None)
+            if hp and hp["measured_recall"] < floor:
+                ok_pts = [p["threshold"] for p in pts if p["threshold"] < thr and p["measured_recall"] >= floor]
+                adjusted[name] = max(ok_pts) if ok_pts else min(p["threshold"] for p in pts)
         out_groups.append(
             {
                 "model": g["model"],
                 "role": g["role"],
                 "points": pts,
                 "disagreements": dis,
-                "headroom_measured_ok": None if hp is None else hp["measured_recall"] >= floor,
-                "headroom_adjusted_to": adjusted,
+                "adjusted": adjusted,
             }
         )
-        if adjusted is not None:
-            g["tiers"]["headroom"]["lite_threshold"] = head
-            g["tiers"]["headroom"]["threshold"] = adjusted
-            g["gears"]["headroom"] = adjusted
+        for name, thr in adjusted.items():
+            override_profile(g, name, thr, "deep_recall_below_floor")
+        if g["profile"] in adjusted:
+            g["recommendation"] = dict(g["recommendation"], threshold=adjusted[g["profile"]])
     result["mode"] = "deep"
     result["deep"] = {
         "model": model,

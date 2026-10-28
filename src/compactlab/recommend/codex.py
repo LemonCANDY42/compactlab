@@ -31,7 +31,7 @@ class CodexRecommender(Recommender):
         "agent": ("toml",),
     }
 
-    def generate(self, result: dict[str, Any], scope: str, tier: str, fmt: str | None, provider: str) -> list:
+    def generate(self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str) -> list:
         fmt = fmt or self.formats[scope][0]
         if fmt not in self.formats.get(scope, ()):
             return [Omitted(self.harness, f"format {fmt} is not available for scope {scope}; "
@@ -43,7 +43,7 @@ class CodexRecommender(Recommender):
         out: list[Snippet | Omitted] = []
         picks = []
         for g in sorted(groups, key=lambda g: -g["n_turns"]):
-            v, why = safe_value(g, tier, result, 1, 10**9)
+            v, why = safe_value(g, profile, result, 1, 10**9)
             if v is None:
                 out.append(Omitted(self.harness, why))
             else:
@@ -57,24 +57,25 @@ class CodexRecommender(Recommender):
             prov.get(provider, prov["openai"]) if provider != "default" else prov["openai"],
         ]
         notes += [f"Also seen: {o['model']} would get {o_v // 1000}k." for o, o_v in picks[1:]]
-        ev = [evidence(g, tier)]
+        ev = [evidence(g, profile)]
         if scope in ("global", "project"):
             path = "~/.codex/config.toml" if scope == "global" else ".codex/config.toml"
             if scope == "project":
                 notes.insert(0, "Project config is loaded only for trusted projects.")
             if fmt == "shell":
-                out.insert(0, Snippet(self.harness, scope, tier, fmt, f"Codex · -c flag · {tier}", "command line",
+                out.insert(0, Snippet(self.harness, scope, profile, fmt, f"Codex · -c flag · {profile}", "command line",
                                       f"codex -c {KEY}={v}", "", "run without -c", ev,
                                       ["One run; highest precedence.", *notes], [], [KN_FLAG]))  # fmt: skip
             else:
-                out.insert(0, Snippet(self.harness, scope, tier, fmt, f"Codex · {scope} · {tier}: auto-compact limit",
+                out.insert(0, Snippet(self.harness, scope, profile, fmt,
+                                      f"Codex · {scope} · {profile}: auto-compact limit",
                                       path + " (top level, above any [table])", f"{KEY} = {v}",
                                       MERGE.format(p=path, k=KEY, v=v), REVERT.format(k=KEY, p=path),
                                       ev, notes, [], [KN]))  # fmt: skip
         else:
             content = (f"# ~/.codex/config.toml\n[agents.<role>]\nconfig_file = \"<role>.toml\"\n\n"
                        f"# <role>.toml (config layer for that role)\n{KEY} = {v}")  # fmt: skip
-            out.insert(0, Snippet(self.harness, scope, tier, fmt, f"Codex · agent role · {tier}",
+            out.insert(0, Snippet(self.harness, scope, profile, fmt, f"Codex · agent role · {profile}",
                                   "~/.codex/config.toml + <role>.toml", content, "", "remove the key from <role>.toml",
                                   ev, notes, [knobs()["knobs"][KN_AGENT]["note"]], [KN_AGENT]))  # fmt: skip
         return out

@@ -24,44 +24,54 @@ def snips(items):
 
 
 def test_claude_global_json_values_within_bounds(result):
-    (s,) = snips(generate(result, "claude-code", "global", "headroom"))
+    (s,) = snips(generate(result, "claude-code", "global", "balanced"))
     frag = json.loads(s.content)["modelSettings"]
     by = {(g["model"], g["role"]): g for g in result["groups"]}
     for m, v in frag.items():
         g = by[(m, "main")]
-        assert v["autoCompactWindow"] == g["tiers"]["headroom"]["threshold"]
+        assert v["autoCompactWindow"] == g["profiles"]["balanced"]["threshold"]
         assert 100_000 <= v["autoCompactWindow"] <= g["max_window"]
     assert s.target.startswith("~/.claude/settings.json") and s.knobs == [
         "claude.settings.modelSettings.autoCompactWindow"
     ]
     assert s.evidence and "default 967k" in s.evidence[0] and s.revert and s.merge
+    assert "list-price" in s.evidence[0] and "min/day" in s.evidence[0]
+
+
+def test_generate_defaults_to_selected_profile_and_copy_panel_has_all_three(result):
+    (s,) = snips(generate(result, "claude-code", "global"))
+    assert s.profile == "balanced" and "balanced" in s.title
+    rows = generate_all(result)
+    assert {r["profile"] for r in rows} == {"cost", "balanced", "time"}
 
 
 def test_no_action_groups_are_omitted_with_reason(result):
-    items = generate(result, "claude-code", "agent", "headroom")
+    items = generate(result, "claude-code", "agent", "balanced")
     assert not snips(items)
     assert all(isinstance(x, Omitted) and "no action needed" in x.reason for x in items)
 
 
 def test_formats_and_missing_knobs(result):
-    env = snips(generate(result, "claude-code", "global", "headroom", "env"))[0]
+    env = snips(generate(result, "claude-code", "global", "balanced", "env"))[0]
     assert "export CLAUDE_CODE_AUTO_COMPACT_WINDOW=" in env.content
-    sh = snips(generate(result, "claude-code", "global", "standard", "shell"))[0]
+    sh = snips(generate(result, "claude-code", "global", "time", "shell"))[0]
     assert "claude --model claude-opus-5-5 --autocompact" in sh.content
-    (cx_env,) = generate(result, "codex", "global", "headroom", "env")
+    (cx_env,) = generate(result, "codex", "global", "cost", "env")
     assert isinstance(cx_env, Omitted) and "No documented environment variable" in cx_env.reason
-    (bad,) = generate(result, "claude-code", "project", "headroom", "toml")
+    (bad,) = generate(result, "claude-code", "project", "balanced", "toml")
     assert isinstance(bad, Omitted)
-    cx = snips(generate(result, "codex", "global", "headroom"))[0]
+    cx = snips(generate(result, "codex", "global", "cost"))[0]
     g = next(g for g in result["groups"] if g["harness"] == "codex")
     v = int(cx.content.split("=")[1])
     assert v <= 0.9 * g["max_window"] and cx.content.startswith("model_auto_compact_token_limit = ")
+    (keep,) = generate(result, "codex", "global", "balanced")  # balanced does not beat the Codex default here
+    assert isinstance(keep, Omitted) and "keep default" in keep.reason
 
 
-def test_headroom_cap_is_respected(result):
+def test_max_threshold_cap_is_respected(result):
     r = json.loads(json.dumps(result))
-    r["options"]["headroom_cap"] = 120_000
-    items = generate(r, "claude-code", "global", "headroom")
+    r["options"]["max_threshold"] = 120_000
+    items = generate(r, "claude-code", "global", "balanced")
     assert not snips(items) and any("outside allowed range" in o.reason for o in items)
 
 
@@ -70,7 +80,7 @@ def _run(cmd: str, home):
 
 
 def test_claude_merge_and_revert_one_liners_keep_other_keys(result, tmp_path):
-    (s,) = snips(generate(result, "claude-code", "global", "headroom"))
+    (s,) = snips(generate(result, "claude-code", "global", "balanced"))
     f = tmp_path / ".claude" / "settings.json"
     f.parent.mkdir()
     f.write_text(json.dumps({"theme": "dark", "modelSettings": {"claude-opus-5-5": {"effortLevel": "high"}}}))
@@ -85,7 +95,7 @@ def test_claude_merge_and_revert_one_liners_keep_other_keys(result, tmp_path):
 
 
 def test_codex_merge_one_liner_top_level_only(result, tmp_path):
-    (s,) = snips(generate(result, "codex", "global", "headroom"))
+    (s,) = snips(generate(result, "codex", "global", "cost"))
     f = tmp_path / ".codex" / "config.toml"
     f.parent.mkdir()
     f.write_text('model = "gpt-5-codex"\n\n[profiles.x]\nmodel_auto_compact_token_limit = 1\n')
@@ -103,11 +113,11 @@ def test_check_flags_unverified_and_stale(result):
     for g in r["groups"]:
         if g["harness"] == "codex":
             g["role"] = "subagent"
-    agent = snips(generate(r, "codex", "agent", "headroom"))
+    agent = snips(generate(r, "codex", "agent", "cost"))
     assert agent and agent[0].warnings
     probs = check(agent)
     assert any("unverified" in p for p in probs)
-    ok = snips(generate(result, "claude-code", "global", "headroom"))
+    ok = snips(generate(result, "claude-code", "global", "balanced"))
     assert check(ok) == []
     assert any("days ago" in p for p in check(ok, max_age_days=30, today=date(2027, 6, 1)))
     for key in {kk for s in ok + agent for kk in s.knobs}:

@@ -1,7 +1,7 @@
 """compactlab: measure where to auto-compact from your own agent history.
 
 Modes: lite (default; offline, zero cost) and deep (opt-in; adds LLM-driven checks, needs --yes and --budget).
-Tiers: headroom (default; a bit larger than the optimum for fewer lossy compactions) and standard (optimum).
+Profiles: cost ($10/h of agent time), balanced (default, $100/h), time ($400/h), each with guardrails.
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, refresh
 from ..report.html import render_html
 from ..sim.baseline import read_current
-from ..sim.engine import SimOptions, analyze
+from ..sim.engine import SimOptions, analyze, reselect
+from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES, PROFILES, WAIT_CAP_MIN_PER_DAY
 
 STATE = "~/.compactlab"
 EXAMPLES = """examples:
@@ -97,28 +98,17 @@ def _sim(p: argparse.ArgumentParser) -> None:
     g.add_argument(
         "--recall-floor", type=float, default=0.90, help="minimum assumed (or measured) recall (default 0.90)"
     )
+    g.add_argument("--max-threshold", type=_k, help="never recommend a threshold above this")
     g.add_argument(
-        "--headroom",
+        "--wait-cap",
         type=float,
-        default=0.12,
-        help="headroom tier: max combined-score excess over optimum (default 0.12)",
+        default=WAIT_CAP_MIN_PER_DAY,
+        help="guardrail: max added compaction wait vs default, minutes/day (default 30)",
     )
-    g.add_argument("--headroom-cap", type=_k, help="never recommend a headroom threshold above this")
     g.add_argument("--cache-ttl", type=int, help="prompt-cache TTL in seconds (default from pricing file: 300)")
     g.add_argument("--summary-tokens", type=_k, help="compaction summary size (default: observed median, else 12k)")
     g.add_argument("--base-tokens", type=_k, help="post-compaction base context (default: observed, else 35k)")
-    g.add_argument(
-        "--value-of-time",
-        type=float,
-        default=10.0,
-        help="USD per hour of agent wall-clock added to the combined score (default 10; 0 = cost only)",
-    )
-    g.add_argument(
-        "--view",
-        choices=["cost_time", "cost"],
-        default="cost_time",
-        help="score that drives the tiers: cost + time (default) or cost only",
-    )
+    _profile_args(g)
     c = p.add_argument_group("current config (read-only, for comparison)")
     _config_args(c)
     c.add_argument("--no-current", action="store_true", help="do not read current harness config")
@@ -134,6 +124,27 @@ def _sim(p: argparse.ArgumentParser) -> None:
     h.add_argument("--sessions-per-group", type=int, default=3)
     h.add_argument("--budget", type=float, help="hard USD cap for deep mode (required with --mode deep)")
     h.add_argument("--yes", action="store_true", help="confirm deep-mode spending after reviewing the estimate")
+
+
+def _profile_args(g: Any) -> None:
+    vots = ", ".join(f"{n} ${PROFILES[n]['value_of_time']:g}/h" for n in PROFILE_NAMES)
+    g.add_argument(
+        "--profile",
+        choices=PROFILE_NAMES,
+        help=f"which profile to use/apply (default {DEFAULT_PROFILE}; all three are always computed): {vots}",
+    )
+    g.add_argument(
+        "--value-of-time",
+        type=float,
+        help="USD per hour of agent wall-clock; overrides the selected profile's value (0 = cost only)",
+    )
+
+
+def _reselect(a: argparse.Namespace, res: dict[str, Any]) -> dict[str, Any]:
+    """Apply --profile / --value-of-time to a saved result (selection only, no replay)."""
+    if getattr(a, "profile", None) or getattr(a, "value_of_time", None) is not None:
+        reselect(res, getattr(a, "profile", None), getattr(a, "value_of_time", None))
+    return res
 
 
 def _config_args(g: Any) -> None:
@@ -187,8 +198,10 @@ def _opts(a: argparse.Namespace) -> SimOptions:
     except (ValueError, argparse.ArgumentTypeError) as e:
         raise CLIError(f"--grid must look like 100k:1m:25k ({e})") from e
     return SimOptions(
+        profile=a.profile or DEFAULT_PROFILE,
         value_of_time=a.value_of_time,
-        view=a.view,
+        wait_cap_min_per_day=a.wait_cap,
+        max_threshold=a.max_threshold,
         grid_start=lo,
         grid_stop=hi,
         grid_step=st,
@@ -196,9 +209,6 @@ def _opts(a: argparse.Namespace) -> SimOptions:
         ttl_seconds=a.cache_ttl,
         summary_tokens=a.summary_tokens,
         base_tokens=a.base_tokens,
-        headroom_tolerance=a.headroom,
-        headroom_step=st,
-        headroom_cap=a.headroom_cap,
     )
 
 
@@ -231,7 +241,7 @@ def _load_result(path: str) -> dict[str, Any]:
     if not p.exists():
         raise CLIError(f"{p} does not exist. Create it first with: compactlab simulate --out {path}")
     res: dict[str, Any] = json.loads(p.read_text())
-    if res.get("schema", 0) < 3:
+    if res.get("schema", 0) < 4:
         raise CLIError(f"{p} was made by an older compactlab (schema {res.get('schema')}); re-run compactlab simulate")
     return res
 
@@ -303,7 +313,7 @@ def _hrs(sec: float) -> str:
     return f"{sec / 3600:+.1f}h" if abs(sec) >= 360 else f"{sec / 60:+.0f}m"
 
 
-WIDTHS = ((16, "<"), (8, ">"), (24, "<"), (20, ">"), (9, ">"), (13, ">"), (16, ">"))
+WIDTHS = ((16, "<"), (8, ">"), (22, "<"), (18, ">"), (16, ">"), (14, ">"), (16, ">"))
 
 
 def _pad(text: str, width: int, align: str) -> str:
@@ -317,92 +327,125 @@ def _pad(text: str, width: int, align: str) -> str:
 
 T: dict[str, dict[str, Any]] = {
     "en": {
-        "cols": ("tier", "window", "action", "Δcost vs default", "Δtime", "compactions", "recall"),
+        "cols": ("profile", "window", "action", "Δcost vs default", "Δtime (/day)", "compactions/d", "recall"),
         "default": "default",
         "current": "current",
+        "cost": "cost",
+        "balanced": "balanced",
+        "time": "time",
+        "vs_current": "vs current",
         "no_action": "no action needed: the default never compacts in these sessions",
-        "thin_time": "time estimate low-confidence ({n} timed turns)",
-        "prior_time": "time from prior (no usable timestamps)",
-        "note": "headroom is the default tier; Δ are vs the harness default; recall is an assumed proxy in lite mode.",
+        "time_src": "time model: turn latency from {t}, compaction latency from {c} ({n} own samples)",
+        "src": {"own": "this group's data", "pooled": "all {h} sessions (this group is thin)", "prior": "a prior"},
+        "flags": {
+            "below_quarter_window": "{p}: below 25% of the max window; expect frequent lossy compactions",
+            "wait_over_cap": "{p}: adds more than {cap:g} min/day of compaction wait vs default",
+            "guardrail_applied": "{p}: guardrail moved the pick from {u} to {t}",
+            "recall_floor_not_met": "{p}: no threshold met the recall floor",
+            "wait_cap_unreachable": "{p}: no threshold keeps added wait under {cap:g} min/day",
+            "min_window_unreachable": "{p}: the grid does not reach the profile's minimum window",
+            "deep_recall_below_floor": "{p}: deep mode measured recall below the floor; lowered to {t}",
+        },
+        "note": "Profile shown first is selected (--profile, default balanced). Δ vs the harness default. "
+        "Costs are list-price estimates; recall is an assumed proxy in lite mode.",
     },
     "zh": {
-        "cols": ("档位", "阈值", "建议", "成本差(对默认)", "时间差", "压缩次数", "召回"),
+        "cols": ("方案", "阈值", "建议", "成本差(对默认)", "时间差(每天)", "每天压缩", "召回"),
         "default": "默认",
         "current": "当前",
+        "cost": "省钱",
+        "balanced": "均衡",
+        "time": "省时",
+        "vs_current": "对当前",
         "no_action": "无需调整:默认设置在这些会话里从未触发压缩",
-        "thin_time": "时间估计置信度低(仅 {n} 个可计时轮次)",
-        "prior_time": "时间来自先验值(没有可用时间戳)",
-        "note": "默认推荐冗余档(headroom);所有差值相对 harness 默认值;lite 模式下召回率是假设代理值。",
+        "time_src": "时间模型:每轮耗时来自{t},压缩耗时来自{c}(本组 {n} 个样本)",
+        "src": {"own": "本组数据", "pooled": "全部 {h} 会话(本组样本太少)", "prior": "先验值"},
+        "flags": {
+            "below_quarter_window": "{p}:低于最大窗口的 25%,会频繁做有损压缩",
+            "wait_over_cap": "{p}:比默认每天多等压缩超过 {cap:g} 分钟",
+            "guardrail_applied": "{p}:护栏把选择从 {u} 调到 {t}",
+            "recall_floor_not_met": "{p}:没有阈值达到召回下限",
+            "wait_cap_unreachable": "{p}:没有阈值能把额外等待压到每天 {cap:g} 分钟以内",
+            "min_window_unreachable": "{p}:网格达不到该方案的最小窗口",
+            "deep_recall_below_floor": "{p}:deep 模式实测召回低于下限,已降到 {t}",
+        },
+        "note": "第一行方案是当前选择(--profile,默认均衡)。差值相对 harness 默认值。"
+        "成本按公开标价估算;lite 模式下召回率是假设代理值。",
     },
 }
 ACTION_ZH = {"set": "设置", "keep default": "保持默认", "no action needed": "无需调整", "-": "-"}
 
 
+def _dtime(c: dict[str, Any]) -> str:
+    return f"{_hrs(c['d_time_s'])} ({c['d_time_min_per_day']:+.0f}m)"
+
+
 def _summary(res: dict[str, Any], lang: str = "both") -> str:
+    from ..sim.select import compare
+
     langs = ["en", "zh"] if lang == "both" else [lang]
+
+    def name(key: str) -> str:
+        return "/".join(T[x][key] for x in langs)
+
+    def act(action: str) -> str:
+        if action == "-" or lang == "en":
+            return action
+        return ACTION_ZH.get(action, action) if lang == "zh" else f"{action}/{ACTION_ZH.get(action, action)}"
+
     head = f"mode: {res['mode']}" + (f"  (deep spent ${res['deep']['spent_usd']:.2f})" if res.get("deep") else "")
     lines = [head]
     for g in res["groups"]:
-        d = g["default"]
+        d, days, sel = g["default"], g["days"], g["profile"]
         lines.append(
             f"\n{g['model']} · {g['role']} · {g['n_sessions']} sessions · {g['n_turns']} turns"
-            f" · window {_k_(g['max_window'])}"
+            f" · {days:.0f} days · window {_k_(g['max_window'])}"
         )
         for hdr in [T[x]["cols"] for x in langs]:
             lines.append("  " + "".join(_pad(h, w, al) for h, (w, al) in zip(hdr, WIDTHS, strict=True)))
 
-        def row(name: str, thr: int | None, action: str, cmp: dict[str, Any] | None, pt: dict[str, Any]) -> str:
-            act = (
-                action
-                if lang == "en"
-                else (
-                    ACTION_ZH.get(action, action)
-                    if lang == "zh"
-                    else f"{action}/{ACTION_ZH.get(action, action)}"
-                    if action != "-"
-                    else "-"
-                )
-            )
-            if action == "no action needed":
-                cells = ("-", act, "-", "-", f"{pt['compactions']}", f"{pt['recall']:.3f}")
-                return "  " + "".join(_pad(x, w, al) for x, (w, al) in zip((name, *cells), WIDTHS, strict=True))
-            if cmp is None:
-                dc, dt, comp, rc = (
-                    f"${pt['combined_cost']:,.0f} (base)",
-                    "0",
-                    f"{pt['compactions']}",
-                    f"{pt['recall']:.3f}",
-                )
-            else:
-                sign = "+" if cmp["d_cost"] >= 0 else "-"
-                dc = f"{sign}${abs(cmp['d_cost']):,.0f} ({cmp['d_cost_pct'] * 100:+.0f}%)"
-                dt = _hrs(cmp["d_time_s"])
-                comp = f"{cmp['compactions']} (vs {cmp['ref_compactions']})"
-                rc = f"{pt['recall']:.3f} ({cmp['d_recall']:+.3f})"
-            return "  " + "".join(
-                _pad(x, w, al) for x, (w, al) in zip((name, _k_(thr), act, dc, dt, comp, rc), WIDTHS, strict=True)
-            )
+        def row(cells: tuple[str, ...]) -> str:
+            return "  " + "".join(_pad(x, w, al) for x, (w, al) in zip(cells, WIDTHS, strict=True))
 
-        dname = "/".join(T[x]["default"] for x in langs)
-        lines.append(row(dname, d["threshold"], "-", None, d))
+        lines.append(row((name("default"), _k_(d["threshold"]), "-", f"${d['combined_cost']:,.0f} (base)", "0",
+                          f"{d['compactions'] / days:.1f}", f"{d['recall']:.3f}")))  # fmt: skip
         if g.get("current"):
             c = g["current"]
-            from ..sim.engine import compare
-
-            lines.append(row("/".join(T[x]["current"] for x in langs), c["configured"], "-", compare(c, d), c))
-        for name in ("standard", "headroom"):
-            cm = g["comparison"][name]
-            lines.append(row(name, cm["threshold"], cm["action"], cm["vs_default"], g["tiers"][name]))
+            cm = compare(c, d, days)
+            lines.append(row((name("current"), _k_(c["configured"]), "-", _dc(cm), _dtime(cm),
+                              f"{cm['compactions_per_day']:.1f}", f"{c['recall']:.3f}")))  # fmt: skip
+        order = [sel] + [n for n in PROFILE_NAMES if n != sel]
+        for n in order:
+            cm, p = g["comparison"][n], g["profiles"][n]
+            v = cm["vs_default"]
+            label = name(n) + ("*" if n == sel else "")
+            if cm["action"] == "no action needed":
+                lines.append(row((label, "-", act(cm["action"]), "-", "-", f"{v['compactions_per_day']:.1f}",
+                                  f"{p['recall']:.3f}")))  # fmt: skip
+                continue
+            rc = f"{p['recall']:.3f} ({v['d_recall']:+.3f})"
+            lines.append(row((label, _k_(cm["threshold"]), act(cm["action"]), _dc(v), _dtime(v),
+                              f"{v['compactions_per_day']:.1f}", rc)))  # fmt: skip
         notes = []
+        if g.get("current") and not g["no_action_needed"]:
+            vc = {n: g["comparison"][n]["vs_current"] for n in PROFILE_NAMES}
+            parts = [f"{name(n)} {_dc(v)} {_hrs(v['d_time_s'])}" for n, v in vc.items()]
+            notes.append(f"{name('vs_current')}: " + "; ".join(parts))
         if g["no_action_needed"]:
             notes += [T[x]["no_action"] for x in langs]
         tmod = g["time_model"]
-        if tmod["turn_confidence"] == "prior":
-            notes += [T[x]["prior_time"] for x in langs]
-        elif tmod["turn_confidence"] == "low" or tmod["compact_confidence"] != "ok":
-            notes += [T[x]["thin_time"].format(n=tmod["n_turn_samples"]) for x in langs]
-        if not g["recommendation"]["floor_met"]:
-            notes.append("recall floor not met / 未达到召回下限")
+        for x in langs:
+            src = T[x]["src"]
+            notes.append(T[x]["time_src"].format(t=src[tmod.get("turn_source", "prior")].format(h=g["harness"]),
+                                                 c=src[tmod.get("compact_source", "prior")].format(h=g["harness"]),
+                                                 n=tmod["n_compact_samples"]))  # fmt: skip
+        if not g["no_action_needed"]:
+            for n in order:
+                p = g["profiles"][n]
+                fmt = {"cap": p["wait_cap_min_per_day"], "u": _k_(p["unconstrained_threshold"]),
+                       "t": _k_(p["threshold"])}  # fmt: skip
+                for f in p["flags"]:
+                    notes += [T[x]["flags"][f].format(p=T[x][n], **fmt) for x in langs if f in T[x]["flags"]]
         if "en" in langs:
             notes.append(f"default: {d['note']}" + (f"; current: {g['current_note']}" if g.get("current_note") else ""))
         if "zh" in langs:
@@ -414,6 +457,11 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
     lines.append("")
     lines += [T[x]["note"] for x in langs]
     return "\n".join(ln.rstrip() for ln in lines)
+
+
+def _dc(c: dict[str, Any]) -> str:
+    sign = "+" if c["d_cost"] >= 0 else "-"
+    return f"{sign}${abs(c['d_cost']):,.0f} ({c['d_cost_pct'] * 100:+.0f}%)"
 
 
 # ---------- commands ----------
@@ -463,7 +511,10 @@ def cmd_simulate(a: argparse.Namespace) -> int:
         {
             "result": a.out,
             "mode": res["mode"],
-            "groups": [{k: g[k] for k in ("model", "role", "tiers", "recommendation")} for g in res["groups"]],
+            "groups": [
+                {k: g[k] for k in ("harness", "model", "role", "profile", "profiles", "comparison")}
+                for g in res["groups"]
+            ],
         },
         _summary(res, a.lang) + f"\n\nwrote {a.out}",
     )
@@ -471,7 +522,7 @@ def cmd_simulate(a: argparse.Namespace) -> int:
 
 
 def cmd_report(a: argparse.Namespace) -> int:
-    res = _load_result(a.result) if a.result else run_analysis(a)
+    res = _reselect(a, _load_result(a.result)) if a.result else run_analysis(a)
     if res is None:
         return 2
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
@@ -491,12 +542,6 @@ def _open(p: Path) -> None:
 
 def _apply_opts(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("apply")
-    g.add_argument(
-        "--tier",
-        choices=["headroom", "standard", "eco", "recall"],
-        default="headroom",
-        help="which result to write (default headroom); pre-authorization bounds still win",
-    )
     g.add_argument(
         "--preauth", help="pre-authorization JSON: allowed files, key patterns, models, bounds (docs/SAFETY.md)"
     )
@@ -523,18 +568,13 @@ def _preauth(a: argparse.Namespace) -> ap.Preauth:
     return ap.explicit_preauth(files, a.models, a.min, a.max)
 
 
-def _recs(res: dict[str, Any], tier: str) -> list[dict[str, Any]]:
+def _recs(res: dict[str, Any]) -> list[dict[str, Any]]:
+    """The selected profile's threshold per main-session model; groups where the default is fine are left alone."""
     out = []
     for g in res["groups"]:
-        if g["role"] != "main":
+        if g["role"] != "main" or g["comparison"][g["profile"]]["action"] in ("no action needed", "keep default"):
             continue
-        if tier in ("headroom", "standard") and g.get("comparison", {}).get(tier, {}).get("action") in (
-            "no action needed",
-            "keep default",
-        ):
-            continue  # leave the harness default alone
-        v = g["tiers"][tier]["threshold"] if tier in ("headroom", "standard") else g["gears"][tier]
-        out.append({"harness": g["harness"], "model": g["model"], "value": v})
+        out.append({"harness": g["harness"], "model": g["model"], "value": g["profiles"][g["profile"]]["threshold"]})
     return out
 
 
@@ -549,13 +589,13 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
         else:
             files = {h: Path(f) for h, f in (("claude-code", a.claude_settings), ("codex", a.codex_config)) if f}
             pre = ap.explicit_preauth(files, a.models or [g["model"] for g in res["groups"]], a.min, a.max)
-        changes, rejected = ap.plan_changes(_recs(res, a.tier), pre)
+        changes, rejected = ap.plan_changes(_recs(res), pre)
         rendered = ap.render(changes)
     except ap.ApplyError as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
     plan = {
-        "tier": a.tier,
+        "profile": res["groups"][0]["profile"] if res["groups"] else (a.profile or DEFAULT_PROFILE),
         "dry_run": not a.write,
         "changes": [
             {"harness": c.harness, "file": str(c.file), "key": c.key, "old": c.old, "new": c.new} for c in changes
@@ -580,7 +620,7 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
 
 
 def cmd_apply(a: argparse.Namespace) -> int:
-    return _do_apply(a, _load_result(a.result))
+    return _do_apply(a, _reselect(a, _load_result(a.result)))
 
 
 def cmd_retune(a: argparse.Namespace) -> int:
@@ -717,11 +757,12 @@ def cmd_cache(a: argparse.Namespace) -> int:
 def cmd_recommend(a: argparse.Namespace) -> int:
     from ..recommend import Snippet, check, generate
 
-    res = _load_result(a.result) if a.result else run_analysis(a)
+    res = _reselect(a, _load_result(a.result)) if a.result else run_analysis(a)
     if res is None:
         return 2
     harness = a.harness[0] if a.harness and len(a.harness) == 1 else None
-    items = generate(res, harness, a.scope, a.tier, a.format, a.provider)
+    profiles = PROFILE_NAMES if a.all_profiles else (None,)
+    items = [x for pr in profiles for x in generate(res, harness, a.scope, pr, a.format, a.provider)]
     snippets = [x for x in items if isinstance(x, Snippet)]
     omitted = [x for x in items if not isinstance(x, Snippet)]
     if a.check:
@@ -805,9 +846,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--open", action="store_true", help="open the report when done")
     s.set_defaults(f=cmd_report)
 
-    s = sub.add_parser("apply", help="write a tier to harness config (dry-run unless --write + authorization)")
+    s = sub.add_parser("apply", help="write a profile to harness config (dry-run unless --write + authorization)")
     s.add_argument("--result", required=True)
     s.add_argument("--json", action="store_true")
+    _profile_args(s)
     _config_args(s)
     _apply_opts(s)
     s.set_defaults(f=cmd_apply)
@@ -818,7 +860,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(f=cmd_retune)
 
     s = sub.add_parser(
-        "recommend", help="ready-to-paste settings per harness/scope/tier (prints or copies; never writes)"
+        "recommend", help="ready-to-paste settings per harness/scope/profile (prints or copies; never writes)"
     )
     _sim(s)
     s.add_argument("--result", help="use a saved result.json instead of re-running")
@@ -828,7 +870,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="global",
         help="user-level config, project config, or per-agent/subagent (default global)",
     )
-    s.add_argument("--tier", choices=["headroom", "standard"], default="headroom")
+    s.add_argument("--all-profiles", action="store_true", help="print cost, balanced and time side by side")
     s.add_argument(
         "--format",
         choices=["json", "toml", "yaml", "env", "shell"],

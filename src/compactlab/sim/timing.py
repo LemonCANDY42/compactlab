@@ -6,7 +6,9 @@ re-discovery step      median turn latency.
 
 Latency of a turn = timestamp of the response minus the last user/tool-result line before it. That includes
 generation time and, for Claude Code, only the first content block of a response. It is a proxy, so every fit
-carries a confidence label and falls back to a documented prior when data is thin.
+carries a confidence label. A fit that is not "ok" never drives a recommendation: the group falls back to the
+pooled fit of all sessions of the same harness when that one is "ok", else to a documented prior that is
+deliberately pessimistic about compaction latency, so thin data cannot push thresholds down.
 """
 
 from __future__ import annotations
@@ -22,7 +24,8 @@ MAX_TURN_S = 600.0
 MIN_BIN_N = 5
 # Priors (assumed): used only when the user's data is too thin to fit.
 PRIOR_TURN = (8.0, 4.0 / 100_000)  # seconds = a + b·ctx
-PRIOR_COMPACT = (15.0, 0.12 / 1000)  # seconds = a + b·pre_tokens
+PRIOR_COMPACT = (30.0, 0.3 / 1000)  # seconds = a + b·pre_tokens (pessimistic: ~120 s at 300k)
+MIN_COMPACT_OK = 20
 
 
 @dataclass
@@ -35,8 +38,10 @@ class TimeModel:
     n_turn_samples: int = 0
     n_bins: int = 0
     n_compact_samples: int = 0
-    turn_confidence: str = "prior"  # "ok" | "low" | "prior"
+    turn_confidence: str = "prior"  # "ok" | "low" | "prior" (of this group's own data)
     compact_confidence: str = "prior"
+    turn_source: str = "prior"  # what the model actually uses: "own" | "pooled" | "prior"
+    compact_source: str = "prior"
     slope_s_per_100k: float = 0.0
 
     def turn(self, ctx: float) -> float:
@@ -84,7 +89,8 @@ def _fit_line(pts: list[tuple[float, float]]) -> tuple[float, float]:
     return a, b
 
 
-def fit(sessions: list[Session]) -> TimeModel:
+def fit(sessions: list[Session], fallback: TimeModel | None = None) -> TimeModel:
+    """Fit from `sessions`; parts whose confidence is not "ok" use `fallback` (if it is "ok") or the prior."""
     m = TimeModel()
     samples = turn_samples(sessions)
     m.n_turn_samples = len(samples)
@@ -112,6 +118,16 @@ def fit(sessions: list[Session]) -> TimeModel:
     ]
     m.n_compact_samples = len(comp)
     if len(comp) >= 5:
-        m.compact_ab = _fit_line(comp)
-        m.compact_confidence = "ok" if len(comp) >= 20 else "low"
+        m.compact_confidence = "ok" if len(comp) >= MIN_COMPACT_OK else "low"
+    if m.compact_confidence == "ok":
+        m.compact_ab, m.compact_source = _fit_line(comp), "own"
+    elif fallback is not None and fallback.compact_confidence == "ok":
+        m.compact_ab, m.compact_source = fallback.compact_ab, "pooled"
+    if m.turn_confidence == "ok":
+        m.turn_source = "own"
+    elif fallback is not None and fallback.turn_confidence == "ok":
+        m.xs, m.ys, m.turn_source = list(fallback.xs), list(fallback.ys), "pooled"
+        m.median_turn_s = fallback.median_turn_s
+    else:
+        m.xs, m.ys = [], []  # a thin curve must not drive the choice either
     return m

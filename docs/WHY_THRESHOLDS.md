@@ -24,7 +24,9 @@ an assumed shape you can replace.
 A compaction replaces detailed history with a summary. Facts that did not make it in must be re-discovered
 (re-reading files, re-running searches) or are lost, which shows up as user corrections ("I already told you...").
 Summaries can also state things that were never verified ("all tests pass"). Fewer compactions mean fewer of
-these losses, which is why compactlab's default `headroom` tier deliberately sits above the cost optimum.
+these losses. Each compaction also costs wall-clock: in real logs a compaction of a large context takes minutes,
+not seconds. That is why compactlab's default `balanced` profile prices your time at $100/h and never goes below a
+quarter of the window, which puts it well above the cost-only optimum.
 
 ## Putting it together
 

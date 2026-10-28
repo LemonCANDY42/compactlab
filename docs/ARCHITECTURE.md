@@ -5,8 +5,8 @@ src/compactlab/
   adapters/   base.py (Adapter, Parser, registry) · claude_code.py · codex.py · cache.py (incremental scan cache)
   model/      Turn, Compaction, Session + (de)serialization
   pricing/    PricingTable with provenance (bundled -> refreshed -> user) · refresh.py (models.dev / LiteLLM)
-  sim/        engine.py (traces, replay, sweep) · calibrate.py (re-discovery penalty) · select.py (recommend,
-              Pareto, gears, tiers)
+  sim/        engine.py (traces, replay, sweep) · calibrate.py (re-discovery penalty) · select.py (profiles,
+              guardrails, Pareto)
   eval/       factcheck.py (offline heuristics) · deep.py (probes, judge, budget, re-summarize) · executors.py
   report/     html.py + template.html (single offline file)
   recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
@@ -23,7 +23,7 @@ flowchart LR
   B --> D[replay sweep per model/role]
   C --> D
   P[pricing + provenance] --> D
-  D --> E[select: standard, headroom, gears, Pareto]
+  D --> E[select: cost / balanced / time profiles, Pareto]
   E --> R[(result.json)]
   R -->|optional deep: re-summarize, probe, judge| R
   R --> H[report.html]

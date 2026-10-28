@@ -7,22 +7,67 @@ from compactlab.eval.executors import ClaudeCodeExecutor, CodexExecutor
 from compactlab.model import Session, Turn
 from compactlab.pricing import PricingTable
 from compactlab.pricing.refresh import parse_litellm, parse_models_dev, refresh
-from compactlab.sim.select import tiers
+from compactlab.sim.select import PROFILES, select_profile
+
+GRID = [100_000 + 50_000 * i for i in range(19)]  # 100k .. 1M
 
 
-def test_headroom_rules():
-    grid = [100_000, 125_000, 150_000, 175_000, 200_000, 225_000, 250_000]
-    comb = [10.0, 10.2, 10.5, 11.0, 11.4, 12.5, 14.0]
-    rec = [0.95] * 6 + [0.85]
-    comp = [40, 32, 26, 22, 19, 16, 14]
-    t = tiers(grid, comb, rec, comp, 0.9, 100_000, tolerance=0.12, step=25_000)
-    assert t["standard"]["threshold"] == 100_000
-    assert t["headroom"]["threshold"] == 175_000  # 11.0 <= 11.2; 200k is 11.4 > 11.2
-    assert t["headroom"]["fewer_compactions"] == 18 and abs(t["headroom"]["extra_cost_pct"] - 0.10) < 1e-9
-    assert tiers(grid, comb, rec, comp, 0.9, 100_000, tolerance=0.5)["headroom"]["threshold"] == 225_000  # floor
-    assert tiers(grid, comb, rec, comp, 0.9, 100_000, tolerance=0.5, cap=150_000)["headroom"]["threshold"] == 150_000
-    assert tiers(grid, comb, rec, comp, 0.9, 100_000, tolerance=0.5, step=50_000)["headroom"]["threshold"] == 200_000
-    assert tiers(grid, comb, rec, comp, 0.9, 150_000, tolerance=0.0)["headroom"]["threshold"] == 150_000  # never below
+def _times(fast_at):
+    """Wall-clock that is lowest at `fast_at` (seconds), compaction share high for small windows."""
+    return [3600 * (1 + abs(T - fast_at) / 200_000) for T in GRID]
+
+
+def test_profiles_order_and_guardrails(make_group):
+    cost = [100 + (T - 200_000) ** 2 / 1e9 for T in GRID]  # cheapest at 200k
+    g = make_group(GRID, cost, time_s=_times(600_000), compact_s=[0.0] * len(GRID), emax=1_000_000, days=30)
+    p = g["profiles"]
+    assert g["profile"] == "balanced" and set(p) == {"cost", "balanced", "time"}
+    assert p["cost"]["threshold"] <= p["balanced"]["threshold"] <= p["time"]["threshold"]
+    assert p["balanced"]["threshold"] >= 250_000 and p["time"]["threshold"] >= 350_000
+    assert [p[n]["value_of_time"] for n in ("cost", "balanced", "time")] == [10.0, 100.0, 400.0]
+    # every profile is compared with the default, per day
+    v = g["comparison"]["balanced"]["vs_default"]
+    assert {"d_time_min_per_day", "compactions_per_day", "added_wait_min_per_day"} <= set(v)
+
+
+def test_min_window_guardrail_and_cost_warning(make_group):
+    cost = [100 + 10 * i for i in range(len(GRID))]  # money says: smallest window
+    g = make_group(GRID, cost, emax=1_000_000)
+    p = g["profiles"]
+    assert p["cost"]["threshold"] == 100_000 and "below_quarter_window" in p["cost"]["flags"]
+    assert p["balanced"]["threshold"] == 250_000 and "guardrail_applied" in p["balanced"]["flags"]
+    assert p["time"]["threshold"] == 350_000 and p["time"]["unconstrained_threshold"] == 100_000
+
+
+def test_wait_cap_guardrail(make_group):
+    n = len(GRID)
+    cost = [100 + 10 * i for i in range(n)]
+    compact = [max(0.0, (600_000 - T)) / 100_000 * 60 * 20 for T in GRID]  # 20 min/day per 100k below 600k
+    g = make_group(GRID, cost, time_s=[3600 + c for c in compact], compact_s=compact, emax=1_000_000)
+    b = g["profiles"]["balanced"]
+    assert g["comparison"]["balanced"]["vs_default"]["added_wait_min_per_day"] <= 30
+    assert b["threshold"] >= 450_000
+    c = g["profiles"]["cost"]  # cost does not enforce the cap, it flags it
+    assert c["threshold"] == 100_000 and "wait_over_cap" in c["flags"]
+
+
+def test_value_of_time_override_only_moves_the_selected_profile(make_group):
+    from compactlab.sim.engine import reselect
+
+    cost = [100 + (T - 200_000) ** 2 / 1e9 for T in GRID]
+    g = make_group(GRID, cost, time_s=_times(800_000), emax=1_000_000, days=30)
+    res = {"groups": [g], "options": {}}
+    before = {n: g["profiles"][n]["threshold"] for n in PROFILES}
+    reselect(res, "cost", 1000.0)
+    after = {n: g["profiles"][n]["threshold"] for n in PROFILES}
+    assert g["profile"] == "cost" and after["cost"] > before["cost"]
+    assert after["balanced"] == before["balanced"] and after["time"] == before["time"]
+    assert select_profile(g, "cost", vot=0.0)["threshold"] == 200_000
+
+
+def test_keep_default_when_profile_is_not_better(make_group):
+    g = make_group(GRID, [100.0] * len(GRID), emax=1_000_000)
+    assert all(c["action"] == "keep default" for c in g["comparison"].values())
 
 
 def test_models_dev_and_litellm_parsers():
@@ -98,31 +143,19 @@ def _session():
     return s
 
 
-def _result():
-    grid = [100_000, 200_000, 300_000]
-    return {
-        "groups": [
-            {
-                "model": "claude-opus-5-5",
-                "role": "main",
-                "grid": grid,
-                "recall": [0.95, 0.94, 0.93],
-                "recommendation": {"recall_floor": 0.9},
-                "tiers": {"standard": {"threshold": 100_000}, "headroom": {"threshold": 300_000}},
-                "gears": {"eco": 100_000, "recall": 100_000, "headroom": 300_000},
-                "base_tokens": 30_000,
-            }
-        ]
-    }
+def _result(make_group):
+    g = make_group([100_000, 200_000, 300_000], cost=[3.0, 2.0, 1.0], recall=[0.95, 0.94, 0.93])
+    g.update({"model": "claude-opus-5-5", "role": "main", "base_tokens": 30_000})
+    return {"groups": [g], "options": {}}
 
 
-def test_deep_lowers_headroom_when_measured_recall_fails():
+def test_deep_lowers_profiles_when_measured_recall_fails(make_group):
     s = _session()
     plan = DeepPlan([("claude-opus-5-5", "main", s, 100_000, 12), ("claude-opus-5-5", "main", s, 300_000, 45)], 0.1)
 
     res = deep_analyze(
         plan,
-        _result(),
+        _result(make_group),
         MockClient(),
         model="claude-sonnet-5-5",
         judge_model="claude-haiku-5-5",
@@ -132,7 +165,7 @@ def test_deep_lowers_headroom_when_measured_recall_fails():
     )
     assert res["mode"] == "deep" and res["deep"]["groups"][0]["points"]
     # mock answers every probe correctly -> no adjustment
-    assert res["groups"][0]["tiers"]["headroom"]["threshold"] == 300_000
+    assert {p["threshold"] for p in res["groups"][0]["profiles"].values()} == {300_000}
 
     class Wrong(MockClient):
         def complete(self, model, prompt, max_tokens):
@@ -143,7 +176,7 @@ def test_deep_lowers_headroom_when_measured_recall_fails():
 
     res2 = deep_analyze(
         plan,
-        _result(),
+        _result(make_group),
         Wrong(),
         model="claude-sonnet-5-5",
         judge_model="claude-haiku-5-5",
@@ -151,12 +184,15 @@ def test_deep_lowers_headroom_when_measured_recall_fails():
         budget_usd=5,
         confirm=True,
     )
-    assert res2["groups"][0]["tiers"]["headroom"]["threshold"] == 100_000
-    assert res2["groups"][0]["tiers"]["headroom"]["lite_threshold"] == 300_000
+    g2 = res2["groups"][0]
+    assert g2["profiles"]["balanced"]["threshold"] == 100_000 and g2["recommendation"]["threshold"] == 100_000
+    assert g2["profiles"]["balanced"]["lite_threshold"] == 300_000
+    assert "deep_recall_below_floor" in g2["profiles"]["time"]["flags"]
+    assert g2["comparison"]["cost"]["threshold"] == 100_000
     with pytest.raises(EvalError):
         deep_analyze(
             plan,
-            _result(),
+            _result(make_group),
             MockClient(),
             model="a",
             judge_model="a",

@@ -38,16 +38,21 @@ compactlab fits wall-clock behaviour from your own timestamps, per model and rol
 
 - **Turn latency vs context**: latency = response timestamp − last user/tool-result timestamp before it (≤ 600 s).
   Samples are binned by 50k tokens of context; bin medians (≥ 5 samples) are made monotone non-decreasing and
-  interpolated. Confidence: `ok` with ≥ 200 samples in ≥ 3 bins, `low` otherwise, `prior` (8 s + 4 s per 100k)
-  with no usable timestamps.
+  interpolated. Confidence: `ok` with ≥ 200 samples in ≥ 3 bins, `low` otherwise, `prior` with no usable
+  timestamps.
 - **Compaction latency vs size**: compaction timestamp − last input before it (≤ 900 s), fitted as `a + b·pre_tokens`
-  (a, b ≥ 0) with ≥ 5 samples (`ok` with ≥ 20), else the prior 15 s + 0.12 s per 1k tokens.
+  (a, b ≥ 0). Confidence: `ok` with ≥ 20 samples, `low` with 5–19, `prior` below that.
+- **Thin data never drives a pick.** A fit that is not `ok` is not used. The group borrows the pooled fit of all
+  sessions of the same harness when that one is `ok` (`source: pooled`); otherwise it uses a prior (`source: prior`):
+  turn latency 8 s + 4 s per 100k, compaction latency 30 s + 0.3 s per 1k tokens (about 2 minutes at 300k). The
+  compaction prior is deliberately pessimistic, so missing data biases toward fewer compactions, not more. The
+  result records `turn_source` / `compact_source` and the own sample counts, and the CLI and report print them.
 - **Re-discovery time**: (re-discovered tokens ÷ median tool-result size + correction turns) × median turn latency.
 
 Per threshold the replay sums turn time at the simulated context, compaction time and re-discovery time. Versus the
 default this splits into *time saved by smaller contexts* and *time added by compactions and re-discovery*.
-Time enters the score as `time_hours × value_of_time` (default $10/h, a modest weight: you are not idle for all of
-an agent's run). `--value-of-time 0` or `--view cost` gives the cost-only ranking; both views are in the result.
+Time enters the score as `time_hours × value_of_time`. Each profile sets its own value of time (below);
+`--value-of-time` overrides the selected profile's, and `--value-of-time 0` gives a cost-only ranking.
 
 Limits: for Claude Code the response timestamp is the first content block, so long generations are undercounted;
 timestamps include tool and network time; latency depends on load. Treat time as a secondary signal.
@@ -65,35 +70,57 @@ Every result is compared with:
   `autoCompactWindow`, in `~/.claude/settings.json`; top-level `model_auto_compact_token_limit` in
   `~/.codex/config.toml`). Project-level settings, env vars and CLI flags can override these and are not read.
 
-If the default never compacts in a group's sessions, the result is **no action needed**; a tier at or above the
-default is **keep default**. `apply` skips both.
+If the default never compacts in a group's sessions, the result is **no action needed**. A profile whose threshold
+is at or above the default, or whose score is not lower than the default's at the same value of time, is **keep
+default**. `apply` skips both. Comparisons are reported in total and per day (`days` = span of the group's
+timestamps, at least 1): Δcost, Δwall-clock (hours and minutes/day), added compaction wait (minutes/day),
+compactions/day and Δrecall, against the default and against the current setting.
 
-## Selection and tiers
+## Profiles and guardrails
 
-- **standard**: among thresholds with recall ≥ floor (default 0.90), the largest whose score (cost + penalty +
-  time, or cost + penalty in the cost view) is within 2% of the minimum.
-- **headroom** (default): the largest threshold whose combined score is within `--headroom` (default 12%) of the
-  feasible minimum, recall ≥ floor, rounded to the grid step, ≤ `--headroom-cap` and the model window, ≥ standard.
-  The report shows its extra cost and how many fewer compactions it implies.
-- Gears in the report: Eco (cheapest Pareto point meeting the floor), Standard, Headroom, Recall (highest recall on
-  the frontier), Custom.
+Score per threshold: `list-price replay cost + re-discovery penalty + value_of_time × wall-clock hours`.
+
+| Profile | value of time | minimum threshold | added compaction wait vs default |
+| --- | --- | --- | --- |
+| `cost` | $10/h | none (flagged below 25% of the effective max window) | flagged above 30 min/day |
+| `balanced` (default) | $100/h | 25% of the effective max window | ≤ 30 min/day (`--wait-cap`) |
+| `time` | $400/h | 35% of the effective max window | ≤ 30 min/day |
+
+Selection per profile: restrict the grid to `[minimum, min(effective max, --max-threshold)]`; for `balanced` and
+`time`, keep only thresholds whose added compaction + re-discovery wait vs the default is within the cap (if none
+is, the cap is dropped and flagged); then, among thresholds with recall ≥ floor (default 0.90), take the largest
+whose score is within 2% of the lowest (the rule earlier versions called **standard**, now applied per profile).
+Flags record when a guardrail moved the pick (`guardrail_applied`, with the unconstrained threshold), when cost goes
+below a quarter of the window, when wait exceeds the cap, and when the recall floor could not be met.
+
+Why these numbers: with a value of time of $10/h, real histories favored windows near the low end of the grid and
+several times the default's compactions, at minutes of wait each. Pricing an hour of the developer's attention at
+$100 (balanced) or $400 (time) moves the optimum to the hundreds of thousands of tokens. The minimum fractions and
+the 30 min/day cap are judgement calls that keep any profile from producing an extreme setting; they are options,
+not facts about any model.
+
+Selection only needs the stored grid arrays, so `report`, `recommend` and `apply` accept `--profile` and
+`--value-of-time` on a saved `result.json` and re-select without replaying. The report's Pareto frontier and score
+curve are drawn at the selected profile's value of time.
 
 ## Deep mode
 
 For each model/role group, up to N sessions (largest peak first) are cut where the replay would compact at each
-candidate threshold (standard, headroom, eco, recall). The executor model summarizes a reconstructed excerpt of
+candidate threshold (the three profiles' thresholds). The executor model summarizes a reconstructed excerpt of
 the turns before the cut; ground-truth probes (files accessed before the cut) are answered from the summary;
 a different judge model votes `repeats` times. Measured recall is reported next to the assumed value and flagged
-when they differ by more than 0.1. If measured recall at the headroom threshold falls below the floor, headroom is
-lowered to the largest sampled threshold that meets it (or to standard).
+when they differ by more than 0.1. If measured recall at a profile's threshold falls below the floor, that profile is
+lowered to the largest smaller sampled threshold that meets it (or the smallest sampled one) and flagged
+`deep_recall_below_floor`.
 
 ## Known limits
 
-- Replay cost is not your invoice: it ignores uncached input, plan pricing and discounts. Compare thresholds with
+- Replay cost is a list-price estimate, not your invoice: it ignores plan pricing, subscriptions and discounts. Compare thresholds with
   each other, not with billing.
 - Growth is assumed independent of the threshold.
-- Cost-only optima tend to sit low; the recall and headroom rules push the pick up. These rules are judgement
+- Cost-only optima tend to sit low; the value of time and the guardrails push the pick up. These are judgement
   calls, made explicit so you can change them.
+- Recall in lite mode is a proxy (context-rot table × summary retention), not a measurement; only deep mode measures.
 - Deep mode summarizes compactlab's excerpt of a session (tool calls, user text, short output snippets), not the
   full transcript, so it is a proxy for the harness's own summarizer. Probes cover file recall only in v0.1.
 - Fact-check heuristics are regexes with false positives and negatives.

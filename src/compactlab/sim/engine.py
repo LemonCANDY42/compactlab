@@ -13,7 +13,7 @@ from ..model import Session
 from ..pricing import Price, PricingTable
 from .baseline import default_note_zh, default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate
-from .select import gears, recommend, tiers
+from .select import DEFAULT_PROFILE, WAIT_CAP_MIN_PER_DAY, compare, pareto, point, score, select_all
 from .timing import TimeModel, fit
 
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]
@@ -34,11 +34,10 @@ class SimOptions:
     retention_half_turns: float = 15.0  # recovery time scale (assumed)
     rot_table: list[tuple[int, float]] = field(default_factory=lambda: list(DEFAULT_ROT))
     penalty: PenaltyParams | None = None  # None -> calibrate
-    headroom_tolerance: float = 0.12  # headroom tier: allowed combined-score excess over the optimum
-    headroom_step: int = 25_000
-    headroom_cap: int | None = None
-    value_of_time: float = 10.0  # USD per hour of agent wall-clock folded into the combined score
-    view: str = "cost_time"  # which score drives tiers: "cost_time" or "cost"
+    profile: str = DEFAULT_PROFILE  # "cost" | "balanced" | "time" (see sim.select.PROFILES)
+    value_of_time: float | None = None  # USD/h; overrides the selected profile's value of time
+    wait_cap_min_per_day: float = WAIT_CAP_MIN_PER_DAY  # guardrail on added compaction wait vs default
+    max_threshold: int | None = None  # never recommend above this (user cap)
 
 
 @dataclass
@@ -194,7 +193,7 @@ def grid_for(opts: SimOptions, max_threshold: int) -> list[int]:
     return list(range(opts.grid_start, stop + 1, opts.grid_step))
 
 
-def _point(run: Run, T: float | None, n_turns: int, vot: float) -> dict[str, Any]:
+def _point(run: Run, T: float | None, n_turns: int) -> dict[str, Any]:
     combined_cost = run.cost + run.penalty
     return {
         "threshold": None if T is None or math.isinf(T) else int(T),
@@ -205,36 +204,80 @@ def _point(run: Run, T: float | None, n_turns: int, vot: float) -> dict[str, Any
         "time_turns_s": run.t_turns,
         "time_compact_s": run.t_compact,
         "time_redisc_s": run.t_redisc,
-        "combined": combined_cost + run.time_s / 3600 * vot,
         "compactions": run.compactions,
         "recall": run.recall_sum / max(n_turns, 1),
     }
 
 
-def compare(tier: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any]:
-    """Tier minus reference (default or current)."""
-    dc = tier["combined_cost"] - ref["combined_cost"]
+def select_group(g: dict[str, Any], opts: dict[str, Any]) -> None:
+    """(Re)compute a group's profiles, comparison and Pareto set in place from its grid arrays.
+    `opts` is a result's "options" dict, so a stored result can be re-selected without replaying."""
+    sel = opts.get("profile") or DEFAULT_PROFILE
+    profs = select_all(
+        g,
+        selected=sel,
+        vot=opts.get("value_of_time"),
+        floor=opts.get("recall_floor", 0.90),
+        tol=opts.get("tolerance", 0.02),
+        range_tol=opts.get("range_tolerance", 0.05),
+        wait_cap=opts.get("wait_cap_min_per_day", WAIT_CAP_MIN_PER_DAY),
+        cap=opts.get("max_threshold"),
+    )
+    d, cur = g["default"], g.get("current")
+    main = profs[sel]
+    g["profile"] = sel
+    g["profiles"] = profs
+    g["comparison"] = {name: _comparison(g, p) for name, p in profs.items()}
+    g["recommendation"] = main["recommendation"]
+    g["value_of_time"] = main["value_of_time"]
+    g["combined"] = score(g, main["value_of_time"])
+    g["pareto"] = [g["grid"][i] for i in pareto(g["combined"], g["recall"])]
+    g["default"]["combined"] = d["combined_cost"] + d["time_s"] / 3600 * main["value_of_time"]
+    if cur:
+        cur["combined"] = cur["combined_cost"] + cur["time_s"] / 3600 * main["value_of_time"]
+
+
+def _comparison(g: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
+    d, cur, thr = g["default"], g.get("current"), p["threshold"]
+    d_score = d["combined_cost"] + d["time_s"] / 3600 * p["value_of_time"]
+    if g["no_action_needed"]:
+        action = "no action needed"
+    elif thr >= d["threshold"] or p["combined"] >= d_score:  # not better than leaving the default alone
+        action = "keep default"
+    else:
+        action = "set"
     return {
-        "d_cost": dc,
-        "d_cost_pct": dc / ref["combined_cost"] if ref["combined_cost"] else 0.0,
-        "d_time_s": tier["time_s"] - ref["time_s"],
-        "d_time_pct": (tier["time_s"] - ref["time_s"]) / ref["time_s"] if ref["time_s"] else 0.0,
-        "time_saved_context_s": ref["time_turns_s"] - tier["time_turns_s"],
-        "time_added_compaction_s": (tier["time_compact_s"] + tier["time_redisc_s"])
-        - (ref["time_compact_s"] + ref["time_redisc_s"]),
-        "compactions": tier["compactions"],
-        "ref_compactions": ref["compactions"],
-        "d_recall": tier["recall"] - ref["recall"],
+        "threshold": thr,
+        "action": action,
+        "vs_default": compare(p, d, g["days"]),
+        "vs_current": compare(p, cur, g["days"]) if cur else None,
     }
 
 
-def _select(grid, combined, recall, compactions, opts, cap):
-    rec = recommend(grid, combined, recall, opts.recall_floor, opts.tolerance, opts.range_tolerance)
-    gr = gears(grid, combined, recall, opts.recall_floor, rec)
-    tr = tiers(grid, combined, recall, compactions, opts.recall_floor, rec["threshold"], opts.headroom_tolerance,
-               opts.headroom_step, opts.headroom_cap, cap)  # fmt: skip
-    gr["headroom"] = tr["headroom"]["threshold"]
-    return {"recommendation": rec, "gears": gr, "tiers": tr}
+def override_profile(g: dict[str, Any], name: str, threshold: int, flag: str) -> None:
+    """Move one profile to another grid threshold (e.g. after deep mode measured its recall) and refresh it."""
+    old = g["profiles"][name]
+    p = point(g, g["grid"].index(threshold), old["value_of_time"])
+    keep = ("profile", "value_of_time", "min_threshold", "unconstrained_threshold", "recommendation",
+            "wait_cap_min_per_day")  # fmt: skip
+    p.update({k: old[k] for k in keep})
+    p["lite_threshold"] = old["threshold"]
+    p["fraction_of_max"] = threshold / g["effective_max"] if g.get("effective_max") else 0.0
+    p["flags"] = [*old["flags"], flag]
+    g["profiles"][name] = p
+    g["comparison"][name] = _comparison(g, p)
+
+
+def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: float | None = None) -> dict:
+    """Re-run profile selection on a stored result (no replay). Mutates and returns `result`."""
+    opts = result.setdefault("options", {})
+    if profile:
+        opts["profile"] = profile
+    if value_of_time is not None:
+        opts["value_of_time"] = value_of_time
+    for g in result["groups"]:
+        select_group(g, opts)
+    return result
 
 
 def analyze(
@@ -248,10 +291,13 @@ def analyze(
     opts = opts or SimOptions()
     ttl = opts.ttl_seconds or pricing.default_ttl
     rot = rot_fn(opts.rot_table)
-    vot = opts.value_of_time
+    opt_d = {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()}
     groups: dict[tuple[str, str], list[Session]] = defaultdict(list)
+    by_harness: dict[str, list[Session]] = defaultdict(list)
     for s in sessions:
         groups[(s.model, s.role)].append(s)
+        by_harness[s.harness].append(s)
+    pooled = {h: fit(ss) for h, ss in by_harness.items()}
     out_groups = []
     for gi, ((model, role), ss) in enumerate(sorted(groups.items()), 1):
         if progress:
@@ -265,103 +311,79 @@ def analyze(
         obs_summ = [len(c.summary_text) // 4 for s in ss for c in s.compactions if c.summary_text]
         summ = opts.summary_tokens or _median(obs_summ, 12_000)
         pen = opts.penalty or calibrate(ss, base, summ)
-        tm = fit(ss)
+        tm = fit(ss, pooled.get(harness))
         step_tokens = _median([x for s in ss for t in s.turns for x in t.tool_result_tokens], 2000) or 2000
         c = Ctx(price, base, summ, ttl, pen, tm, step_tokens, rot, opts)
         traces = [make_trace(s, base) for s in ss]
         grid = grid_for(opts, cap)
         n_turns = sum(len(t.g) for t in traces)
-        pts = [_point(run_all(traces, T, c), T, n_turns, vot) for T in grid]
+        pts = [_point(run_all(traces, T, c), T, n_turns) for T in grid]
         rows: dict[str, list[Any]] = {
             k: [p[k] for p in pts]
-            for k in ("cost", "penalty", "combined_cost", "combined", "recall", "compactions", "time_s",
+            for k in ("cost", "penalty", "combined_cost", "recall", "compactions", "time_s",
                       "time_turns_s", "time_compact_s", "time_redisc_s")
         }  # fmt: skip
-        views = {
-            "cost_time": _select(grid, rows["combined"], rows["recall"], rows["compactions"], opts, cap),
-            "cost": _select(grid, rows["combined_cost"], rows["recall"], rows["compactions"], opts, cap),
-        }
-        main = views[opts.view]
-        # tier points with full detail
-        for v in views.values():
-            for name in ("standard", "headroom"):
-                t = v["tiers"][name]
-                t.update({k: val for k, val in pts[grid.index(t["threshold"])].items() if k != "threshold"})
+        tss = [t.ts for s in ss for t in s.turns if t.ts]
+        days = max((max(tss) - min(tss)) / 86400, 1.0) if tss else 1.0
 
         d_thr, d_note = default_threshold(harness, model, window)
-        default = _point(run_all(traces, d_thr, c), d_thr, n_turns, vot)
+        default = _point(run_all(traces, d_thr, c), d_thr, n_turns)
         default["note"] = d_note
         default["note_zh"] = default_note_zh(harness, model)
         cur_val, cur_desc = (current or {}).get((harness, model), (None, ""))
         cur = None
         if cur_val is not None:
             eff = min(cur_val, cap)
-            cur = _point(run_all(traces, eff, c), eff, n_turns, vot)
+            cur = _point(run_all(traces, eff, c), eff, n_turns)
             cur["configured"] = cur_val
             cur["source"] = cur_desc
-        no_action = default["compactions"] == 0
-        comparison = {}
-        for name in ("standard", "headroom"):
-            t = main["tiers"][name]
-            action = "no action needed" if no_action else ("keep default" if t["threshold"] >= d_thr else "set")
-            comparison[name] = {
-                "threshold": t["threshold"],
-                "action": action,
-                "vs_default": compare(t, default),
-                "vs_current": compare(t, cur) if cur else None,
-            }
 
         pre = [x.pre_tokens for s in ss for x in s.compactions if x.pre_tokens]
         t_hist = _median(pre, 0) or None
         hist_run = run_all(traces, float(t_hist) if t_hist else math.inf, c)
-        out_groups.append(
-            {
-                "harness": harness,
-                "model": model,
-                "role": role,
-                "price_key": price.key,
-                "price_source": price.source,
-                "n_sessions": len(ss),
-                "n_turns": n_turns,
-                "max_window": window,
-                "window_source": "observed in logs" if observed_window else "pricing data",
-                "effective_max": cap,
-                "base_tokens": base,
-                "summary_tokens": summ,
-                "penalty_params": pen.to_dict(),
-                "time_model": tm.summary(),
-                "value_of_time": vot,
-                "observed_compactions": sum(len(s.compactions) for s in ss),
-                "peak_p50": _median([s.peak for s in ss], 0),
-                "peak_max": max(s.peak for s in ss),
-                "grid": grid,
-                **rows,
-                "baseline_cost": run_all(traces, math.inf, c).cost,
-                "actual_cost": sum(_actual_cost(s, price) for s in ss),
-                "view": opts.view,
-                "views": views,
-                "recommendation": main["recommendation"],
-                "gears": main["gears"],
-                "tiers": main["tiers"],
-                "default": default,
-                "current": cur,
-                "current_note": cur_desc,
-                "no_action_needed": no_action,
-                "comparison": comparison,
-                "history": {
-                    "threshold": t_hist,
-                    "combined": _point(hist_run, None, n_turns, vot)["combined"],
-                    "cost": hist_run.cost,
-                    "recall": hist_run.recall_sum / max(n_turns, 1),
-                },
-                "hist": _hist([t.ctx for s in ss for t in s.turns], window),
-            }
-        )
+        g: dict[str, Any] = {
+            "harness": harness,
+            "model": model,
+            "role": role,
+            "price_key": price.key,
+            "price_source": price.source,
+            "n_sessions": len(ss),
+            "n_turns": n_turns,
+            "days": days,
+            "max_window": window,
+            "window_source": "observed in logs" if observed_window else "pricing data",
+            "effective_max": cap,
+            "base_tokens": base,
+            "summary_tokens": summ,
+            "penalty_params": pen.to_dict(),
+            "time_model": tm.summary(),
+            "observed_compactions": sum(len(s.compactions) for s in ss),
+            "peak_p50": _median([s.peak for s in ss], 0),
+            "peak_max": max(s.peak for s in ss),
+            "grid": grid,
+            **rows,
+            "baseline_cost": run_all(traces, math.inf, c).cost,
+            "actual_cost": sum(_actual_cost(s, price) for s in ss),
+            "default": default,
+            "current": cur,
+            "current_note": cur_desc,
+            "no_action_needed": default["compactions"] == 0,
+            "history": {
+                "threshold": t_hist,
+                "combined_cost": hist_run.cost + hist_run.penalty,
+                "time_s": hist_run.time_s,
+                "cost": hist_run.cost,
+                "recall": hist_run.recall_sum / max(n_turns, 1),
+            },
+            "hist": _hist([t.ctx for s in ss for t in s.turns], window),
+        }
+        select_group(g, opt_d)
+        out_groups.append(g)
     return {
-        "schema": 3,
+        "schema": 4,
         "mode": "lite",
         "data_through": max((t.ts for s in sessions for t in s.turns if t.ts), default=None),
-        "options": {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()},
+        "options": opt_d,
         "pricing_note": pricing.data.get("note", ""),
         "groups": out_groups,
         "sessions": [
