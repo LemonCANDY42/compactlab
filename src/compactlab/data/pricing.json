@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "currency": "USD",
+  "unit": "per million tokens",
+  "note": "ILLUSTRATIVE DEFAULTS. Verify against your provider's price page and override with --pricing. 'verified' is false until a maintainer checks the row.",
+  "default_ttl_seconds": 300,
+  "models": {
+    "claude-fable-5": {"match": ["fable-5"], "input": 15.0, "output": 75.0, "cache_write": 18.75, "cache_read": 1.5, "max_window": 1000000, "verified": false},
+    "claude-opus-5": {"match": ["opus-5"], "input": 5.0, "output": 25.0, "cache_write": 6.25, "cache_read": 0.5, "max_window": 1000000, "verified": false},
+    "claude-sonnet-5": {"match": ["sonnet-5"], "input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3, "max_window": 1000000, "verified": false},
+    "claude-haiku-5": {
+      "match": ["haiku-5"], "input": 1.0, "output": 5.0, "cache_write": 1.25, "cache_read": 0.1, "max_window": 1000000, "verified": false,
+      "long_context": {"above_tokens": 100000, "input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.2}
+    },
+    "claude-opus-4": {"match": ["opus-4"], "input": 5.0, "output": 25.0, "cache_write": 6.25, "cache_read": 0.5, "max_window": 200000, "verified": false},
+    "claude-sonnet-4": {"match": ["sonnet-4"], "input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3, "max_window": 200000, "verified": false},
+    "claude-haiku-4": {"match": ["haiku-4"], "input": 1.0, "output": 5.0, "cache_write": 1.25, "cache_read": 0.1, "max_window": 200000, "verified": false},
+    "gpt-5-codex": {"match": ["codex", "gpt-5"], "input": 1.25, "output": 10.0, "cache_write": 1.25, "cache_read": 0.125, "max_window": 400000, "verified": false}
+  },
+  "fallback": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3, "max_window": 200000, "verified": false}
+}
