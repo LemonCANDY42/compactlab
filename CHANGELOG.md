@@ -21,6 +21,12 @@ versioning: [SemVer](https://semver.org/).
 - Comparisons now include minutes/day, added compaction wait/day and compactions/day, against default and current.
 - Report: profile switch, three profiles side by side with flags, copy panel per profile. CLI/report state that
   costs are list-price estimates and recall is a lite-mode proxy.
+- Report UI: the threshold slider can be dragged continuously (the control bar is built once and updated in place
+  instead of being re-rendered on every input event); sticky control bar; slider marks for the three profiles,
+  the default and the current setting (click to snap); hover/tap tooltips on the charts (click selects); focus and
+  scroll kept across re-renders; copy button feedback and a file:// fallback; 44px touch targets on narrow or
+  touch screens; reduced-motion and focus-ring support; no horizontal scroll at 375 / 768 / 1440 px. Regression
+  tests run the report in headless Chrome (skipped when Chrome is absent).
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
 ### Added

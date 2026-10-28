@@ -99,9 +99,9 @@ gpt-5-codex · main · 6 sessions · 871 turns · 5 days · window 400k
   time                 350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
 ```
 
-The HTML report is one offline file, in Chinese and English (switchable). It has a profile switch (Cost / Balanced /
-Time / Custom threshold), the three profiles side by side against the default and your current setting, a Pareto
-frontier, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
+The HTML report is one offline file, in Chinese and English (switchable). It has a sticky profile switch and threshold
+slider (with marks for each profile, the default and your current setting), the three profiles side by side
+against the default and your current setting, a Pareto frontier with hover/tap tooltips, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
 next to the same session replayed at the chosen threshold.
 
 ## Copy the settings
