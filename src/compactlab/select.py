@@ -19,3 +19,25 @@ def recommend(grid: list[int], combined: list[float], recall: list[float], floor
         "combined_at_best": combined[best], "recall_at_best": recall[best],
         "note": "" if floor_ok else "No threshold met the recall floor; showing highest-recall candidates.",
     }
+
+
+def pareto(combined: list[float], recall: list[float]) -> list[int]:
+    """Indexes not dominated on (lower combined cost, higher recall)."""
+    out = []
+    for i in range(len(combined)):
+        dom = any(combined[j] <= combined[i] and recall[j] >= recall[i] and
+                  (combined[j] < combined[i] or recall[j] > recall[i]) for j in range(len(combined)))
+        if not dom:
+            out.append(i)
+    return out
+
+
+def gears(grid: list[int], combined: list[float], recall: list[float], floor: float, rec: dict) -> dict:
+    """Three presets taken from the Pareto frontier: eco (cheapest meeting the floor), balanced (recommendation),
+    recall (highest assumed recall, cheapest among ties)."""
+    front = pareto(combined, recall)
+    ok = [i for i in front if recall[i] >= floor] or front
+    eco = min(ok, key=lambda i: combined[i])
+    hi = max(recall[i] for i in front)
+    rcl = min((i for i in front if recall[i] >= hi - 1e-9), key=lambda i: combined[i])
+    return {"eco": grid[eco], "balanced": rec["threshold"], "recall": grid[rcl], "pareto": [grid[i] for i in front]}

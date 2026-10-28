@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from .calibrate import PenaltyParams, calibrate
 from .model import Session
 from .pricing import Price, PricingTable
-from .select import recommend
+from .select import gears, recommend
 
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]
 
@@ -150,6 +150,16 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
             rows["compactions"].append(nc)
         baseline = sum(replay(tr, math.inf, price, base, summ, ttl, None, rot, opts)[0] for tr in traces)
         rec = recommend(grid, rows["combined"], rows["recall"], opts.recall_floor, opts.tolerance, opts.range_tolerance)
+        gr = gears(grid, rows["combined"], rows["recall"], opts.recall_floor, rec)
+        pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
+        t_hist = _median(pre, 0) or None
+        th = float(t_hist) if t_hist else math.inf
+        hc = hp = hr = 0.0
+        for tr in traces:
+            c0, k, r = replay(tr, th, price, base, summ, ttl, None, rot, opts)
+            c1 = replay(tr, th, price, base, summ, ttl, pen, rot, opts)[0] if k else c0
+            hc, hp, hr = hc + c0, hp + (c1 - c0), hr + r
+        actual = sum(_actual_cost(s, price) for s in ss)
         harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         out_groups.append({
             "harness": harness, "model": model, "role": role, "price_key": price.key, "price_verified": price.verified,
@@ -157,7 +167,9 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
             "base_tokens": base, "summary_tokens": summ, "penalty_params": pen.to_dict(),
             "observed_compactions": sum(len(s.compactions) for s in ss),
             "peak_p50": _median([s.peak for s in ss], 0), "peak_max": max(s.peak for s in ss),
-            "grid": grid, **rows, "baseline_cost": baseline, "recommendation": rec,
+            "grid": grid, **rows, "baseline_cost": baseline, "actual_cost": actual, "recommendation": rec,
+            "gears": gr,
+            "history": {"threshold": t_hist, "combined": hc + hp, "cost": hc, "recall": hr / max(n_turns, 1)}, "hist": _hist([t.ctx for s in ss for t in s.turns], price.max_window),
         })
     return {
         "schema": 1,
@@ -167,7 +179,8 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
         "sessions": [{
             "id": s.id, "harness": s.harness, "role": s.role, "model": s.model, "turns": len(s.turns),
             "peak": s.peak, "compactions": len(s.compactions),
-            "curve": _downsample([t.ctx for t in s.turns], 80),
+            "curve": _downsample([t.ctx for t in s.turns], 160),
+            "growth": _bin_growth(make_trace(s, 35_000).g, 160),
         } for s in sessions],
     }
 
@@ -177,3 +190,29 @@ def _downsample(xs: list[int], n: int) -> list[int]:
         return xs
     step = len(xs) / n
     return [xs[int(i * step)] for i in range(n)]
+
+
+def _bin_growth(g: list[int], n: int) -> list[int]:
+    if len(g) <= n:
+        return list(g)
+    size = len(g) / n
+    return [sum(g[int(i * size):int((i + 1) * size)]) for i in range(n)]
+
+
+def _actual_cost(s: Session, price: Price) -> float:
+    c = 0.0
+    for t in s.turns:
+        ri, ro, rw, rr = price.rates(t.ctx)
+        c += max(t.ctx - t.cache_read - t.cache_write, 0) * ri + t.cache_read * rr + t.cache_write * rw + t.output * ro
+    return c
+
+
+def _hist(ctxs: list[int], max_window: int, size: int = 50_000) -> dict:
+    n = max(max_window // size, 1)
+    turns, tok = [0] * n, [0] * n
+    for x in ctxs:
+        i = min(x // size, n - 1)
+        turns[i] += 1
+        tok[i] += x
+    tt, ts = max(sum(turns), 1), max(sum(tok), 1)
+    return {"bin": size, "turns": [v / tt for v in turns], "share": [v / ts for v in tok]}
