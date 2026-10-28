@@ -173,14 +173,14 @@ def _set_toml(text: str, value: int | None) -> str:
     top = _toml_top(text)
     rest = text[len(top):]
     if value is None:
-        top = re.sub(rf"^[ \t]*{CODEX_KEY}[ \t]*=[ \t]*[\d_]+[ \t]*(#.*)?\n?", "", top, count=1, flags=re.M)
+        top = re.sub(rf"^[ \t]*{CODEX_KEY}[ \t]*=[ \t]*[\d_]+[ \t]*(#.*)?\n", "", top, count=1, flags=re.M)
         return top + rest
     if rx.search(top):
         top = rx.sub(lambda m: f"{m.group(1)}{value}{m.group(3)}", top, count=1)
     else:
         body = top.rstrip("\n")
         trailing = top[len(body):]
-        top = (body + "\n" if body else "") + f"{CODEX_KEY} = {value}\n" + trailing
+        top = (body + "\n" if body else "") + f"{CODEX_KEY} = {value}" + (trailing or "\n")
         if rest and not trailing:
             top += "\n"
     return top + rest
