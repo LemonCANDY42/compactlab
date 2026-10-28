@@ -1,7 +1,7 @@
 """Normalized event model shared by all harness adapters."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass
@@ -36,6 +36,10 @@ class Session:
     turns: list[Turn] = field(default_factory=list)
     compactions: list[Compaction] = field(default_factory=list)
     context_window: int | None = None
+    parent_id: str | None = None            # fork/resume lineage, when the harness records it
+    unknown_events: dict[str, int] = field(default_factory=dict)  # event types the parser did not use
+    parse_errors: int = 0                   # malformed lines skipped
+    skipped_inherited: int = 0              # usage events judged to be copied from a parent session
 
     @property
     def model(self) -> str:
@@ -47,3 +51,14 @@ class Session:
     @property
     def peak(self) -> int:
         return max((t.ctx for t in self.turns), default=0)
+
+
+def session_to_dict(s: Session) -> dict:
+    return asdict(s)
+
+
+def session_from_dict(d: dict) -> Session:
+    d = dict(d)
+    d["turns"] = [Turn(**t) for t in d.get("turns", [])]
+    d["compactions"] = [Compaction(**c) for c in d.get("compactions", [])]
+    return Session(**d)
