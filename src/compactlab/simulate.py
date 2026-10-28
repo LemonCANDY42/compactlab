@@ -150,8 +150,9 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
             rows["compactions"].append(nc)
         baseline = sum(replay(tr, math.inf, price, base, summ, ttl, None, rot, opts)[0] for tr in traces)
         rec = recommend(grid, rows["combined"], rows["recall"], opts.recall_floor, opts.tolerance, opts.range_tolerance)
+        harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         out_groups.append({
-            "model": model, "role": role, "price_key": price.key, "price_verified": price.verified,
+            "harness": harness, "model": model, "role": role, "price_key": price.key, "price_verified": price.verified,
             "n_sessions": len(ss), "n_turns": n_turns, "max_window": price.max_window,
             "base_tokens": base, "summary_tokens": summ, "penalty_params": pen.to_dict(),
             "observed_compactions": sum(len(s.compactions) for s in ss),
