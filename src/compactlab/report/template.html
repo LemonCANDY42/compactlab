@@ -31,6 +31,8 @@ ul.n{margin:12px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
 .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.seg.sm button{padding:3px 10px;font-size:12px}
 .zh{color:var(--mut)}.banner{margin-top:14px;padding:10px 14px;border-radius:10px;border:1px solid var(--acc2);color:var(--fg)}
 .ctlrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+pre.snip{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:12px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;max-height:420px;margin:10px 0 0}
+.copyrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.btn{font:inherit;font-size:12px;border:1px solid var(--fg);background:var(--fg);color:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer}
 tr.sel td{font-weight:650}td.act{text-align:left}#fCmp th{white-space:normal;vertical-align:bottom}#fCmp th,#fCmp td{padding:6px 5px;font-size:11.5px}
 </style></head><body><main>
 <div class="top"><div><h1>compactlab</h1><p class="sub mut" id="meta"></p></div>
@@ -40,6 +42,8 @@ tr.sel td{font-weight:650}td.act{text-align:left}#fCmp th{white-space:normal;ver
 <section class="panel" id="ctl"></section>
 <h2 id="hCmp"></h2>
 <div class="fig scroll" id="fCmp"></div>
+<h2 id="hCopy"></h2>
+<div class="fig" id="fCopy"></div>
 <h2 id="hTrade"></h2>
 <div class="grid2"><div class="fig" id="fPareto"></div><div class="fig" id="fCost"></div></div>
 <h2 id="hTime"></h2>
@@ -111,7 +115,13 @@ const I={
  nAssume:[(b,s,w,h)=>'Assumed base '+b+', summary '+s+', window '+w+'. Headroom = largest threshold within '+h+'% of the optimum and above the floor.',(b,s,w,h)=>'假设基础上下文 '+b+',摘要 '+s+',窗口 '+w+'。冗余档 = 在最优值 '+h+'% 以内且不低于召回下限的最大阈值。'],
  nFloor:['No threshold met the recall floor; showing highest-recall candidates.','没有阈值达到召回下限,显示召回最高的候选。'],
  nEdge:['Optimum is at the lowest grid value; widen the grid or revisit the penalty assumptions.','最优值落在网格最低点,可以放宽网格或检查惩罚假设。'],
- none:['No sessions found.','没有找到会话。']
+ none:['No sessions found.','没有找到会话。'],
+ hCopy:['Copy settings','复制推荐设置'],
+ cpSub:['Ready-to-paste config per harness and scope. compactlab never writes these files from the report; use the merge line or `compactlab apply`.','按工具和作用范围生成的可直接粘贴的配置。报告不会写任何文件;用合并命令或 `compactlab apply`。'],
+ cpHarness:['Harness','工具'], cpScope:['Scope','作用范围'], cpTier:['Tier','档位'], cpFormat:['Format','格式'],
+ global:['Global (user)','全局(用户级)'], project:['Project','项目级'], agent:['Per agent','按 agent'],
+ cpCopy:['Copy','复制'], cpCopied:['Copied','已复制'], cpFail:['Select the text and copy manually','请手动选中复制'],
+ cpNone:['Nothing to set for this choice:','这个选择下无需设置:']
 };
 const S={gi:0,gear:'headroom',T:null,view:null,lang:'both',sid:null};
 try{const l=localStorage.getItem('compactlab.lang');if(l)S.lang=l}catch(e){}
@@ -137,7 +147,7 @@ function statics(){
   document.documentElement.lang=S.lang==='zh'?'zh':'en';
   $('#meta').innerHTML=(D.demo?'<span class="badge">'+t('synthetic')+'</span> ':'')+'<span class="badge">'+t('mode',D.mode)+'</span> '+esc(D.generated)+' · '+t('groups',D.groups.length)+' · '+t('sessions',D.sessions.length);
   $('#howto').textContent=t('howto');$('#caveat').innerHTML=tp('caveat');
-  for(const k of ['hCmp','hTrade','hTime','hDeep','hHist','hSess'])$('#'+k).textContent=t(k);
+  for(const k of ['hCmp','hCopy','hTrade','hTime','hDeep','hHist','hSess'])$('#'+k).textContent=t(k);
   $('#q').placeholder=t('filter');
   $('#langs').innerHTML=[['both','中 / EN'],['en','EN'],['zh','中文']].map(([k,l])=>`<button data-l="${k}" aria-pressed="${S.lang===k}">${l}</button>`).join('');
   document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}statics();render();renderS()});
@@ -241,7 +251,20 @@ function sessPick(){const g=G(),box=$('#fSess'),ss=D.sessions.filter(s=>s.model=
   f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6}));
   box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('sAct',s.compactions)],['var(--acc)',t('sRep',sim.k)],['var(--acc2)',t('threshold')]]));
   $('#sp').onchange=e=>{S.sid=e.target.value;sessPick()}}
-function render(){controls();comparison();pareto();costs();timeChart();hist();sessPick();deepPanel()}
+function copyPanel(){const b=$('#fCopy'),R=D.recommendations||[];
+  const hs=[...new Set(R.map(r=>r.harness))];if(!hs.length){b.innerHTML='<p class="mut">–</p>';return}
+  S.cp=S.cp||{harness:G().harness,scope:'global',tier:'headroom',format:null};if(!hs.includes(S.cp.harness))S.cp.harness=hs[0];
+  const fmts=[...new Set(R.filter(r=>r.harness===S.cp.harness&&r.scope===S.cp.scope).map(r=>r.format))];if(!fmts.includes(S.cp.format))S.cp.format=fmts[0];
+  const seg=(key,vals,lab)=>`<span class="mut">${t(lab)}</span><div class="seg sm" data-k="${key}">${vals.map(v=>`<button data-v="${v}" aria-pressed="${S.cp[key]===v}">${I[v]?t(v):v}</button>`).join('')}</div>`;
+  const rows=R.filter(r=>r.harness===S.cp.harness&&r.scope===S.cp.scope&&r.tier===S.cp.tier&&r.format===S.cp.format);
+  const snips=rows.filter(r=>!r.omitted),om=rows.filter(r=>r.omitted);
+  const txt=snips.map(r=>r.text).join('\n');
+  b.innerHTML='<p>'+tp('cpSub')+'</p><div class="copyrow">'+seg('harness',hs,'cpHarness')+seg('scope',['global','project','agent'],'cpScope')+seg('tier',['headroom','standard'],'cpTier')+seg('format',fmts,'cpFormat')+'</div>'+
+    (snips.length?'<div class="copyrow" style="margin-top:10px"><button class="btn" id="cpBtn">'+t('cpCopy')+'</button><span class="mut" id="cpMsg"></span></div><pre class="snip" id="cpPre"></pre>':'')+
+    (om.length?'<ul class="n">'+om.map(o=>'<li>'+(snips.length?'':t('cpNone')+' ')+esc(o.omitted)+'</li>').join('')+'</ul>':'');
+  if(snips.length){$('#cpPre').textContent=txt;$('#cpBtn').onclick=async()=>{let ok=false;try{await navigator.clipboard.writeText(txt);ok=true}catch(e){try{const ta=document.createElement('textarea');ta.value=txt;document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove()}catch(e2){}}$('#cpMsg').textContent=ok?t('cpCopied'):t('cpFail')}}
+  b.querySelectorAll('.seg[data-k]').forEach(sg=>sg.querySelectorAll('button').forEach(bt=>bt.onclick=()=>{S.cp[sg.dataset.k]=bt.dataset.v;if(sg.dataset.k!=='format')S.cp.format=null;copyPanel()}))}
+function render(){controls();comparison();copyPanel();pareto();costs();timeChart();hist();sessPick();deepPanel()}
 function pick(i){S.gi=i;S.view=S.view||G().view||'cost_time';S.gear='headroom';S.T=V().gears.headroom;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
 D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.onclick=()=>pick(i);$('#tabs').append(b)});
 statics();

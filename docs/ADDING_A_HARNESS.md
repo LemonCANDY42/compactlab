@@ -71,7 +71,13 @@ duplicates, a compaction, a subagent, malformed lines, an unknown event type, an
 Add an entry under `harnesses` in `src/compactlab/data/harness_formats.json` for every fact the parser relies on,
 with `status` (`documented`, `public-tool`, `assumed`) and a source link.
 
-## 5. Config target (optional)
+## 5. Recommender (optional)
+
+Add `src/compactlab/recommend/<name>.py` with a `Recommender` subclass (`harness`, `formats` per scope, `generate()`),
+register it, and add every key it emits to `data/config_knobs.json` with `status`, `source` and `verified_on`. If the
+harness has no knob for a scope, return an `Omitted` with the reason instead of inventing one.
+
+## 6. Config target (optional)
 
 If the harness has a compaction-threshold setting, add it to `apply/__init__.py` with tests on temp files only,
 and document it in `docs/SAFETY.md`. If it has none, say so in the README harness table.

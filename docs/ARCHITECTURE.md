@@ -9,6 +9,7 @@ src/compactlab/
               Pareto, gears, tiers)
   eval/       factcheck.py (offline heuristics) · deep.py (probes, judge, budget, re-summarize) · executors.py
   report/     html.py + template.html (single offline file)
+  recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
   data/       pricing.json, harness_formats.json (each with source + date)

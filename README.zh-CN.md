@@ -44,6 +44,10 @@ claude-opus-5-5 · subagent · 3 sessions · 143 turns · window 1000k
 - **lite(默认)**:只用日志和价格表,离线、零成本:回放模拟、成本模型、找回惩罚、摘要事实核查启发式。
 - **deep(需显式开启)**:在 lite 基础上,通过 Claude Code 或 Codex 调用你选的模型,在候选阈值处重新生成摘要,用真实事实做探针,并用另一个模型当评审。先显示预估费用,需要 `--yes`,`--budget` 是硬上限。两套结果并排展示,不一致的地方会标出来。
 
+## 复制推荐设置
+
+`compactlab recommend` 按工具和作用范围(`--scope global|project|agent`)、档位(`--tier headroom|standard`)和格式(`--format json|toml|yaml|env|shell`)生成可直接粘贴的配置,`--copy` 复制到剪贴板(macOS),`--check` 检查用到的配置键是否仍经过文档核实。每段配置都写明目标文件、不覆盖其他键的合并命令、依据(来自哪些分组、相对默认的差值、时间置信度)和还原方法;数值不会超出模型窗口或你设的上限,无需调整的分组会单独列出。它只打印或复制,写文件仍然只能用 `apply`。HTML 报告里有同样的面板和复制按钮。Codex 的 agent/profile 层是否认这个键官方文档没写,会带警告输出;Codex 没有对应的环境变量,不会编造。
+
 ## 安全与隐私
 
 - 默认完全离线,不联网、不调用模型。

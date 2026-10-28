@@ -10,6 +10,10 @@ versioning: [SemVer](https://semver.org/).
   (saved by smaller contexts vs added by compactions and re-discovery), `--value-of-time`, cost+time and cost views.
 - Baselines: every tier compared with the harness default (`data/harness_defaults.json`, with sources) and with the
   current configured value; "no action needed" / "keep default"; `apply` skips those.
+- `compactlab recommend`: ready-to-paste settings per harness, scope (global / project / agent), tier and format
+  (json / toml / yaml / env / shell), with merge one-liners, evidence and revert hints; `--copy`, `--check`;
+  per-adapter recommenders; config facts with sources and verified-on dates in `data/config_knobs.json`;
+  "Copy settings" panel in the report.
 - Bilingual output by default: CLI summary and HTML report in Chinese and English (`--lang`, report switch).
 
 ### Changed

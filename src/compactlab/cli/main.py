@@ -675,6 +675,38 @@ def cmd_cache(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_recommend(a: argparse.Namespace) -> int:
+    from ..recommend import Snippet, check, generate
+
+    res = json.loads(Path(a.result).read_text()) if a.result else run_analysis(a)
+    if res is None:
+        return 2
+    harness = a.harness[0] if a.harness and len(a.harness) == 1 else None
+    items = generate(res, harness, a.scope, a.tier, a.format, a.provider)
+    snippets = [x for x in items if isinstance(x, Snippet)]
+    omitted = [x for x in items if not isinstance(x, Snippet)]
+    if a.check:
+        problems = check(snippets, a.max_age_days)
+        _out(a, {"problems": problems}, "\n".join(problems) or f"all {len(snippets)} snippet(s) use verified keys")
+        return 1 if problems else 0
+    text = "\n".join(s.text() for s in snippets)
+    notes = [f"# omitted: {o.harness}: {o.reason}" for o in omitted]
+    if a.json:
+        print(json.dumps({"snippets": [s.to_dict() for s in snippets],
+                          "omitted": [vars(o) for o in omitted]}, indent=2, ensure_ascii=False))  # fmt: skip
+    else:
+        print(text + ("\n" + "\n".join(notes) if notes else ""))
+    if a.copy:
+        if not snippets:
+            print("nothing to copy", file=sys.stderr)
+            return 1
+        if not shutil.which("pbcopy"):
+            raise CLIError("--copy needs pbcopy (macOS); use --print and copy manually")
+        subprocess.run(["pbcopy"], input=text, text=True, check=True)
+        print(f"copied {len(snippets)} snippet(s) to the clipboard", file=sys.stderr)
+    return 0
+
+
 def cmd_demo(a: argparse.Namespace) -> int:
     out = Path(a.out)
     synth.write_claude_code(out / "claude" / "projects", n_main=12, n_sub=6)
@@ -695,6 +727,7 @@ def cmd_demo(a: argparse.Namespace) -> int:
     (out / "report.html").write_text(render_html(res))
     print(_summary(res, getattr(a, "lang", "both")))
     print(f"\nSYNTHETIC DEMO DATA (not your history). Report: {out / 'report.html'}")
+    print(f"Copy the settings / 复制推荐设置: compactlab recommend --result {out / 'result.json'} [--copy]")
     if not a.no_open:
         _open(out / "report.html")
     return 0
@@ -744,6 +777,34 @@ def build_parser() -> argparse.ArgumentParser:
     _sim(s)
     _apply_opts(s)
     s.set_defaults(f=cmd_retune)
+
+    s = sub.add_parser(
+        "recommend", help="ready-to-paste settings per harness/scope/tier (prints or copies; never writes)"
+    )
+    _sim(s)
+    s.add_argument("--result", help="use a saved result.json instead of re-running")
+    s.add_argument(
+        "--scope",
+        choices=["global", "project", "agent"],
+        default="global",
+        help="user-level config, project config, or per-agent/subagent (default global)",
+    )
+    s.add_argument("--tier", choices=["headroom", "standard"], default="headroom")
+    s.add_argument(
+        "--format",
+        choices=["json", "toml", "yaml", "env", "shell"],
+        help="default: the scope's native format (json for Claude Code, toml for Codex, yaml for subagents)",
+    )
+    s.add_argument(
+        "--provider",
+        default="default",
+        help="provider: anthropic|bedrock|vertex|foundry|gateway (Claude Code); openai|amazon-bedrock|custom (Codex)",
+    )
+    s.add_argument("--copy", action="store_true", help="copy the snippet(s) to the macOS clipboard (pbcopy)")
+    s.add_argument("--print", action="store_true", help="print the snippet(s) (default)")
+    s.add_argument("--check", action="store_true", help="flag snippets whose config keys are unverified or stale")
+    s.add_argument("--max-age-days", type=int, default=90, help="with --check: max age of a key's verification")
+    s.set_defaults(f=cmd_recommend)
 
     s = sub.add_parser("revert", help="undo an apply using its manifest")
     s.add_argument("--state-dir", default=STATE)

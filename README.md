@@ -87,6 +87,33 @@ Headroom / Recall / Custom), a cost + time or cost-only view, the default/curren
 frontier, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
 next to the same session replayed at the chosen threshold.
 
+## Copy the settings
+
+```bash
+compactlab recommend                                  # Claude Code settings.json fragment + Codex config.toml line
+compactlab recommend --scope project --copy           # project-level, onto the clipboard (macOS)
+compactlab recommend --scope agent                    # subagent frontmatter (autoCompactWindow)
+compactlab recommend --format env                     # CLAUDE_CODE_AUTO_COMPACT_WINDOW instead
+compactlab recommend --check                          # are the keys still verified against the docs?
+```
+
+Each snippet names its target file and carries a merge one-liner that leaves other keys alone, the evidence it came
+from (groups, delta vs default, time confidence) and a revert hint. Values never exceed the model's window or your
+caps, and groups that need no change are listed as omitted. `recommend` only prints or copies; `apply` is still the
+only command that writes, under pre-authorization. The report has the same panel with copy buttons.
+
+| Harness | Scope | Key | Status |
+| --- | --- | --- | --- |
+| Claude Code | global / project | `modelSettings.<model>.autoCompactWindow` (v2.1.288+) | documented |
+| Claude Code | agent | subagent frontmatter `autoCompactWindow` (v2.1.296+, lowers only) | documented |
+| Claude Code | session | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` env (wins over all), `--autocompact` flag | documented |
+| Codex | global / project | top-level `model_auto_compact_token_limit` (project needs trust) | documented |
+| Codex | session | `codex -c model_auto_compact_token_limit=N` | documented |
+| Codex | agent / profile | role `config_file` layer, profile file | **unverified**: emitted with a warning |
+| Codex | env var | none documented | not emitted |
+
+Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
+
 ## Two modes
 
 | | `lite` (default) | `deep` (opt-in) |

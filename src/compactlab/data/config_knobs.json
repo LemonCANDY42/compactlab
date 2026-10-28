@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "verified_on": "2026-10-29",
+  "status_legend": {
+    "documented": "stated in the vendor's current docs",
+    "public-source": "read from the vendor's open-source code",
+    "unverified": "the mechanism exists but the docs do not say this key works there; emitted with a warning"
+  },
+  "knobs": {
+    "claude.settings.modelSettings.autoCompactWindow": {
+      "harness": "claude-code", "where": "settings.json: modelSettings.<model>.autoCompactWindow",
+      "values": "integer 100000..1000000 or \"auto\"; capped at the model's window", "min_version": "2.1.288",
+      "scopes": ["~/.claude/settings.json", ".claude/settings.json", ".claude/settings.local.json"],
+      "note": "Per model; wins over top-level autoCompactWindow in the same file. Keyed by canonical name (e.g. claude-opus-5-5), which also matches its alias, date-suffixed, [1m] and recognized provider-specific IDs.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/settings-reference#modelsettings", "verified_on": "2026-10-29"
+    },
+    "claude.settings.autoCompactWindow": {
+      "harness": "claude-code", "where": "settings.json: autoCompactWindow (top level)",
+      "values": "integer 100000..1000000; capped at the model's window", "min_version": "",
+      "note": "Applies to every model in that file unless modelSettings sets one.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/settings-reference#autocompactwindow", "verified_on": "2026-10-29"
+    },
+    "claude.agent.autoCompactWindow": {
+      "harness": "claude-code", "where": "subagent frontmatter in ~/.claude/agents/*.md or .claude/agents/*.md",
+      "values": "integer 100000..1000000 (plain integer)", "min_version": "2.1.296",
+      "note": "Lowers the window for that subagent. A subagent's window is sized by its own model.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/sub-agents", "verified_on": "2026-10-29"
+    },
+    "claude.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW": {
+      "harness": "claude-code", "where": "environment variable",
+      "values": "token count 100000..1000000 (k/M suffix needs v2.1.304+; a bare 200 means 200 tokens)", "min_version": "",
+      "note": "Takes precedence over --autocompact, /autocompact and autoCompactWindow; applies to every model in the session.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/model-config#set-the-auto-compact-window", "verified_on": "2026-10-29"
+    },
+    "claude.flag.--autocompact": {
+      "harness": "claude-code", "where": "claude --autocompact <value>",
+      "values": "100K..1M as 200000, 500k, 1M, or 100..1000 meaning thousands; or auto", "min_version": "",
+      "note": "One launch only; overrides saved settings, not the env var.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/model-config#set-the-auto-compact-window", "verified_on": "2026-10-29"
+    },
+    "claude.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS": {
+      "harness": "claude-code", "where": "environment variable",
+      "values": "context window in tokens", "min_version": "2.1.193",
+      "note": "For gateway or custom model IDs Claude Code does not recognize (it assumes 200K for them).",
+      "status": "documented", "source": "https://code.claude.com/docs/en/model-config#correct-the-window-for-a-gateway-or-custom-model-id", "verified_on": "2026-10-29"
+    },
+    "codex.config.model_auto_compact_token_limit": {
+      "harness": "codex", "where": "config.toml top level",
+      "values": "number of tokens; unset = model default (90% of the context window); configured values are clamped to that 90%", "min_version": "",
+      "scopes": ["~/.codex/config.toml", ".codex/config.toml (trusted projects only)"],
+      "note": "Global for the session's model; there is no per-model table.",
+      "status": "documented", "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    },
+    "codex.config.model_auto_compact_token_limit_scope": {
+      "harness": "codex", "where": "config.toml top level", "values": "total (default) | body_after_prefix", "min_version": "",
+      "note": "compactlab's numbers assume `total` (full active context).",
+      "status": "documented", "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    },
+    "codex.flag.-c": {
+      "harness": "codex", "where": "codex -c key=value (or --config)", "values": "TOML value", "min_version": "",
+      "note": "One run; highest precedence above profiles, project and user config.",
+      "status": "documented", "source": "https://developers.openai.com/codex/config-advanced", "verified_on": "2026-10-29"
+    },
+    "codex.profile.model_auto_compact_token_limit": {
+      "harness": "codex", "where": "$CODEX_HOME/<profile>.config.toml, selected with --profile <profile>", "values": "as config.toml", "min_version": "",
+      "note": "Profile files exist, but the docs do not list which keys they may set.",
+      "status": "unverified", "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    },
+    "codex.agent.model_auto_compact_token_limit": {
+      "harness": "codex", "where": "agents.<name>.config_file = \"<role>.toml\" (a config layer for that role)", "values": "as config.toml", "min_version": "",
+      "note": "The role config layer exists; the docs do not say compaction keys are honoured in it.",
+      "status": "unverified", "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    },
+    "codex.env": {
+      "harness": "codex", "where": "environment variable", "values": "", "min_version": "",
+      "note": "No documented environment variable sets the auto-compact limit.", "status": "none",
+      "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    }
+  },
+  "providers": {
+    "claude-code": {
+      "anthropic": "Anthropic API: use the canonical model name as the modelSettings key.",
+      "bedrock": "Amazon Bedrock: model IDs differ (e.g. regional inference profile IDs); recognized provider IDs match the canonical modelSettings entry. Check /model shows a recognized model and the expected window.",
+      "vertex": "Google Cloud Agent Platform (Vertex): IDs may carry an @date suffix, which Claude Code strips; same canonical modelSettings entry.",
+      "foundry": "Microsoft Foundry: as above, provided Claude Code recognizes the model ID.",
+      "gateway": "LLM gateway / custom ANTHROPIC_BASE_URL alias: Claude Code may not recognize the ID and assumes a 200K window. Map it with modelOverrides, append [1m] for 1M models, or set CLAUDE_CODE_MAX_CONTEXT_TOKENS; otherwise the threshold is capped at 200K."
+    },
+    "codex": {
+      "openai": "OpenAI (default provider): the limit is clamped to 90% of the model's context window.",
+      "amazon-bedrock": "Built-in Bedrock provider (model_providers.amazon-bedrock): window depends on the model; set model_context_window if Codex does not know it.",
+      "ollama / lmstudio": "Local OSS providers: windows are often much smaller; the recommendation is clamped to 90% of the window seen in your logs.",
+      "custom": "Custom model_providers.<id>: set model_context_window so the 90% clamp uses the right window."
+    }
+  }
+}

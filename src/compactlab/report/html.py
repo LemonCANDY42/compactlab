@@ -15,6 +15,9 @@ def render_html(result: dict, redact: bool = False) -> str:
     data = json.loads(json.dumps(result))
     ts = data.get("data_through")
     data["generated"] = ("data through " + datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")) if ts else ""
+    from ..recommend import generate_all
+
+    data["recommendations"] = generate_all(data)
     if redact:
         for s in data.get("sessions", []):
             s["id"] = "s-" + hashlib.sha256(s["id"].encode()).hexdigest()[:10]
