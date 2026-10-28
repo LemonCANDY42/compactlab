@@ -1,5 +1,15 @@
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path_factory, monkeypatch):
+    """Tests never see the real home directory (no real transcripts, settings or caches)."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
+        monkeypatch.delenv(v, raising=False)
+    return home
+
 from compactlab import synth
 
 

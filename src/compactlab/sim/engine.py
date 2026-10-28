@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from .calibrate import PenaltyParams, calibrate
 from ..model import Session
 from ..pricing import Price, PricingTable
-from .select import gears, recommend
+from .select import gears, recommend, tiers
 
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]
 
@@ -30,6 +30,9 @@ class SimOptions:
     retention_half_turns: float = 15.0    # recovery time scale (assumed)
     rot_table: list[tuple[int, float]] = field(default_factory=lambda: list(DEFAULT_ROT))
     penalty: PenaltyParams | None = None  # None -> calibrate
+    headroom_tolerance: float = 0.12      # headroom tier: allowed combined-score excess over the optimum
+    headroom_step: int = 25_000
+    headroom_cap: int | None = None
 
 
 @dataclass
@@ -151,6 +154,9 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
         baseline = sum(replay(tr, math.inf, price, base, summ, ttl, None, rot, opts)[0] for tr in traces)
         rec = recommend(grid, rows["combined"], rows["recall"], opts.recall_floor, opts.tolerance, opts.range_tolerance)
         gr = gears(grid, rows["combined"], rows["recall"], opts.recall_floor, rec)
+        tr_ = tiers(grid, rows["combined"], rows["recall"], rows["compactions"], opts.recall_floor, rec["threshold"],
+                    opts.headroom_tolerance, opts.headroom_step, opts.headroom_cap, price.max_window)
+        gr["headroom"] = tr_["headroom"]["threshold"]
         pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
         t_hist = _median(pre, 0) or None
         th = float(t_hist) if t_hist else math.inf
@@ -162,17 +168,19 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
         actual = sum(_actual_cost(s, price) for s in ss)
         harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         out_groups.append({
-            "harness": harness, "model": model, "role": role, "price_key": price.key, "price_verified": price.verified,
+            "harness": harness, "model": model, "role": role, "price_key": price.key, "price_source": price.source,
             "n_sessions": len(ss), "n_turns": n_turns, "max_window": price.max_window,
             "base_tokens": base, "summary_tokens": summ, "penalty_params": pen.to_dict(),
             "observed_compactions": sum(len(s.compactions) for s in ss),
             "peak_p50": _median([s.peak for s in ss], 0), "peak_max": max(s.peak for s in ss),
             "grid": grid, **rows, "baseline_cost": baseline, "actual_cost": actual, "recommendation": rec,
-            "gears": gr,
+            "gears": gr, "tiers": tr_,
             "history": {"threshold": t_hist, "combined": hc + hp, "cost": hc, "recall": hr / max(n_turns, 1)}, "hist": _hist([t.ctx for s in ss for t in s.turns], price.max_window),
         })
     return {
-        "schema": 1,
+        "schema": 2,
+        "mode": "lite",
+        "data_through": max((t.ts for s in sessions for t in s.turns if t.ts), default=None),
         "options": {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()},
         "pricing_note": pricing.data.get("note", ""),
         "groups": out_groups,
@@ -181,7 +189,8 @@ def analyze(sessions: list[Session], pricing: PricingTable, opts: SimOptions | N
             "peak": s.peak, "compactions": len(s.compactions),
             "curve": _downsample([t.ctx for t in s.turns], 160),
             "growth": _bin_growth(make_trace(s, 35_000).g, 160),
-        } for s in sessions],
+            "unknown_events": s.unknown_events, "skipped_inherited": s.skipped_inherited,
+        } for s in sorted(sessions, key=lambda s: (s.harness, s.role, s.id))],
     }
 
 

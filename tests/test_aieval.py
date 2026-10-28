@@ -17,7 +17,7 @@ def session():
 
 def test_requires_confirm_and_different_judge():
     s, c = session()
-    with pytest.raises(EvalError, match="i-understand"):
+    with pytest.raises(EvalError, match="--yes"):
         run_eval(s, c, MockClient(), answer_model="a", judge_model="b", pricing=PR, budget_usd=1)
     with pytest.raises(EvalError, match="differ"):
         run_eval(s, c, MockClient(), answer_model="a", judge_model="a", pricing=PR, budget_usd=1, confirm=True)

@@ -1,5 +1,12 @@
-"""Opt-in AI-evaluation layer. Never runs by default; needs an explicit flag, prints a cost estimate,
-and enforces a hard budget. Network access exists only inside a user-supplied LLMClient.
+"""Hyper mode: opt-in, agent-driven evaluation layered on top of lite.
+
+Never runs by default. The CLI prints an estimated cost, requires `--yes`, and enforces `--budget`
+as a hard cap. Network or harness access happens only inside an `LLMClient` (see executors.py).
+
+Two pieces:
+  run_eval()        probes + LLM judge on summaries that already exist in your history.
+  hyper_analyze()   re-summarizes sampled sessions at candidate thresholds, probes the summaries for
+                    ground-truth facts, and reports measured recall next to lite's assumed recall.
 """
 from __future__ import annotations
 
@@ -14,7 +21,7 @@ from .factcheck import Flag, check_summary
 from ..model import Compaction, Session
 from ..pricing import PricingTable
 
-CONFIRM_FLAG = "--i-understand-this-calls-an-llm"
+CONFIRM_FLAG = "--yes"
 
 
 class EvalError(Exception):
@@ -171,3 +178,127 @@ def load_client(spec: str) -> LLMClient:
     if not cls:
         raise EvalError("--client must be 'mock' or 'package.module:ClassName'")
     return getattr(importlib.import_module(mod), cls)()
+
+
+# ---------------- hyper_analyze: re-summarize at candidate thresholds ----------------
+
+SUMMARY_PROMPT = ("You are compacting an agent session. Write a faithful summary that preserves file paths, "
+                  "decisions, open tasks, errors and test results. Do not claim anything not shown.\n\n")
+MAX_TRANSCRIPT_CHARS = 60_000
+
+
+def transcript_text(s: Session, end: int, max_chars: int = MAX_TRANSCRIPT_CHARS) -> str:
+    """Reconstruct what compactlab kept of turns [0, end): user text, tool calls, output snippets.
+    This is an excerpt, not the full transcript (compactlab never stores full tool outputs)."""
+    parts = []
+    for i, t in enumerate(s.turns[:end]):
+        if t.user_text:
+            parts.append(f"[user] {t.user_text[:500]}")
+        for k in t.tool_keys:
+            parts.append(f"[tool] {k}")
+        for sn in t.snippets[:2]:
+            parts.append(f"[out] {sn[:300]}")
+    text = "\n".join(parts)
+    return text[-max_chars:]
+
+
+def cut_index(s: Session, threshold: int, base: int) -> int | None:
+    from ..sim.engine import make_trace
+    ctx = base
+    for i, g in enumerate(make_trace(s, base).g):
+        ctx += g
+        if ctx > threshold:
+            return i + 1
+    return None
+
+
+@dataclass
+class HyperPlan:
+    pairs: list[tuple[str, str, Session, int, int]]   # (model, role, session, threshold, cut)
+    est_usd: float
+
+
+def plan_hyper(sessions: list[Session], result: dict, pricing: PricingTable, model: str, judge_model: str,
+               repeats: int = 3, sessions_per_group: int = 3, probes: int = 5) -> HyperPlan:
+    pairs = []
+    est = 0.0
+    g_by = {(g["model"], g["role"]): g for g in result["groups"]}
+    for (m, role), g in sorted(g_by.items()):
+        cands = sorted({g["tiers"]["standard"]["threshold"], g["tiers"]["headroom"]["threshold"],
+                        g["gears"]["eco"], g["gears"]["recall"]})
+        ss = sorted((s for s in sessions if s.model == m and s.role == role), key=lambda s: -s.peak)
+        for s in ss[:sessions_per_group]:
+            for T in cands:
+                cut = cut_index(s, T, g["base_tokens"])
+                if cut is None or cut < 10:
+                    continue
+                pairs.append((m, role, s, T, cut))
+                chars = len(transcript_text(s, cut))
+                guard = BudgetGuard(1.0, pricing)
+                est += guard.cost(model, chars // 4 + 100, 2000)
+                est += estimate_cost(probes, 8000, model, judge_model, repeats, pricing)
+    return HyperPlan(pairs, est)
+
+
+def hyper_analyze(plan: HyperPlan, result: dict, client: LLMClient, *, model: str, judge_model: str,
+                  pricing: PricingTable, budget_usd: float, repeats: int = 3, confirm: bool = False) -> dict:
+    if not confirm:
+        raise EvalError(f"hyper mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
+    if model == judge_model:
+        raise EvalError("judge model must differ from the summarizing/answering model")
+    guard = BudgetGuard(budget_usd, pricing)
+    measured: dict[tuple[str, str, int], list[float]] = {}
+    stopped = ""
+    try:
+        for m, role, s, T, cut in plan.pairs:
+            summ = guard.call(client, model, SUMMARY_PROMPT + transcript_text(s, cut), 2000).text
+            comp = Compaction(turn_index=cut, summary_text=summ)
+            ps = make_probes(s, comp)
+            if not ps:
+                continue
+            ok = 0
+            for p in ps:
+                ans = guard.call(client, model, f"Context summary:\n{summ}\n\nQuestion: {p.question}", 200).text
+                votes = []
+                for _ in range(max(repeats, 1)):
+                    raw = guard.call(client, judge_model, f"Ground truth: {p.truth}\nAnswer: {ans}\n"
+                                     "Reply with JSON {\"correct\": true|false} only.", 50).text
+                    try:
+                        votes.append(bool(json.loads(raw).get("correct")))
+                    except (ValueError, AttributeError):
+                        votes.append(False)
+                ok += sum(votes) * 2 > len(votes)
+            measured.setdefault((m, role, T), []).append(ok / len(ps))
+    except BudgetExceeded as e:
+        stopped = str(e)
+    out_groups = []
+    for g in result["groups"]:
+        pts = []
+        for (m, role, T), vals in sorted(measured.items()):
+            if (m, role) != (g["model"], g["role"]):
+                continue
+            assumed = g["recall"][g["grid"].index(T)] if T in g["grid"] else None
+            pts.append({"threshold": T, "measured_recall": sum(vals) / len(vals), "samples": len(vals),
+                        "assumed_recall": assumed})
+        if not pts:
+            continue
+        floor = g["recommendation"]["recall_floor"]
+        dis = [p for p in pts if p["assumed_recall"] is not None and abs(p["measured_recall"] - p["assumed_recall"]) > 0.1]
+        head = g["tiers"]["headroom"]["threshold"]
+        std = g["tiers"]["standard"]["threshold"]
+        hp = next((p for p in pts if p["threshold"] == head), None)
+        adjusted = None
+        if hp and hp["measured_recall"] < floor:
+            ok_pts = [p["threshold"] for p in pts if std <= p["threshold"] < head and p["measured_recall"] >= floor]
+            adjusted = max(ok_pts) if ok_pts else std
+        out_groups.append({"model": g["model"], "role": g["role"], "points": pts, "disagreements": dis,
+                           "headroom_measured_ok": None if hp is None else hp["measured_recall"] >= floor,
+                           "headroom_adjusted_to": adjusted})
+        if adjusted is not None:
+            g["tiers"]["headroom"]["lite_threshold"] = head
+            g["tiers"]["headroom"]["threshold"] = adjusted
+            g["gears"]["headroom"] = adjusted
+    result["mode"] = "hyper"
+    result["hyper"] = {"model": model, "judge_model": judge_model, "repeats": repeats, "spent_usd": guard.spent,
+                       "calls": guard.calls, "budget_usd": budget_usd, "stopped": stopped, "groups": out_groups}
+    return result

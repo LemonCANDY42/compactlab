@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import hashlib
+from datetime import datetime, timezone
 
 TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -13,7 +14,7 @@ TEMPLATE = r"""<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 -apple-system,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:980px;margin:0 auto;padding:28px 16px 64px}
 h1{font-size:22px;font-weight:650;letter-spacing:-.02em;margin:0}h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:36px 0 10px}
-.mut{color:var(--mut)}.sub{margin:4px 0 0;font-size:13px}
+.mut{color:var(--mut)}.badge{display:inline-block;font-size:11px;border:1px solid var(--bd);border-radius:999px;padding:0 8px;margin-right:4px;color:var(--fg)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.sub{margin:4px 0 0;font-size:13px}
 details.note{margin:14px 0 0;font-size:12.5px;color:var(--mut);border-left:2px solid var(--warn);padding:2px 0 2px 12px}details.note summary{cursor:pointer;color:var(--fg)}
 .pills{display:flex;flex-wrap:wrap;gap:6px;margin:22px 0 0}
 .pills button,.seg button{font:inherit;color:var(--mut);background:transparent;border:1px solid var(--bd);border-radius:999px;padding:5px 12px;cursor:pointer;transition:.15s}
@@ -42,6 +43,8 @@ ul.n{margin:12px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
 <section class="panel" id="ctl"></section>
 <h2>Trade-off</h2>
 <div class="grid2"><div class="fig" id="fPareto"></div><div class="fig" id="fCost"></div></div>
+<h2>Lite vs hyper</h2>
+<div class="fig" id="fHyper"></div>
 <h2>Your history</h2>
 <div class="grid2"><div class="fig" id="fHist"></div><div class="fig" id="fSess"></div></div>
 <h2>Sessions</h2>
@@ -54,10 +57,10 @@ const D=JSON.parse(document.getElementById('data').textContent);
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
 const fk=v=>v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k',fd=v=>'$'+(v>=100?Math.round(v).toLocaleString():v.toFixed(2)),pc=v=>(v>=0?'+':'−')+Math.abs(v*100).toFixed(0)+'%';
 const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-$('#meta').textContent='Generated '+D.generated+' · '+D.groups.length+' model/role groups · '+D.sessions.length+' sessions · offline replay';
+$('#meta').innerHTML=(D.demo?'<span class="badge">synthetic demo data</span> ':'')+'<span class="badge">'+D.mode+' mode</span> '+esc(D.generated)+' · '+D.groups.length+' model/role groups · '+D.sessions.length+' sessions';
 $('#caveat').innerHTML='Costs come from replaying your own history against a price table ('+esc(D.pricing_note)+'). Recall is an <b>assumed</b> proxy (context-rot table × summary retention), not a measured curve for any model; it only acts as a floor. Estimated savings are relative to a replay of your historical behaviour, not to your invoice. Treat the result as a starting point to try.';
 function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
-const S={gi:0,gear:'balanced',T:null};
+const S={gi:0,gear:'headroom',T:null};
 const G=()=>D.groups[S.gi];
 function setGear(g){S.gear=g;if(g!=='custom')S.T=G().gears[g];render()}
 function frame(W,H,m){const svg=el('svg',{viewBox:`0 0 ${W} ${H}`});return {svg,x0:m.l,x1:W-m.r,y0:H-m.b,y1:m.t}}
@@ -65,7 +68,7 @@ function axes(f,X,Y,xt,yt,xf,yf){for(const v of yt){f.svg.append(el('line',{x1:f
   for(const v of xt)f.svg.append(el('text',{x:X(v),y:f.y0+16,'text-anchor':'middle'},xf(v)));f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:f.y0,y2:f.y0,class:'ax'}))}
 const ticks=(lo,hi,n)=>Array.from({length:n+1},(_,i)=>lo+(hi-lo)*i/n);
 function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,h=g.history;
-  const gears=[['eco','Eco'],['balanced','Balanced'],['recall','Recall'],['custom','Custom']];
+  const gears=[['eco','Eco'],['standard','Standard'],['headroom','Headroom'],['recall','Recall'],['custom','Custom']];
   const cost=g.combined[i],hc=h.combined,sv=1-cost/hc,sv0=1-cost/g.baseline_cost_total;
   $('#ctl').innerHTML=`<div class="gearrow"><div class="seg" role="group" aria-label="Gear">${gears.map(([k,l])=>`<button data-g="${k}" aria-pressed="${S.gear===k}">${l}</button>`).join('')}</div>
   <div class="slider"><span>Threshold</span><input type="range" min="0" max="${g.grid.length-1}" value="${i}" id="rng" aria-label="Threshold"><b style="color:var(--fg)">${fk(S.T)}</b></div></div>
@@ -73,6 +76,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,h=g.his
    <div><div class="k">Estimated spend vs. your history</div><div class="v ${sv>=0?'good':'bad'}">${pc(-sv)}</div><div class="d">${fd(cost)} vs ${fd(hc)} (${h.threshold?'median compaction ≈ '+fk(h.threshold):'no compaction observed'})</div></div>
    <div><div class="k">vs. never compacting</div><div class="v ${sv0>=0?'good':'bad'}">${pc(-sv0)}</div><div class="d">${fd(g.baseline_cost_total)}</div></div>
    <div><div class="k">Assumed recall</div><div class="v ${g.recall[i]>=r.recall_floor?'':'bad'}">${g.recall[i].toFixed(3)}</div><div class="d">history ${h.recall.toFixed(3)} · floor ${r.recall_floor}</div></div>
+   <div><div class="k">Tiers</div><div class="v">${fk(g.tiers.standard.threshold)} → ${fk(g.tiers.headroom.threshold)}</div><div class="d">standard → headroom: ${pc(g.tiers.headroom.extra_cost_pct)} cost, ${g.tiers.headroom.fewer_compactions} fewer compactions${g.tiers.headroom.lite_threshold?' · hyper lowered from '+fk(g.tiers.headroom.lite_threshold):''}</div></div>
    <div><div class="k">Compactions in replay</div><div class="v">${g.compactions[i]}</div><div class="d">${g.n_sessions} sessions · ${g.n_turns.toLocaleString()} turns</div></div></div>
   <ul class="n">${notes(g).map(n=>'<li>'+esc(n)+'</li>').join('')}</ul>`;
   document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setGear(b.dataset.g));
@@ -81,9 +85,9 @@ function notes(g){const n=[],pp=g.penalty_params,r=g.recommendation;
   if(!r.floor_met)n.push(r.note);
   if(r.threshold===g.grid[0])n.push('Optimum is at the lowest grid value; widen the grid or revisit the penalty assumptions.');
   n.push(pp.source==='prior'?'Penalty uses a prior ('+pp.n_observed+' observed compactions; ≥5 needed to calibrate).':'Penalty calibrated from '+pp.n_observed+' observed compactions.');
-  if(!g.price_verified)n.push('Price row “'+g.price_key+'” is unverified; check the pricing file.');
-  n.push('Assumed base '+fk(g.base_tokens)+', summary '+fk(g.summary_tokens)+', window '+fk(g.max_window)+'. Gears: Eco = cheapest on the Pareto frontier meeting the floor, Balanced = recommendation, Recall = highest assumed recall.');return n}
-function pareto(){const g=G(),box=$('#fPareto');box.innerHTML='<h3>Pareto frontier</h3><p>Each dot is a threshold: lower-right is cheaper, higher is safer (assumed recall).</p>';
+  n.push('Prices: row “'+g.price_key+'” from '+g.price_source+'.');
+  n.push('Assumed base '+fk(g.base_tokens)+', summary '+fk(g.summary_tokens)+', window '+fk(g.max_window)+'. Gears: Eco = cheapest Pareto point meeting the floor; Standard = combined-score optimum; Headroom (default) = largest threshold within '+Math.round(g.tiers.headroom.rule.tolerance*100)+'% of the optimum and above the floor; Recall = highest assumed recall.');return n}
+function pareto(){const g=G(),box=$('#fPareto');box.innerHTML='<h3>Pareto frontier</h3><p>Each dot is a threshold. Up and to the left is better: cheaper and safer (assumed recall).</p>';
   const f=frame(460,300,{l:48,r:14,t:10,b:30});const xs=g.combined,ys=g.recall;
   let x0=Math.min(...xs,g.history.combined),x1=Math.max(...xs,g.history.combined),y0=Math.min(...ys,g.history.recall),y1=Math.max(...ys,g.history.recall);
   const px=(x1-x0||1)*.06,py=(y1-y0||.01)*.12;x0-=px;x1+=px;y0-=py;y1+=py;
@@ -94,11 +98,16 @@ function pareto(){const g=G(),box=$('#fPareto');box.innerHTML='<h3>Pareto fronti
   f.svg.append(el('polyline',{points:fr.map(i=>X(xs[i])+','+Y(ys[i])).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.5,opacity:.7}));
   g.grid.forEach((t,i)=>{const on=fr.includes(i);f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:on?4:2.6,fill:on?'var(--acc)':'var(--ghost)'}))});
   const lab=(i,t,c)=>{f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:7,fill:'none',stroke:c,'stroke-width':1.5}));f.svg.append(el('text',{x:X(xs[i])+10,y:Y(ys[i])-8,style:'fill:'+c},t))};
-  ['eco','balanced','recall'].forEach(k=>{const i=g.grid.indexOf(g.gears[k]);if(i>=0&&k!==S.gear)lab(i,k+' '+fk(g.grid[i]),'var(--mut)')});
+  const hy=hyperOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--fg)','stroke-width':1.3}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--fg)','stroke-dasharray':'2 2','stroke-width':.8}))});
+  ['eco','standard','headroom','recall'].forEach(k=>{const i=g.grid.indexOf(g.gears[k]);if(i>=0&&k!==S.gear)lab(i,k+' '+fk(g.grid[i]),'var(--mut)')});
   const si=g.grid.indexOf(S.T);f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:8,fill:'var(--acc2)',opacity:.9}));f.svg.append(el('text',{x:X(xs[si])+11,y:Y(ys[si])-9,style:'fill:var(--fg);font-weight:600'},fk(S.T)));
   f.svg.append(el('rect',{x:X(g.history.combined)-4,y:Y(g.history.recall)-4,width:8,height:8,fill:'var(--warn)'}));f.svg.append(el('text',{x:X(g.history.combined)+8,y:Y(g.history.recall)+14,style:'fill:var(--warn)'},'your history'));
   f.svg.append(el('text',{x:f.x1,y:f.y1+8,'text-anchor':'end'},'x: cost + penalty (USD)'));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--acc)"></i>Pareto-optimal</span><span><i style="background:var(--ghost)"></i>dominated</span><span><i style="background:var(--acc2)"></i>selected</span><span><i style="background:var(--warn)"></i>your history / floor</span></div>')}
+  box.append(f.svg);box.insertAdjacentHTML('beforeend','<div class="legend"><span><i style="background:var(--acc)"></i>Pareto-optimal</span><span><i style="background:var(--ghost)"></i>dominated</span><span><i style="background:var(--acc2)"></i>selected</span><span><i style="background:var(--warn)"></i>your history / floor</span>'+(hyperOf(g)?'<span><i style="background:var(--fg)"></i>hyper: measured recall</span>':'')+'</div>')}
+function hyperOf(g){return D.hyper&&D.hyper.groups.find(x=>x.model===g.model&&x.role===g.role)}
+function hyperPanel(){const g=G(),b=$('#fHyper'),hy=hyperOf(g);if(!D.hyper){b.innerHTML='<h3>Lite vs hyper</h3><p>This report is <b>lite</b> only: recall is an assumed proxy. Run <code>compactlab simulate --mode hyper --budget N</code> to measure recall at candidate thresholds (costs money; estimate shown first).</p>';return}
+  if(!hy){b.innerHTML='<h3>Lite vs hyper</h3><p>No hyper samples for this group.</p>';return}
+  b.innerHTML='<h3>Lite vs hyper</h3><p>'+esc(D.hyper.model)+' summarizes, '+esc(D.hyper.judge_model)+' judges ('+D.hyper.repeats+' votes). Spent '+fd(D.hyper.spent_usd)+' of '+fd(D.hyper.budget_usd)+'.'+(D.hyper.stopped?' Stopped early: '+esc(D.hyper.stopped):'')+'</p><table><tr><th>threshold</th><th>assumed (lite)</th><th>measured (hyper)</th><th>samples</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">disagree</span>':''}</td></tr>`).join('')+'</table>'+(hy.headroom_adjusted_to?'<p class="bad">Measured recall at the lite headroom fell below the floor; headroom lowered to '+fk(hy.headroom_adjusted_to)+'.</p>':'')}
 function costs(){const g=G(),box=$('#fCost');box.innerHTML='<h3>Cost by threshold</h3><p>Replay cost, re-discovery penalty and their sum.</p>';
   const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=g.grid,hi=Math.max(...g.combined)*1.06;
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
@@ -132,8 +141,8 @@ function sessPick(){const g=G(),box=$('#fSess'),ss=D.sessions.filter(s=>s.model=
   f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6}));
   box.append(f.svg);box.insertAdjacentHTML('beforeend',`<div class="legend"><span><i style="background:var(--ghost)"></i>actual (${s.compactions} compactions)</span><span><i style="background:var(--acc)"></i>replayed (${sim.k} compactions)</span><span><i style="background:var(--acc2)"></i>threshold</span></div>`);
   $('#sp').onchange=e=>{S.sid=e.target.value;sessPick()}}
-function render(){controls();pareto();costs();hist();sessPick()}
-function pick(i){S.gi=i;S.gear='balanced';S.T=G().gears.balanced;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
+function render(){controls();pareto();costs();hist();sessPick();hyperPanel()}
+function pick(i){S.gi=i;S.gear='headroom';S.T=G().gears.headroom;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
 D.groups.forEach(g=>{g.baseline_cost_total=g.baseline_cost+0});
 D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.textContent=g.model+' · '+g.role;b.onclick=()=>pick(i);$('#tabs').append(b)});
 if(D.groups.length)pick(0);else $('#ctl').textContent='No sessions found.';
@@ -148,8 +157,13 @@ $('#q').oninput=renderS;renderS();
 </script></body></html>"""
 
 
-def render_html(result: dict) -> str:
-    data = dict(result)
-    data["generated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+def render_html(result: dict, redact: bool = False) -> str:
+    """Deterministic: the same result renders to the same bytes (no wall-clock timestamps)."""
+    data = json.loads(json.dumps(result))
+    ts = data.get("data_through")
+    data["generated"] = ("data through " + datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")) if ts else ""
+    if redact:
+        for s in data.get("sessions", []):
+            s["id"] = "s-" + hashlib.sha256(s["id"].encode()).hexdigest()[:10]
+    payload = json.dumps(data, separators=(",", ":"), sort_keys=True).replace("</", "<\\/")
     return TEMPLATE.replace("__DATA__", payload)

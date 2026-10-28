@@ -14,7 +14,7 @@ PR = PricingTable.load()
 
 def test_pricing_lookup_and_long_context():
     p = PR.lookup("claude-haiku-5-5")
-    assert p.key == "claude-haiku-5"
+    assert p.key == "claude-haiku-5-5" and p.source.startswith("bundled")
     short, long_ = p.rates(50_000), p.rates(150_000)
     assert long_[0] > short[0] and long_[3] > short[3]
     assert PR.lookup("claude-opus-5-5").rates(900_000) == PR.lookup("claude-opus-5-5").rates(1000)
@@ -23,9 +23,10 @@ def test_pricing_lookup_and_long_context():
 
 def test_pricing_override(tmp_path):
     f = tmp_path / "p.json"
-    f.write_text('{"version":1,"models":{"claude-opus-5":{"match":["opus-5"],"input":1,"output":2,"cache_write":1,"cache_read":0.1}}}')
+    f.write_text('{"version":1,"models":{"claude-opus-5-5":{"input":1,"output":2,"cache_write":1,"cache_read":0.1}}}')
     p = PricingTable.load(f).lookup("claude-opus-5-5")
-    assert p.output == 2
+    assert p.output == 2 and p.source.startswith("user")
+    assert PricingTable.load(f).lookup("claude-opus-5-5-20261001").key == "claude-opus-5-5"
 
 
 def _trace(n=200, g=3000, gap=10):
