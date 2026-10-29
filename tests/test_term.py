@@ -173,3 +173,16 @@ def test_cli_terminal_paths(tmp_path, claude_root, codex_root, capsys, monkeypat
     assert cli_main(["top", "--result", str(out), "--once", "--plain", "--width", "80", "--height", "24"]) == 0
     frame = capsys.readouterr().out.splitlines()
     assert len(frame) == 24 and all(cw(x) <= 80 for x in frame) and "\x1b[" not in "".join(frame)
+
+
+@pytest.mark.parametrize("name", ["demo.svg", "top.svg"])
+def test_terminal_svgs_render_without_animation_or_whitespace_handling(name):
+    """Visible with no CSS animation (rsvg-convert, Quick Look, previews) and spacing fixed by x positions."""
+    svg = (Path(__file__).parent.parent / "docs" / "assets" / name).read_text()
+    assert 'xml:space="preserve"' in svg.split(">", 1)[0]
+    without_keyframes = re.sub(r"@keyframes[^}]*\}\}", "", svg)
+    assert "opacity:0" not in without_keyframes.replace(" ", "")  # the default state is fully visible
+    assert "@keyframes in{from{opacity:0}}" in svg  # the fade-in is additive
+    spans = re.findall(r"<tspan ([^>]*)>([^<]*)</tspan>", svg)
+    assert spans and all('x="' in a and "textLength" in a for a, _ in spans)
+    assert all(t == t.strip() and "  " not in t for _, t in spans), "runs of spaces must be split into positioned runs"

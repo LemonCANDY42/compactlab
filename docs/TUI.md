@@ -73,5 +73,6 @@ snapshots of the widgets in `tests/golden/`; `UPDATE_GOLDEN=1` regenerates them)
 ## Assets
 
 `scripts/make_assets.py` runs the real CLI with `--color always` at a fixed width, converts the ANSI output to SVG
-(each run of text placed at its column and stretched to its cell width, rows fading in, static under reduced
-motion) and writes `docs/assets/demo.svg` and `docs/assets/top.svg`. Synthetic data only.
+(each run of non-blank text placed at its own column, x = column × cell width, and stretched to its cell width,
+so spacing never depends on whitespace handling; text is visible by default and the fade-in is additive, so
+renderers without CSS animation such as rsvg-convert and Quick Look show the whole frame) and writes `docs/assets/demo.svg` and `docs/assets/top.svg`. Synthetic data only.

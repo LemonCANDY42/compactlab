@@ -217,7 +217,8 @@ def braille(series: list[tuple[Sequence[float], str]], cols: int, rows: int, lo:
             pts.append(min(h * 4 - 1, max(0, round((1 - y) * (h * 4 - 1)))))
         for x in range(w * 2):
             y0, y1 = pts[x], pts[x - 1] if x else pts[x]
-            for y in range(min(y0, y1), max(y0, y1) + 1):  # join steps so the line stays connected
+            for y in range(min(y0, y1), max(y0, y1) + 2):  # join steps; one extra dot row makes the line heavier
+                y = min(y, h * 4 - 1)
                 cy, cx = divmod(y, 4)[0], x // 2
                 bits[cy][cx] |= DOTS[y % 4][x % 2]
                 role[cy][cx] = r

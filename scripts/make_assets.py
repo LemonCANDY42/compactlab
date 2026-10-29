@@ -186,8 +186,12 @@ def ansi_lines(text: str) -> list[list[tuple[str, str, bool]]]:
 
 
 def terminal_svg(text: str, title: str, cols: int, step: float = 0.035) -> str:
-    """A terminal window drawn from real ANSI output: each run of text is placed at its column and stretched to its
-    cell width (box drawing, blocks and braille line up whatever the font), rows fade in, reduced motion shows all."""
+    """A terminal window drawn from real ANSI output, robust in any SVG renderer.
+
+    Every run of non-blank text (words joined by single spaces) is placed at its own column, x = col * cell width,
+    and stretched to its cell width, so spacing never depends on whitespace handling and box drawing, blocks and
+    braille line up whatever the font. Text is visible by default: the fade-in only runs where CSS animations do
+    (`both` fill from opacity 0), so rsvg-convert, Quick Look and previews show the whole frame."""
     from compactlab.term.style import cw
 
     lines = ansi_lines(text)
@@ -197,31 +201,33 @@ def terminal_svg(text: str, title: str, cols: int, step: float = 0.035) -> str:
     for i, segs in enumerate(lines):
         x, spans = 0, []
         for t, col, bold in segs:
-            n = cw(t)
-            if t.strip():
+            for m in re.finditer(r"\S+(?: \S+)*", t):
+                run = m.group(0)
+                c0 = x + cw(t[: m.start()])
                 weight = ' font-weight="700"' if bold else ""
                 spans.append(
-                    f'<tspan x="{pad + x * cwid:.1f}" textLength="{n * cwid:.1f}" lengthAdjust="spacingAndGlyphs" '
-                    f'fill="{col}"{weight}>{html.escape(t)}</tspan>'
+                    f'<tspan x="{pad + c0 * cwid:.1f}" textLength="{cw(run) * cwid:.1f}" '
+                    f'lengthAdjust="spacingAndGlyphs" fill="{col}"{weight}>{html.escape(run)}</tspan>'
                 )
-            x += n
+            x += cw(t)
         if spans:
             rows.append(
-                f'<text y="{top + i * lh + 14}" style="animation-delay:{0.2 + i * step:.2f}s">{"".join(spans)}</text>'
+                f'<text class="r" y="{top + i * lh + 14}" style="animation-delay:{0.2 + i * step:.2f}s">'
+                f"{''.join(spans)}</text>"
             )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img"
- aria-label="{html.escape(title)} (synthetic data)">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 {w} {h}"
+ width="{w}" height="{h}" role="img" aria-label="{html.escape(title)} (synthetic data)">
 <style>
-text{{font:13.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;opacity:0;
- animation:in .3s ease forwards}}
-@keyframes in{{to{{opacity:1}}}}
-@media (prefers-reduced-motion:reduce){{text{{animation:none;opacity:1}}}}
-.ttl{{fill:#8f8c83;font-size:12px;opacity:1;animation:none}}
+text{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:13.5px;
+ white-space:pre}}
+.r{{animation:in .3s ease both}}
+@keyframes in{{from{{opacity:0}}}}
+@media (prefers-reduced-motion:reduce){{.r{{animation:none}}}}
 </style>
 <rect width="{w}" height="{h}" rx="12" fill="#1a1915"/>
 <circle cx="22" cy="20" r="6" fill="#ff5f57"/><circle cx="42" cy="20" r="6" fill="#febc2e"/>
 <circle cx="62" cy="20" r="6" fill="#28c840"/>
-<text x="{w / 2:.0f}" y="24" text-anchor="middle" class="ttl">{html.escape(title)}</text>
+<text x="{w / 2:.0f}" y="24" text-anchor="middle" fill="#a8a59b" font-size="12">{html.escape(title)}</text>
 {chr(10).join(rows)}
 </svg>
 """
