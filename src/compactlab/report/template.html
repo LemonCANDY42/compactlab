@@ -253,8 +253,8 @@ const I={
  srcLocal:[h=>'local '+h+' logs',h=>'本机 '+h+' 日志'],
  modeLite:['lite','lite'], modeDeep:['deep','deep'],
  sizeTxt:[(s,n)=>s+' sessions · '+n+' turns',(s,n)=>s+' 会话 · '+n+' 轮'],
- caveat:['Costs are list-price estimates from replaying your own history against a public price table (no discounts, plans or credits). Time comes from your own timestamps; thin fits fall back to pooled data or a pessimistic prior. Recall is a lite-mode proxy (context-rot table × summary retention), only used as a floor. Profiles price your time at $10/h (cost), $100/h (balanced) and $400/h (time). Deltas are against the harness default unless marked “current”.',
-         '成本是按公开标价回放你自己历史得到的估算(不含折扣、套餐或额度)。时间来自你自己的时间戳;样本太少时改用同工具汇总数据或偏保守的先验值。召回率是 lite 模式的代理值(上下文衰减表 × 摘要保留率),只用作下限。三个方案给时间的价格:省钱 $10/小时,均衡 $100/小时,省时 $400/小时。除标明“当前”外,差值都相对 harness 默认值。'],
+ caveat:['Costs are list-price estimates from replaying your own history against a public price table (no discounts, plans or credits). Time comes from your own timestamps; thin fits fall back to pooled data or a pessimistic prior. Recall is a lite-mode proxy (context-rot table × summary retention), only used as a floor. Profiles price your time at $10/h (cost), $250/h (balanced) and $600/h (time). Deltas are against the harness default unless marked “current”.',
+         '成本是按公开标价回放你自己历史得到的估算(不含折扣、套餐或额度)。时间来自你自己的时间戳;样本太少时改用同工具汇总数据或偏保守的先验值。召回率是 lite 模式的代理值(上下文衰减表 × 摘要保留率),只用作下限。三个方案给时间的价格:省钱 $10/小时,均衡 $250/小时,省时 $600/小时。除标明“当前”外,差值都相对 harness 默认值。'],
  gear:['Profile','方案'], cost:['Cost','省钱'], balanced:['Balanced','均衡'], time:['Time','省时'], custom:['Custom','自定义'],
  vot:[v=>'$'+v+'/h',v=>'$'+v+'/小时'], votL:[v=>'time valued at $'+v+' per hour',v=>'时间按每小时 $'+v+' 计'],
  threshold:['Threshold','阈值'],
@@ -331,8 +331,11 @@ const I={
 };
 const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto'};
 const PROF=['cost','balanced','time'],PICON={cost:'coin',balanced:'scale',time:'clock',custom:'sliders'};
-// guardrail breaks are red; other flags are amber
+// a broken guardrail is red, a warning amber (cost below a quarter of the window, more wait than the cap),
+// and a plain note (a guardrail moved the pick, deep lowered it) an info icon, not a warning
 const VIOL=f=>['recall_floor_not_met','wait_cap_unreachable','min_window_unreachable'].includes(f);
+const NOTE=f=>['guardrail_applied','deep_recall_below_floor'].includes(f);
+const flagKind=f=>VIOL(f)?'bad':NOTE(f)?'':'low';
 S.lang=/^zh/i.test(navigator.language||'')?'zh':'en';
 try{const l=localStorage.getItem('compactlab.lang');if(l==='en'||l==='zh')S.lang=l;const th=localStorage.getItem('compactlab.theme');if(th)S.theme=th}catch(e){}
 function applyTheme(){if(S.theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.theme}
@@ -366,7 +369,7 @@ function nearest(g,v){let b=0;g.grid.forEach((x,i)=>{if(Math.abs(x-v)<Math.abs(g
 function keep(fn){const a=document.activeElement,key=a&&a.dataset?Object.entries(a.dataset).filter(([k])=>k!=='tip').map(([k,v])=>`[data-${k}="${v}"]`).join(''):'',y=scrollY;fn();
   if(key){const n=document.querySelector(key);if(n&&n!==a)n.focus({preventScroll:true})}if(scrollY!==y)scrollTo(0,y)}
 function flagText(f,p){const k='f_'+f;return I[k]?t(k,f==='guardrail_applied'?fk(p.unconstrained_threshold):p.wait_cap_min_per_day,fk(p.threshold)):f}
-function flagIcons(P){return P?P.flags.map(f=>ib(flagText(f,P),'warn',VIOL(f)?'bad':'low')).join(''):''}
+function flagIcons(P){return P?P.flags.map(f=>ib(flagText(f,P),NOTE(f)?'info':'warn',flagKind(f))).join(''):''}
 function frame(W,H,m){const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img'});return {svg,x0:m.l,x1:W-m.r,y0:H-m.b,y1:m.t}}
 function axes(f,X,Y,xt,yt,xf,yf){for(const v of yt){f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(v),y2:Y(v),class:'grid'}));f.svg.append(el('text',{x:f.x0-6,y:Y(v)+3.5,'text-anchor':'end'},yf(v)))}
   for(const v of xt)f.svg.append(el('text',{x:X(v),y:f.y0+16,'text-anchor':'middle'},xf(v)));f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:f.y0,y2:f.y0,class:'ax'}))}
@@ -437,7 +440,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
   document.querySelectorAll('#gears button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.gear===S.gear));
   document.querySelectorAll('#marks .mk').forEach(b=>b.classList.toggle('on',+b.dataset.mk===S.T));
   $('#vot').textContent=t('vot',S.vot);$('#vot').title=t('votL',S.vot);
-  $('#flags').innerHTML=flags(g).map(([k,h])=>ib(h,k==='ok'?'check':'warn',k)).join('');
+  $('#flags').innerHTML=flags(g).map(([k,h])=>ib(h,k==='ok'?'check':k==='note'?'info':'warn',k==='note'?'':k)).join('');
   const im=impJS(p,d),icur=g.current?impJS(p,g.current):null,def=fk(d.threshold);
   const cur=(v,f)=>icur?' · '+t('rCurrent')+' '+f(v):'';
   const fl=r.recall_floor,lo=Math.min(fl,p.recall,d.recall)-.02,gp=v=>((v-lo)/(1-lo)*100).toFixed(1)+'%';
@@ -455,7 +458,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
 // status icons in the control bar: no-change, guardrail flags of the selected profile, low-confidence data
 function flags(g){const out=[],tm=g.time_model||{},P=g.profiles[S.gear];
   if(g.no_action_needed)out.push(['ok',t('noAction')]);
-  if(P)for(const f of P.flags)out.push([VIOL(f)?'bad':'low',flagText(f,P)]);
+  if(P)for(const f of P.flags)out.push([flagKind(f)||'note',flagText(f,P)]);
   if(S.T===g.grid[0])out.push(['low',t('nEdge')]);
   if((tm.turn_source||'prior')!=='own'||(tm.compact_source||'prior')!=='own')out.push(['low',t('lowTime',t('src_'+(tm.turn_source||'prior')),t('src_'+(tm.compact_source||'prior')))]);
   if(g.n_sessions<5)out.push(['low',t('lowThin',g.n_sessions)]);

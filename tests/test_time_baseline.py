@@ -88,7 +88,7 @@ def test_analyze_baselines_and_no_action(claude_root, codex_root):
     zero = analyze(ss, PricingTable.load(offline=True), SimOptions(value_of_time=0))
     g0 = next(g for g in zero["groups"] if g["model"] == "claude-opus-5-5" and g["role"] == "main")
     assert g0["combined"] == g0["combined_cost"] and g0["profiles"]["balanced"]["value_of_time"] == 0
-    assert g0["profiles"]["time"]["value_of_time"] == 400
+    assert g0["profiles"]["time"]["value_of_time"] == 600
 
 
 def test_cli_summary_languages_and_apply_skips_no_action(tmp_path, claude_root, capsys):

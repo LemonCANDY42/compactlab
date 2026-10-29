@@ -1,7 +1,7 @@
 """compactlab: measure where to auto-compact from your own agent history.
 
 Modes: lite (default; offline, zero cost) and deep (opt-in; adds LLM-driven checks, needs --yes and --budget).
-Profiles: cost ($10/h of agent time), balanced (default, $100/h), time ($400/h), each with guardrails.
+Profiles: cost ($10/h of agent time), balanced (default, $250/h), time ($600/h), each with guardrails.
 """
 
 from __future__ import annotations

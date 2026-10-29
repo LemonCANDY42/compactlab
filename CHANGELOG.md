@@ -7,13 +7,13 @@ versioning: [SemVer](https://semver.org/).
 
 ### Changed
 - **Profiles replace tiers.** Three profiles, always computed side by side: `cost` ($10/h of agent time),
-  `balanced` (default, $100/h) and `time` ($400/h). `--profile` on simulate / report / recommend / apply / retune
+  `balanced` (default, $250/h) and `time` ($600/h). `--profile` on simulate / report / recommend / apply / retune
   picks the one to lead with or write; `--value-of-time` overrides its price of time and re-selects from a saved
   result without replaying. `standard` / `headroom`, `--tier`, `--headroom`, `--headroom-cap` and `--view` are gone
   (`--max-threshold` replaces `--headroom-cap`). Result schema 4.
 - Why: with $10/h the old `headroom` pick on real data compacted several times more often than the default and
   added many hours of compaction wait per month.
-- Guardrails: `balanced` never below 25% of the effective max window, `time` never below 35%; both keep added
+- Guardrails: `balanced` never below 40% of the effective max window, `time` never below 50%; both keep added
   compaction wait under 30 min/day vs the default (`--wait-cap`); `cost` warns instead. Recall floor kept.
 - Low-confidence latency fits (fewer than 20 timed compactions, thin turn bins) no longer drive the choice: the
   group uses the pooled harness fit or a pessimistic prior, and says which.
@@ -43,6 +43,9 @@ versioning: [SemVer](https://semver.org/).
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
 ### Added
+- Larger default picks: `balanced` now prices time at $250/h with a 40% minimum window, `time` at $600/h with 50%
+  (were $100/h with 25% and $400/h with 35%). The report shows a guardrail that merely moved the pick as an info
+  icon instead of a warning; warnings are reserved for flags that need attention.
 - **compactlab-lens**, a Claude Code mod in `mods/compactlab-lens` (with `.claude-plugin/marketplace.json` at the
   repository root). It shows one row above the prompt, expandable, and a pane on desktop: this session's context as a
   dot bar with ticks at the default and the profile threshold, a context-per-turn sparkline (an SVG on desktop),

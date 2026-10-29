@@ -50,8 +50,8 @@ on an hour of agent wall-clock, plus guardrails:
 | Profile | Value of time | Guardrails |
 | --- | --- | --- |
 | `cost` | $10/h (money first) | none on window size; warns below 25% of the max window and when compaction wait grows by more than 30 min/day |
-| `balanced` (default) | $100/h | never below 25% of the max window; at most 30 min/day of added compaction wait |
-| `time` | $400/h (time first) | never below 35% of the max window; at most 30 min/day of added compaction wait |
+| `balanced` (default) | $250/h | never below 40% of the max window; at most 30 min/day of added compaction wait |
+| `time` | $600/h (time first) | never below 50% of the max window; at most 30 min/day of added compaction wait |
 
 Within its guardrails, each profile picks the largest threshold whose score (list-price replay cost + re-discovery
 penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
@@ -73,14 +73,15 @@ claude-opus-5-5 · main · 6 sessions · 1308 turns · 10 days · window 1000k
   profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
   default              967k -                             $403 (base)                0            0.8            0.871
   current              600k -                            -$102 (-25%)        -1m (-0m)            1.4            0.909
-  balanced*            325k set                          -$199 (-49%)      -0.3h (-2m)            3.0   0.925 (+0.054)
+  balanced*            500k set                          -$135 (-33%)      -0.1h (-1m)            1.7   0.916 (+0.045)
   cost                 175k set                          -$233 (-58%)      -0.2h (-1m)            6.5   0.922 (+0.051)
-  time                 625k set                          -$101 (-25%)      -0.2h (-1m)            1.2   0.906 (+0.034)
-  · vs current: cost -$131 (-43%) -0.2h; balanced -$96 (-32%) -0.2h; time +$1 (+0%) -0.2h
+  time                 650k set                           -$88 (-22%)        -6m (-1m)            1.2   0.902 (+0.030)
+  · vs current: cost -$131 (-43%) -0.2h; balanced -$32 (-11%) -0.1h; time +$14 (+5%) -4m
   · time model: turn latency from this group's data, compaction latency from this group's data (22 own samples)
-  · balanced: guardrail moved the pick from 175k to 325k
+  · balanced: guardrail moved the pick from 300k to 500k
   · cost: below 25% of the max window; expect frequent lossy compactions
-  · time: guardrail moved the pick from 325k to 625k
+  · time: guardrail moved the pick from 325k to 650k
+  · default: models with a native 1M window compact at about 967K tokens by default; current: modelSettings.claude-opus-5-5.autoCompactWindow in settings.json
 
 claude-opus-5-5 · subagent · 3 sessions · 143 turns · 4 days · window 1000k
   profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
@@ -90,13 +91,8 @@ claude-opus-5-5 · subagent · 3 sessions · 143 turns · 4 days · window 1000k
   cost                    - no action needed                        -                -            0.0            0.937
   time                    - no action needed                        -                -            0.0            0.937
   · no action needed: the default never compacts in these sessions
-
-gpt-5-codex · main · 6 sessions · 871 turns · 5 days · window 400k
-  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
-  default              360k -                              $43 (base)                0            3.1            0.929
-  balanced*            350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
-  cost                 325k set                             -$2 (-4%)      +0.1h (+1m)            3.5   0.930 (+0.001)
-  time                 350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
+  · time model: turn latency from all claude-code sessions (this group is thin), compaction latency from all claude-code sessions (this group is thin) (0 own samples)
+  · default: models with a native 1M window compact at about 967K tokens by default; current: modelSettings.claude-opus-5-5.autoCompactWindow in settings.json
 ```
 
 The HTML report is one offline file (no fonts, scripts or images fetched), in English or Chinese (follows the
@@ -129,14 +125,14 @@ snippets (`--json` adds it under `impact`):
 Per-day impact · claude-opus-5-5 · main · history 10.5 calendar days, 10.5 active days (with ≥1 turn)
   vs harness default 967k
     profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
-    balanced*         325k     -$19.0      -$19.0     -$569.2      -1.5     +4.0     -5.5          -1.5      -0.8        3.0      89
+    balanced*         500k     -$12.9      -$12.9     -$386.1      -0.8     +2.0     -2.9          -0.8      -0.4        1.7      52
     cost              175k     -$22.3      -$22.3     -$668.0      -1.4     +7.8     -9.2          -1.4      -0.7        6.5     195
-    time              625k      -$9.7       -$9.7     -$291.0      -1.2     +0.7     -1.9          -1.2      -0.6        1.2      37
+    time              650k      -$8.4       -$8.4     -$252.6      -0.6     +1.1     -1.7          -0.6      -0.3        1.2      37
   vs your current 600k
     profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
-    balanced*         325k      -$9.2       -$9.2     -$276.2      -1.4     +2.1     -3.5          -1.4      -0.7        3.0      89
+    balanced*         500k      -$3.1       -$3.1      -$93.1      -0.7     +0.1     -0.8          -0.7      -0.3        1.7      52
     cost              175k     -$12.5      -$12.5     -$375.0      -1.2     +5.9     -7.1          -1.2      -0.6        6.5     195
-    time              625k      +$0.1       +$0.1       +$2.0      -1.1     -1.2     +0.1          -1.1      -0.5        1.2      37
+    time              650k      +$1.3       +$1.3      +$40.4      -0.4     -0.8     +0.4          -0.4      -0.2        1.2      37
 ```
 
 (Synthetic demo data, `--lang en`. The demo spreads sessions over every day, so active days equal calendar days.)
@@ -264,7 +260,7 @@ allow-listed key, with a backup.
 
 **Why not just use the lowest-cost threshold?** Cost alone favors compacting early, and every compaction costs
 minutes of waiting and some lost detail. On real histories a cost-first pick can mean several times more compactions
-than the default. The default `balanced` profile prices your time at $100/h and never goes below a quarter of the
+than the default. The default `balanced` profile prices your time at $250/h and never goes below 40% of the
 window; `--profile cost` is there if money is what you want to minimize.
 
 **Does it work without any history?** `compactlab demo` uses bundled synthetic sessions.

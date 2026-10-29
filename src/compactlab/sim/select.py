@@ -3,8 +3,8 @@
 A profile is a value of time (USD per hour of agent wall-clock folded into the score) plus guardrails:
 
   cost      money first      $10/h   no minimum window (warns below 25% of the max window)
-  balanced  default          $100/h  never below 25% of the max window, <= 30 min/day of added compaction wait
-  time      time first       $400/h  never below 35% of the max window, <= 30 min/day of added compaction wait
+  balanced  default          $250/h  never below 40% of the max window, <= 30 min/day of added compaction wait
+  time      time first       $600/h  never below 50% of the max window, <= 30 min/day of added compaction wait
 
 Within the allowed thresholds the pick is the largest threshold whose score is within `tol` of the lowest
 (`recommend`). Every profile keeps the recall floor. Selection works on the stored grid arrays only, so a result
@@ -18,8 +18,8 @@ from typing import Any
 
 PROFILES: dict[str, dict[str, Any]] = {
     "cost": {"value_of_time": 10.0, "min_fraction": 0.0, "enforce_wait_cap": False},
-    "balanced": {"value_of_time": 100.0, "min_fraction": 0.25, "enforce_wait_cap": True},
-    "time": {"value_of_time": 400.0, "min_fraction": 0.35, "enforce_wait_cap": True},
+    "balanced": {"value_of_time": 250.0, "min_fraction": 0.40, "enforce_wait_cap": True},
+    "time": {"value_of_time": 600.0, "min_fraction": 0.50, "enforce_wait_cap": True},
 }
 PROFILE_NAMES = tuple(PROFILES)
 DEFAULT_PROFILE = "balanced"

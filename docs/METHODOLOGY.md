@@ -83,8 +83,8 @@ Score per threshold: `list-price replay cost + re-discovery penalty + value_of_t
 | Profile | value of time | minimum threshold | added compaction wait vs default |
 | --- | --- | --- | --- |
 | `cost` | $10/h | none (flagged below 25% of the effective max window) | flagged above 30 min/day |
-| `balanced` (default) | $100/h | 25% of the effective max window | ≤ 30 min/day (`--wait-cap`) |
-| `time` | $400/h | 35% of the effective max window | ≤ 30 min/day |
+| `balanced` (default) | $250/h | 40% of the effective max window | ≤ 30 min/day (`--wait-cap`) |
+| `time` | $600/h | 50% of the effective max window | ≤ 30 min/day |
 
 Selection per profile: restrict the grid to `[minimum, min(effective max, --max-threshold)]`; for `balanced` and
 `time`, keep only thresholds whose added compaction + re-discovery wait vs the default is within the cap (if none
@@ -95,7 +95,7 @@ below a quarter of the window, when wait exceeds the cap, and when the recall fl
 
 Why these numbers: with a value of time of $10/h, real histories favored windows near the low end of the grid and
 several times the default's compactions, at minutes of wait each. Pricing an hour of the developer's attention at
-$100 (balanced) or $400 (time) moves the optimum to the hundreds of thousands of tokens. The minimum fractions and
+$250 (balanced) or $600 (time) moves the optimum to the hundreds of thousands of tokens. The minimum fractions and
 the 30 min/day cap are judgement calls that keep any profile from producing an extreme setting; they are options,
 not facts about any model.
 

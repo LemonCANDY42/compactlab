@@ -23,8 +23,8 @@ def test_profiles_order_and_guardrails(make_group):
     p = g["profiles"]
     assert g["profile"] == "balanced" and set(p) == {"cost", "balanced", "time"}
     assert p["cost"]["threshold"] <= p["balanced"]["threshold"] <= p["time"]["threshold"]
-    assert p["balanced"]["threshold"] >= 250_000 and p["time"]["threshold"] >= 350_000
-    assert [p[n]["value_of_time"] for n in ("cost", "balanced", "time")] == [10.0, 100.0, 400.0]
+    assert p["balanced"]["threshold"] >= 400_000 and p["time"]["threshold"] >= 500_000
+    assert [p[n]["value_of_time"] for n in ("cost", "balanced", "time")] == [10.0, 250.0, 600.0]
     # every profile is compared with the default, per day
     v = g["comparison"]["balanced"]["vs_default"]
     assert {"d_time_min_per_day", "compactions_per_day", "added_wait_min_per_day"} <= set(v)
@@ -35,8 +35,8 @@ def test_min_window_guardrail_and_cost_warning(make_group):
     g = make_group(GRID, cost, emax=1_000_000)
     p = g["profiles"]
     assert p["cost"]["threshold"] == 100_000 and "below_quarter_window" in p["cost"]["flags"]
-    assert p["balanced"]["threshold"] == 250_000 and "guardrail_applied" in p["balanced"]["flags"]
-    assert p["time"]["threshold"] == 350_000 and p["time"]["unconstrained_threshold"] == 100_000
+    assert p["balanced"]["threshold"] == 400_000 and "guardrail_applied" in p["balanced"]["flags"]
+    assert p["time"]["threshold"] == 500_000 and p["time"]["unconstrained_threshold"] == 100_000
 
 
 def test_wait_cap_guardrail(make_group):

@@ -76,6 +76,10 @@ CHECK = """
     ok(!document.getElementById('tip').hidden&&document.getElementById('tip').textContent===info.getAttribute('aria-label'),'info tooltip not shown on focus');
     // one language per label
     const zh=(document.getElementById('main').innerText.match(/[\u4e00-\u9fff]+/g)||[]);ok(!zh.length,'Chinese text in the English view: '+zh.slice(0,5).join(','));
+    // a guardrail that only moved the pick is a note (info icon), never a warning
+    for(const k of ['cost','balanced','time']){const warn=document.querySelectorAll(`#fImpact [data-pc=${k}] .ib.low, #fImpact [data-pc=${k}] .ib.bad`).length;
+      const want=g.no_action_needed?0:g.profiles[k].flags.filter(f=>!['guardrail_applied','deep_recall_below_floor'].includes(f)).length;
+      ok(warn===want,k+': '+warn+' warning icons for flags '+g.profiles[k].flags.join(','))}
     // theme toggle sets data-theme on <html>
     document.querySelector('#themes [data-th=dark]').click();
     ok(document.documentElement.dataset.theme==='dark','dark theme not applied');
