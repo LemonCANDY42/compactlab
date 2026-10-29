@@ -169,6 +169,23 @@ only command that writes, under pre-authorization. The report has the same panel
 
 Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
 
+## In-session lens (Claude Code mod)
+
+`mods/compactlab-lens` is an optional Claude Code mod. It adds one row above the prompt, and a pane on desktop, with
+this session's context against the default and the compactlab threshold, the per-day savings `simulate` estimated,
+and a ⚠ when the window in force differs. It reads only `~/.compactlab/lens.json`, which `simulate` writes. It never
+writes settings, calls a model or uses the network. Its "copy" button puts `/autocompact <n>` on your clipboard.
+
+```
+▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ⚠
+```
+
+```
+/plugin install compactlab-lens --marketplace <owner>/compactlab
+```
+
+See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, not affiliated with Anthropic.
+
 ## Two modes
 
 | | `lite` (default) | `deep` (opt-in) |

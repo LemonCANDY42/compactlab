@@ -618,6 +618,12 @@ def cmd_simulate(a: argparse.Namespace) -> int:
         return 2
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(res, sort_keys=True))
+    if a.lens_out:
+        from ..lens import summarize
+
+        lens = Path(a.lens_out).expanduser()
+        lens.parent.mkdir(parents=True, exist_ok=True)
+        lens.write_text(json.dumps(summarize(res), sort_keys=True))
     _out(
         a,
         {
@@ -910,6 +916,8 @@ def cmd_recommend(a: argparse.Namespace) -> int:
 
 
 def cmd_demo(a: argparse.Namespace) -> int:
+    from ..lens import summarize
+
     out = Path(a.out)
     synth.write_claude_code(out / "claude" / "projects", n_main=12, n_sub=6)
     synth.write_codex(out / "codex" / "sessions", n=6)
@@ -926,6 +934,7 @@ def cmd_demo(a: argparse.Namespace) -> int:
     assert res is not None
     res["demo"] = True
     (out / "result.json").write_text(json.dumps(res, sort_keys=True))
+    (out / "lens.json").write_text(json.dumps(summarize(res), sort_keys=True))
     (out / "report.html").write_text(render_html(res))
     print(_summary(res, getattr(a, "lang", "both")))
     print(f"\nSYNTHETIC DEMO DATA (not your history). Report: {out / 'report.html'}")
@@ -958,6 +967,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("simulate", help="threshold sweep -> result.json + summary (lite or deep)")
     _sim(s)
     s.add_argument("--out", default="compactlab-result.json")
+    s.add_argument(
+        "--lens-out",
+        default=f"{STATE}/lens.json",
+        help="small per-model summary the compactlab-lens mod reads (default ~/.compactlab/lens.json; '' to skip)",
+    )
     s.set_defaults(f=cmd_simulate)
 
     s = sub.add_parser("report", help="self-contained offline HTML report")

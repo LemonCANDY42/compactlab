@@ -76,6 +76,10 @@ Per-day impact · claude-opus-5-5 · main · history 10.5 calendar days, 10.5 ac
 
 HTML 报告是一个离线文件(不加载任何字体、脚本或图片),中文或英文(跟随浏览器语言,一键切换),浅色或深色(跟随系统,也可手动切换)。界面以图标、增减标签(▼ 绿色节省,▲ 琥珀色增加)和小进度条为主,说明文字收在 ⓘ 提示里,警告是带提示的 ⚠ 图标。左侧栏按工具 / 模型 / 角色列出分组(手机上变成顶部栏);页头写明历史的日期范围、数据来源和模式;置顶的控制栏有方案切换和阈值滑块;下面依次是指标卡、各方案的每日影响、对比表、帕累托前沿、成本和耗时曲线(悬停或点按有提示,曲线直接标注)、token 分布和单个会话的回放。数据少、历史短或时间模型借用了汇总数据时,会用直白的话说明。
 
+## 会话内 lens(Claude Code mod)
+
+`mods/compactlab-lens` 是一个可选的 Claude Code mod。它在输入框上方加一行,在桌面端加一个侧边面板,显示本会话的上下文和默认阈值、compactlab 阈值的位置,`simulate` 估算的每日节省,以及当前生效窗口和方案不一致时的 ⚠。它只读取 `simulate` 写出的 `~/.compactlab/lens.json`,不写设置、不调用模型、不联网;“复制”按钮会把 `/autocompact <n>` 放到剪贴板。安装:`/plugin install compactlab-lens --marketplace <owner>/compactlab`。详见 [docs/MOD.md](docs/MOD.md)。这是独立开源项目,与 Anthropic 无关。
+
 ## 两种模式
 
 - **lite(默认)**:只用日志和价格表,离线、零成本:回放模拟、成本模型、找回惩罚、摘要事实核查启发式。

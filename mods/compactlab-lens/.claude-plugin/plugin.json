@@ -1,0 +1,31 @@
+{
+  "name": "compactlab-lens",
+  "version": "0.1.0",
+  "description": "A slim band above the prompt (and a pane on desktop): this session's context against the harness default and the compactlab-optimised auto-compact threshold, with estimated savings per day.",
+  "author": { "name": "compactlab contributors" },
+  "license": "MIT",
+  "keywords": ["auto-compact", "context", "compaction", "cost", "mod", "compactlab"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "lensPath": {
+      "type": "string",
+      "title": "Lens file",
+      "description": "Path to the summary `compactlab simulate` writes (empty: ~/.compactlab/lens.json). Read only.",
+      "default": ""
+    },
+    "profile": {
+      "type": "string",
+      "title": "Profile",
+      "description": "Which compactlab profile the band compares against first.",
+      "options": ["cost", "balanced", "time"],
+      "default": "balanced"
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Label language: auto follows LANG / LC_ALL.",
+      "options": ["auto", "en", "zh"],
+      "default": "auto"
+    }
+  }
+}

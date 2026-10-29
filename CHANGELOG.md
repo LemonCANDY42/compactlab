@@ -43,6 +43,14 @@ versioning: [SemVer](https://semver.org/).
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
 ### Added
+- **compactlab-lens**, a Claude Code mod in `mods/compactlab-lens` (with `.claude-plugin/marketplace.json` at the
+  repository root). It shows one row above the prompt, expandable, and a pane on desktop: this session's context as a
+  dot bar with ticks at the default and the profile threshold, a context-per-turn sparkline (an SVG on desktop),
+  $/day and min/day chips vs default and current, compactions so far, a ⚠ when the window in force differs, a
+  profile switch that only changes the display, and a button that copies `/autocompact <n>`. It is read only: one
+  local file and the engine's own figures, with no network, no model calls and no settings writes. It is an
+  independent project, not affiliated with Anthropic. See docs/MOD.md.
+- `simulate --lens-out` (default `~/.compactlab/lens.json`): the small per-model summary the mod reads.
 - **Per-day impact** for every profile of every group, vs the harness default and vs the current setting: USD,
   minutes (compaction wait and turn-speed gain separately) and compactions, per calendar day, per active day and
   per month. In the report (new section, basis switch), in `recommend` (table after the snippets, `impact` in

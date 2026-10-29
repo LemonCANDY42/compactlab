@@ -1,0 +1,14 @@
+{
+  "name": "compactlab",
+  "owner": {
+    "name": "compactlab contributors"
+  },
+  "description": "compactlab's Claude Code mods: compactlab-lens shows this session's context against the default and the compactlab-optimised auto-compact threshold.",
+  "plugins": [
+    {
+      "name": "compactlab-lens",
+      "source": "./mods/compactlab-lens",
+      "description": "This session's context against the default and the compactlab-optimised auto-compact threshold, with estimated savings per day."
+    }
+  ]
+}
