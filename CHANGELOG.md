@@ -33,6 +33,10 @@ versioning: [SemVer](https://semver.org/).
   calmer charts with direct labels instead of legends, and plain-language callouts for thin data, short histories,
   borrowed time models and guardrail flags (red only when a guardrail is broken). States it is an independent
   open-source tool. Still one offline file; slider, sticky bar, tooltips and a11y behaviour unchanged.
+- Report shows less text: inline SVG icons (coin / scale / clock for the profiles, refresh, shield, calendar),
+  delta chips with ▲▼, gauges for recall and for the threshold as a share of the max window, ⓘ and ⚠ icon buttons
+  with tooltips (also their accessible names) instead of paragraphs and banners, one language at a time
+  (browser language by default), and a one-line footer disclaimer. Tests check every icon is named or hidden.
 - docs/assets adds report-dark.png, report-mobile.png and report-mobile-dark.png.
 - Headless Chrome in tests and `scripts/make_assets.py` runs with `--use-mock-keychain` so it never asks for the
   macOS keychain.

@@ -99,8 +99,10 @@ gpt-5-codex · main · 6 sessions · 871 turns · 5 days · window 400k
   time                 350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
 ```
 
-The HTML report is one offline file (no fonts, scripts or images fetched), in Chinese and English, light or dark
-(follows the system, or pick one). A sidebar lists each harness / model / role group (a top bar on phones); the
+The HTML report is one offline file (no fonts, scripts or images fetched), in English or Chinese (follows the
+browser language; one toggle switches), light or dark (follows the system, or pick one). It leans on icons, delta
+chips (▼ green saves, ▲ amber adds) and small gauges rather than prose; explanations sit behind ⓘ tooltips and
+warnings are ⚠ icons with a tooltip. A sidebar lists each harness / model / role group (a top bar on phones); the
 header states the history's date range, data source and mode. A sticky control bar holds the profile switch and a
 threshold slider with marks for each profile, the default and your current setting. Below it: KPI cards for the
 slider position, the per-day impact of every profile, a comparison table, a Pareto frontier and cost and wall-clock

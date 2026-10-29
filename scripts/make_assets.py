@@ -41,8 +41,9 @@ def chrome(path: str | None) -> str:
 def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2, dark: bool = False) -> None:
     with tempfile.TemporaryDirectory() as prof:
         subprocess.run(
-            [browser, f"--blink-settings=preferredColorScheme={0 if dark else 1}", "--allow-file-access-from-files", "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
-             f"--user-data-dir={prof}",
+            [browser, "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu",
+             "--no-first-run", "--allow-file-access-from-files", f"--user-data-dir={prof}",
+             f"--blink-settings=preferredColorScheme={0 if dark else 1}",
              "--hide-scrollbars", f"--force-device-scale-factor={scale}", f"--window-size={w},{h}",
              f"--screenshot={out}", url],
             check=True, capture_output=True, timeout=120,

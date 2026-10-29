@@ -59,15 +59,23 @@ CHECK = """
     ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
     if(!g.no_action_needed){
       const im=g.comparison.balanced.vs_default.impact;
-      const money=()=>document.querySelector('#fImpact [data-pc=balanced] tr.big td').textContent;
-      ok(money()===fusd(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
+      const money=()=>document.querySelector('#fImpact [data-pc=balanced] [data-m=usd-vs_default]').textContent;
+      ok(money()===arrow(im.usd.per_day)+fusd(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
       document.querySelector('#fImpact [data-basis=per_month]').click();
-      ok(money()===fusd(im.usd.per_month),'per-month money not shown');
+      ok(money()===arrow(im.usd.per_month)+fusd(im.usd.per_month),'per-month money not shown');
       {const bb=document.querySelector('#fImpact [data-basis=per_active_day]');bb.focus();bb.click()}
-      ok(money()===fusd(im.usd.per_active_day),'per-active-day money not shown');
+      ok(money()===arrow(im.usd.per_active_day)+fusd(im.usd.per_active_day),'per-active-day money not shown');
       ok(document.activeElement&&document.activeElement.dataset.basis==='per_active_day','basis lost focus');
       ok(document.getElementById('rng')===n0,'slider replaced by the impact panel');
     }
+    // every icon is either hidden from assistive tech or named; every button has an accessible name
+    document.querySelectorAll('svg.ic').forEach((s,i)=>ok(s.getAttribute('aria-hidden')==='true'||s.getAttribute('aria-label'),'unnamed icon #'+i));
+    document.querySelectorAll('button').forEach(b=>ok((b.getAttribute('aria-label')||b.textContent).trim(),'button without a name: '+b.outerHTML.slice(0,80)));
+    // info / warning icons show their text as a tooltip on keyboard focus
+    const info=document.querySelector('#iImpact .ib');info.focus();
+    ok(!document.getElementById('tip').hidden&&document.getElementById('tip').textContent===info.getAttribute('aria-label'),'info tooltip not shown on focus');
+    // one language per label
+    const zh=(document.getElementById('main').innerText.match(/[\u4e00-\u9fff]+/g)||[]);ok(!zh.length,'Chinese text in the English view: '+zh.slice(0,5).join(','));
     // theme toggle sets data-theme on <html>
     document.querySelector('#themes [data-th=dark]').click();
     ok(document.documentElement.dataset.theme==='dark','dark theme not applied');
