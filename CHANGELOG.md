@@ -12,6 +12,7 @@ versioning: [SemVer](https://semver.org/).
 - **Before / after on the Overview.** Per model, a grey "was" bar (default) with the "now" bar (profile) overlaid,
   the saving hatched green and additions amber, for cost and wall-clock per day; a total row from summed amounts;
   `absolute | each row = 100%` and sort toggles; screen-reader sentences. The model page shows a compact pair.
+  A dumbbell style (was ring → now dot, green or amber line) shares everything; default from nine rows up.
 - **Percent first.** Changes lead with their percent of the harness default (cost vs the default's window cost,
   time vs its total wall-clock: the engine's `d_cost_pct` / `d_time_pct`) with the per-day amount secondary, in the
   report (header toggle `% | $`, remembered) and the lens mod (`▼−61% (−$204.8/day)`). lens.json gains `cost_pct` /

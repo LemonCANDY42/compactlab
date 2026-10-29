@@ -127,6 +127,10 @@ status icons.
   toggle) and `was $619 → now $492`; a dotted leader joins short bars to it. Hover: main / subagent, and for time the
   compaction-wait vs turn-time split. A one-line legend sits above the panels; each row is also a sentence in a
   screen-reader list ("Opus 5: was $619.3 per day, now $491.8, saves 21 percent; …").
+- Two chart styles over the same data, sorting, scale modes, labels, tooltips and screen-reader text: bars (the
+  overlay above) and dumbbells (a grey ring = was, an accent dot = now, joined by a green line when it saves and an
+  amber one when it adds). Without a choice, dumbbells from nine rows up and bars below; the icon toggle overrides
+  and is remembered (`compactlab.ovStyle`). `report-overview-dots.png` shows the dumbbells.
 - Toggles (remembered): `absolute | each row = 100%` (one shared, labelled axis, or every grey bar the same length so
   small models are readable) and `by amount saved | by % saved` for the row order.
 - The model page repeats the language in a compact pair next to the answer line: cost and time at the cursor,

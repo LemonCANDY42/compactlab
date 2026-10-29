@@ -176,7 +176,11 @@ svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .olg .ls{background:repeating-linear-gradient(45deg,var(--good) 0 1.4px,var(--good-soft) 1.4px 4px)}.olg .la{background:var(--amber)}
 h3.ovh{margin:14px 0 2px;color:var(--ink2);font-weight:500}
 .baw{fill:var(--ba-was)}.ban{fill:var(--acc)}.baa{fill:var(--amber)}.bash{fill:var(--good-soft)}.bahl{stroke:var(--good);stroke-width:1.4}
-.babr{fill:none;stroke:var(--good);stroke-width:1}.lead{stroke:var(--line2);stroke-dasharray:1 3}.axt{font-size:10px}
+.babr{fill:none;stroke:var(--good);stroke-width:1}
+.dtrack{stroke:var(--line);stroke-width:1}.dline{stroke-width:3.5;stroke-linecap:round}.dline.sv{stroke:var(--good)}.dline.ad{stroke:var(--amber)}
+.dwas{fill:var(--card);stroke:var(--ink3);stroke-width:2.5}.dnow{fill:var(--acc);stroke:var(--card);stroke-width:1.5}
+#fOv.dots .olg .lw{background:none;border:2.5px solid var(--ink3);border-radius:50%;width:10px;height:10px}#fOv.dots .olg .ln{border-radius:50%;width:10px;height:10px}
+#fOv.dots .olg .ls{background:var(--good);height:3px}#fOv.dots .olg .la{height:3px}.lead{stroke:var(--line2);stroke-dasharray:1 3}.axt{font-size:10px}
 tspan.big{font-size:13px;font-weight:700}.barow{cursor:pointer}.barow:hover .ovbg{fill:var(--bg2)}.barow.tot .ovname{font-weight:600}.barow.keep .ovname{fill:var(--ink3)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .minib{display:inline-flex;align-items:center;cursor:help}.mini{display:block}
@@ -267,6 +271,8 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+ <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 6.5h13M4 12h16M4 17.5h9" stroke-width="3"/></symbol>
+ <symbol id="i-dots" viewBox="0 0 24 24"><path d="M7 6.5h10M9 12h9M5 17.5h8"/><circle cx="7" cy="6.5" r="2"/><circle cx="17" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="5" cy="17.5" r="2"/><circle cx="13" cy="17.5" r="2"/></symbol>
  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></symbol>
  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 19.5h16M6.5 16V11M11 16V6M15.5 16v-3.5M20 16V8.5"/></symbol>
@@ -469,10 +475,10 @@ const I={
  kTotUsd:['Δ cost vs default','较默认费用'], kTotMin:['Δ time vs default','较默认耗时'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
  ovChart:['Before and after, per day','前后对比(每天)'],
  ovCostT:['Cost per day (list price)','每日费用(按公开标价)'], ovTimeT:['Wall-clock per day (agent minutes)','每日耗时(agent 分钟)'],
- scL:['Scale','比例'], scAbs:['absolute','绝对值'], scNorm:['each row = 100%','每行 = 100%'], byL:['Sort','排序'], byUsd:['by amount saved','按节省金额'], byPct:['by % saved','按节省比例'],
+ scL:['Scale','比例'], stL:['Chart style','图表样式'], stBars:['bars: was and now overlaid','条形:原来与现在叠加'], stDots:['dots: was → now joined by a line','点线:原来 → 现在用线连接'], scAbs:['absolute','绝对值'], scNorm:['each row = 100%','每行 = 100%'], byL:['Sort','排序'], byUsd:['by amount saved','按节省金额'], byPct:['by % saved','按节省比例'],
  axUsd:['$ per day, shared axis','美元/天,共用坐标'], axMin:['minutes per day, shared axis','分钟/天,共用坐标'], axNorm:['share of the original, each row = 100%','占原值比例,每行 = 100%'],
  lgWas:['was (default)','原来(默认)'], lgNow:['now (profile)','现在(方案)'], lgSaved:['saved','节省'], lgAdded:['added','增加'],
- lgLine:['grey = was (default), accent = now, green hatch = saved, amber = added','灰色 = 原来(默认),强调色 = 现在,绿色斜线 = 节省,琥珀色 = 增加'],
+ lgLine:['grey = was (default), accent = now, green = saved, amber = added','灰色 = 原来(默认),强调色 = 现在,绿色 = 节省,琥珀色 = 增加'],
  wasNow:[(a,b)=>'was '+a+' → now '+b,(a,b)=>'原来 '+a+' → 现在 '+b], totalSet:['Total','合计'], totalSub:[n=>n+' “set” models',n=>n+' 个“设置”模型'],
  tWait:['compaction wait','压缩等待'], tTurn:['turn time','每轮耗时'],
  srRow:[(n,w,c,v,p,tw,tn)=>n+': was '+w+' per day, now '+c+', '+v+' '+p+' percent; wall-clock was '+tw+', now '+tn,(n,w,c,v,p,tw,tn)=>n+':原来每天 '+w+',现在 '+c+','+v+' '+p+'%;耗时原来 '+tw+',现在 '+tn],
@@ -498,7 +504,7 @@ const I={
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
-const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{},unit:'pct',ovSort:null,ovScale:'abs',ovBy:'usd'};
+const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{},unit:'pct',ovSort:null,ovScale:'abs',ovBy:'usd',ovStyle:null};
 let sortK='peak',asc=false;
 const PROF=['cost','balanced','time'],PICON={cost:'coin',balanced:'scale',time:'clock',custom:'sliders'};
 // a broken guardrail is red, a warning amber (cost below a quarter of the window, more wait than the cap),
@@ -510,6 +516,7 @@ S.lang=/^zh/i.test(navigator.language||'')?'zh':'en';
 try{const l=localStorage.getItem('compactlab.lang');if(l==='en'||l==='zh')S.lang=l;const th=localStorage.getItem('compactlab.theme');if(th)S.theme=th;
   const un=localStorage.getItem('compactlab.unit');if(un==='pct'||un==='usd')S.unit=un;
   const sc=localStorage.getItem('compactlab.ovScale');if(sc==='abs'||sc==='norm')S.ovScale=sc;const ob=localStorage.getItem('compactlab.ovBy');if(ob==='usd'||ob==='pct')S.ovBy=ob;
+  const os=localStorage.getItem('compactlab.ovStyle');if(os==='bars'||os==='dots')S.ovStyle=os;
   const fo=JSON.parse(localStorage.getItem('compactlab.fold')||'{}');if(fo&&typeof fo==='object')S.fold=fo}catch(e){}
 function applyTheme(){if(S.theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.theme}
 applyTheme();
@@ -1043,6 +1050,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
      kpi('sliders','kToSet',String(cnt('set')),'',esc(t('mUnit')))+kpi('scale','kKeep',String(cnt('keep')),'',esc(t('mUnit')))+kpi('check','kNoCh',String(cnt('noop')),'',esc(t('mUnit')))}</div>
    <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv">
      <div class="ovctl"><div class="seg" role="group" aria-label="${t('scL')}">${[['abs','scAbs'],['norm','scNorm']].map(([k_,l])=>`<button data-ovs="${k_}" aria-pressed="${S.ovScale===k_}">${t(l)}</button>`).join('')}</div>
+       <div class="seg" role="group" aria-label="${t('stL')}" id="ovst"></div>
        <div class="seg" role="group" aria-label="${t('byL')}">${[['usd','byUsd'],['pct','byPct']].map(([k_,l])=>`<button data-ovb="${k_}" aria-pressed="${S.ovBy===k_}">${t(l)}</button>`).join('')}</div></div>
      ${legendBA()}<h3 class="ovh">${ic('coin')}${t('ovCostT')}</h3><div id="ovC"></div><h3 class="ovh">${ic('clock')}${t('ovTimeT')}</h3><div id="ovM"></div><ul class="sr" id="ovSR"></ul></div>
    <h2>${t('ovTable')}</h2><div class="card scroll" id="ovT"></div>`;
@@ -1060,8 +1068,10 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const setR=rows.filter(r=>!r.keep),tot={name:t('totalSet'),sub:t('totalSub',setR.length),total:true,keep:false,gi:null,
     c:{was:setR.reduce((a,r)=>a+r.c.was,0),now:setR.reduce((a,r)=>a+r.c.now,0)},t:{was:setR.reduce((a,r)=>a+r.t.was,0),now:setR.reduce((a,r)=>a+r.t.now,0)},
     wait:setR.reduce((a,r)=>a+r.wait,0),turn:setR.reduce((a,r)=>a+r.turn,0),roles:[]};
-  const items=(setR.length?[tot]:[]).concat(rows);
-  beforeAfter($('#ovC'),items,'c');beforeAfter($('#ovM'),items,'t');
+  const items=(setR.length?[tot]:[]).concat(rows),style=ovStyleFor(items.length);
+  $('#ovst').innerHTML=[['bars','stBars'],['dots','stDots']].map(([k_,l])=>`<button data-ovst="${k_}" aria-pressed="${style===k_}" aria-label="${t(l)}" data-tip="${t(l)}">${ic(k_)}</button>`).join('');
+  $('#ovst').querySelectorAll('[data-ovst]').forEach(b=>b.onclick=()=>{S.ovStyle=b.dataset.ovst;try{localStorage.setItem('compactlab.ovStyle',S.ovStyle)}catch(e){}keep(renderOverview)});
+  $('#fOv').classList.toggle('dots',style==='dots');beforeAfter($('#ovC'),items,'c',style);beforeAfter($('#ovM'),items,'t',style);
   $('#ovSR').innerHTML=items.map(r=>'<li>'+esc(srRow(r))+'</li>').join('');
   // roll-up table, every group: set first, then keep default, then no change
   const rk=g=>g.no_action_needed?2:isSet(g,k)?0:1;
@@ -1076,18 +1086,21 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
 // ---------- before / after bars: grey = was (default), accent = now (profile), green hatch = saved, amber = added ----------
 const fabs=(v,kind)=>kind==='c'?'$'+(v>=100?Math.round(v).toLocaleString('en-US'):v.toFixed(1)):(v>=100?Math.round(v):v.toFixed(1))+' min';
 function legendBA(){return `<div class="olg"><span><i class="lw"></i>${t('lgWas')}</span><span><i class="ln"></i>${t('lgNow')}</span><span><i class="ls"></i>${t('lgSaved')}</span><span><i class="la"></i>${t('lgAdded')}</span></div>`}
+// the legend's swatches follow the chart style (bars: blocks and hatch; dots: dots and lines)
 function baLabel(o,kind){const d=o.now-o.was,pv=ratio(d,o.was),p=S.unit==='pct'&&pv!=null;
   return {lead:p?fpct(pv):(kind==='c'?fsv(d)+t('uDay'):fmv(d)+t('uDay')),sec:p?(kind==='c'?fsn(d)+t('uDay'):fmn(d)+t('uDay')):fpn(pv),tone:tone(kind==='c'?d:d),wn:t('wasNow',fabs(o.was,kind),fabs(o.now,kind))}}
 function srRow(r){const d=r.c.now-r.c.was,pv=ratio(d,r.c.was);
   return r.keep?t('srKeep',r.name,fabs(r.c.was,'c')):t('srRow',r.name,fabs(r.c.was,'c'),fabs(r.c.now,'c'),d<0?t('saves'):t('adds'),pv==null?'–':pabs(pv),fabs(r.t.was,'t'),fabs(r.t.now,'t'))}
 function hatchDef(svg,id){const defs=el('defs'),p=el('pattern',{id,width:5,height:5,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});
   p.append(el('rect',{width:5,height:5,class:'bash'}),el('line',{x1:0,y1:0,x2:0,y2:5,class:'bahl'}));defs.append(p);svg.append(defs)}
-function beforeAfter(box,items,kind){box.innerHTML='';if(!items.length)return;
+// bars (overlay) or dumbbells (dot and line); without a choice, dumbbells from nine rows up
+const ovStyleFor=n=>S.ovStyle||(n>8?'dots':'bars');
+function beforeAfter(box,items,kind,style='bars'){box.innerHTML='';if(!items.length)return;
   const W=boxW(box.parentElement,36),wide=W>=600,rowH=wide?44:62,L=wide?180:8,R=wide?300:8,T=4,norm=S.ovScale==='norm';
   const v=r=>r[kind],pw=W-L-R,mx=Math.max(...items.map(r=>Math.max(v(r).was,v(r).now)),1e-9);
   // absolute: one shared axis; normalised: every row's "was" is the same length (80% of the plot, room for amber)
   const len=(r,x)=>norm?(v(r).was>0?x/v(r).was:0)*pw*.8:x/mx*pw;
-  const H=T+items.length*rowH+30,svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t(kind==='c'?'ovCostT':'ovTimeT')});svg.classList.add('bac');
+  const H=T+items.length*rowH+30,svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t(kind==='c'?'ovCostT':'ovTimeT')});svg.classList.add('bac',style);
   const hid='hs-'+kind;hatchDef(svg,hid);
   const ticks=norm?[0,.5,1].map(f=>[f*pw*.8,Math.round(f*100)+'%']):ticksN(0,mx,Math.max(3,Math.floor(pw/110))).filter(x=>x<=mx).map(x=>[x/mx*pw,kind==='c'?'$'+(+x.toFixed(1)):(+x.toFixed(1))+'']);
   for(const [x,l] of ticks){svg.append(el('line',{x1:L+x,x2:L+x,y1:T,y2:H-26,class:'grid'}));svg.append(el('text',{x:L+x,y:H-12,'text-anchor':'middle'},l))}
@@ -1097,13 +1110,17 @@ function beforeAfter(box,items,kind){box.innerHTML='';if(!items.length)return;
     if(r.total)svg.append(el('line',{x1:0,x2:W,y1:y+rowH-1,y2:y+rowH-1,class:'ax'}));
     const by=wide?y+9:y+24,ww=Math.max(len(r,o.was),3),nw=r.keep?0:Math.max(len(r,o.now),o.now>0?2:0);
     gr.append(el('text',{x:8,y:wide?y+17:y+14,class:'ovname'+(r.total?' b':'')},r.name));if(wide)gr.append(el('text',{x:8,y:y+31,class:'ovsub'},r.sub));
-    gr.append(el('rect',{x:L,y:by,width:ww,height:22,rx:3,class:'baw'}));
-    if(!r.keep){gr.append(el('rect',{x:L,y:by+5,width:nw,height:12,rx:2,class:'ban'}));
+    if(style==='dots'){const cy=by+11,xw=L+ww,xn=L+nw;
+      gr.append(el('line',{x1:L,x2:L+pw*(norm?.8:1),y1:cy,y2:cy,class:'dtrack'}));
+      if(!r.keep&&Math.abs(xn-xw)>.5)gr.append(el('line',{x1:xw,x2:xn,y1:cy,y2:cy,class:'dline '+(xn<xw?'sv':'ad')}));
+      gr.append(el('circle',{cx:xw,cy,r:5.5,class:'dwas'}));if(!r.keep)gr.append(el('circle',{cx:xn,cy,r:5.5,class:'dnow'}))}
+    else gr.append(el('rect',{x:L,y:by,width:ww,height:22,rx:3,class:'baw'}));
+    if(style!=='dots'&&!r.keep){gr.append(el('rect',{x:L,y:by+5,width:nw,height:12,rx:2,class:'ban'}));
       if(nw<ww-.5){gr.append(el('rect',{x:L+nw,y:by+5,width:ww-nw,height:12,fill:`url(#${hid})`}));
         gr.append(el('path',{d:`M${L+nw},${by-2}v-3h${ww-nw}v3`,class:'babr'}))}   // bracket over the saving
       else if(nw>ww+.5)gr.append(el('rect',{x:L+ww,y:by+5,width:nw-ww,height:12,rx:2,class:'baa'}))}
     // labels: a fixed column on the right (a leader joins tiny bars to it); on a phone, above and below the bar
-    const lb=baLabel(o,kind),end=L+Math.max(ww,nw);
+    const lb=baLabel(o,kind),end=L+Math.max(ww,nw)+(style==='dots'?6:0);
     if(wide){const lx=L+pw+14;if(lx-end>10)gr.append(el('line',{x1:end+4,x2:lx-4,y1:by+11,y2:by+11,class:'lead'}));
       const tx=el('text',{x:lx,y:y+17,class:'dl b'});
       if(r.keep)tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+fabs(o.was,kind)+t('uDay')));

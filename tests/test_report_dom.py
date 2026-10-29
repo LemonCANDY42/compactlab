@@ -162,6 +162,15 @@ CHECK = """
     {const ws=[...document.querySelectorAll('#ovC .barow:not(.tot) .baw')].map(r=>+r.getAttribute('width'));ok(S.ovScale==='norm'&&ws.every(w=>Math.abs(w-ws[0])<.5),'normalised widths '+ws.join(','));
       let sv=null;try{sv=localStorage.getItem('compactlab.ovScale')}catch(e){}ok(sv==null||sv==='norm','scale not remembered')}
     document.querySelector('[data-ovs=abs]').click();
+    // chart style: dumbbells by default from nine rows up, bars below; the toggle overrides and is remembered
+    ok(S.ovStyle==null&&ovStyleFor(9)==='dots'&&ovStyleFor(8)==='bars','auto chart style');
+    ok(document.querySelector('#ovC svg.bac').classList.contains(ovStyleFor(nRows)),'auto style not applied');
+    document.querySelector('[data-ovst=dots]').click();
+    {const sv2=document.querySelectorAll('#ovC svg.bac.dots .barow');ok(sv2.length===nRows,'dumbbell rows');
+      ok(document.querySelectorAll('#ovC .dwas').length===nRows&&document.querySelectorAll('#ovC .dnow').length===nRows-document.querySelectorAll('#ovC .barow.keep').length,'was / now dots');
+      ok(document.querySelectorAll('#ovM svg.bac.dots').length===1&&document.querySelectorAll('#ovSR li').length===nRows,'time panel or screen-reader rows in dumbbell style');
+      let sv=null;try{sv=localStorage.getItem('compactlab.ovStyle')}catch(e){}ok(sv==null||sv==='dots','style not remembered')}
+    document.querySelector('[data-ovst=bars]').click();ok(document.querySelector('#ovC svg.bac.bars .baw'),'bars style back');
     ok(document.querySelectorAll('#ovT tr').length===D.groups.length+1,'roll-up rows');
     // the headline total counts only groups whose action is "set"
     // totals: summed amounts over summed defaults, never averaged percents (the $ unit is still on from above)

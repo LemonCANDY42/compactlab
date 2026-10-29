@@ -222,6 +222,12 @@ def main() -> None:
         shot(b, page + "#g=" + key, ASSETS / "report-noop.png", 1440, 760)
         # the sidebar at 35 models: harnesses folded, then a search
         (tmp / "crowd.html").write_text(render_html(crowd(res)))
+        dots = "d.querySelector('[data-ovst=dots]').click();d.getElementById('fOv').scrollIntoView()"
+        h = tmp / "dots.html"
+        h.write_text(f'<!doctype html><body style="margin:0"><iframe id="f" src="{page}#overview" '
+                     'style="width:1440px;height:1400px;border:0;display:block"></iframe><script>f.onload=()=>'
+                     f'setTimeout(()=>{{const d=f.contentDocument;{dots}}},300)</script>')  # fmt: skip
+        shot(b, h.as_uri(), ASSETS / "report-overview-dots.png", 1440, 1100)
         fold = "d.querySelectorAll('.har>.fold[aria-expanded=true]').forEach(b=>b.click())"
         find = "const q=d.getElementById('tq');q.value='opus';q.dispatchEvent(new Event('input'))"
         for name, js in (("report-tree.png", fold), ("report-tree-search.png", find)):
