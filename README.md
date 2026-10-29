@@ -179,6 +179,20 @@ Rescans are incremental, one run at a time, at low priority, with no network. Au
 weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
 [docs/SERVICE.md](docs/SERVICE.md).
 
+## In the terminal
+
+On a terminal, `demo`, `simulate`, `recommend`, `doctor` and `serve` draw a compact view (colour, boxes, a
+threshold gauge, was/now bars); piped or with `--plain` they print the full plain tables. `compactlab top` is a live,
+htop-like view of the latest result: models on the left, the selected one's cost and time curve on the right.
+
+<img src="docs/assets/top.svg" alt="compactlab top: models with was/now bars on the left, the selected model's cost and time curves over the threshold on the right (synthetic data)" width="760">
+
+```bash
+uvx compactlab top --demo     # synthetic data; keys: ? help, p profile, % unit, c copy, r recalibrate, q quit
+```
+
+Details and key bindings: [docs/TUI.md](docs/TUI.md).
+
 ## In-session lens (Claude Code mod)
 
 `mods/compactlab-lens` is an optional Claude Code mod. It adds one row above the prompt, and a pane on desktop, with

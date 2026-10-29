@@ -12,6 +12,8 @@ src/compactlab/
   recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
+  term/       style.py (colour depth, palette, display width) · widgets.py (gauge, was/now, sparkline, braille,
+              panel, header) · views.py (demo / simulate / recommend / doctor / serve) · top.py (`compactlab top`)
   data/       pricing.json, harness_formats.json (each with source + date)
   synth.py    synthetic transcripts for tests and `demo`
 ```
@@ -28,6 +30,7 @@ flowchart LR
   R -->|optional deep: re-summarize, probe, judge| R
   R --> H[report.html]
   R --> X[apply dry-run / write / revert]
+  R --> T[terminal views and compactlab top]
 ```
 
 `result.json` (schema 2) is the seam: the report and `apply` read nothing else, so a result can be reviewed,

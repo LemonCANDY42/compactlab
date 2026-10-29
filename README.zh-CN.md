@@ -2,6 +2,8 @@
 
 **你的 agent 历史记录会告诉你在哪里自动压缩。** 按模型、按角色(主会话 / 子 agent)衡量成本与长上下文衰减之间的取舍,再安全地调整 auto-compact 阈值。
 
+<img src="docs/assets/demo.svg" alt="compactlab demo 终端输出(合成数据)" width="760">
+
 ```bash
 uvx compactlab demo     # 用内置合成数据生成报告并打开,不需要历史记录、网络或 API key
 ```
@@ -82,6 +84,19 @@ HTML 报告是一个离线文件(不加载任何字体、脚本或图片),中文
 ## 作为后台服务运行
 
 `compactlab serve --every 1d` 在本机(只绑定 127.0.0.1)提供实时报告和 JSON 接口,并按设定间隔用 lite 模式重新校准:只增量扫描,同一时间只跑一个,低优先级,不联网。`compactlab schedule print` 生成 launchd / systemd 定时文件,`install --yes` 只把文件写进你的 LaunchAgents 或 systemd 用户目录,加载由你自己执行。自动应用默认关闭:先用 `compactlab consent set` 指定允许修改的设置文件、模型和方案,再加 `--auto-apply`;它复用 `apply` 的备份和清单(`compactlab revert` 可撤销),每次最多移动 100k,至少间隔一周,收益不明显时不动,别人手动改过的值不覆盖。详见 [docs/SERVICE.md](docs/SERVICE.md)。
+
+## 终端界面
+
+在终端里,`demo`、`simulate`、`recommend`、`doctor` 和 `serve` 会画出紧凑视图(颜色、边框、阈值刻度、前后对比条);
+通过管道或加 `--plain` 时输出完整的纯文本表格。`compactlab top` 是类似 htop 的实时视图:左边是模型,右边是所选模型的成本和耗时曲线。
+
+<img src="docs/assets/top.svg" alt="compactlab top(合成数据)" width="760">
+
+```bash
+uvx compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换单位,c 复制,r 重新校准,q 退出
+```
+
+按键说明见 [docs/TUI.md](docs/TUI.md)。
 
 ## 会话内 lens(Claude Code mod)
 

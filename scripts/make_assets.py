@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -53,12 +55,18 @@ def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2, dark
         )  # fmt: skip
 
 
+def run_cli(args: list[str], cols: int) -> str:
+    """The real CLI in colour (truecolor) at a fixed width, as a terminal would show it."""
+    env = {**os.environ, "COLUMNS": str(cols), "LINES": "60", "COLORTERM": "truecolor", "PYTHONUTF8": "1"}
+    env.pop("NO_COLOR", None)
+    out = subprocess.run([sys.executable, "-m", "compactlab.cli.main", *args, "--color", "always"],
+                         check=True, capture_output=True, text=True, cwd=ROOT, env=env)  # fmt: skip
+    return out.stdout
+
+
 def demo(tmp: Path) -> tuple[str, dict]:
-    out = subprocess.run(
-        [sys.executable, "-m", "compactlab.cli.main", "demo", "--out", str(tmp / "demo"), "--no-open", "--lang", "en"],
-        check=True, capture_output=True, text=True, cwd=ROOT,
-    )  # fmt: skip
-    text = out.stdout.replace(str(tmp / "demo"), "compactlab-demo")
+    text = run_cli(["demo", "--out", str(tmp / "demo"), "--no-open", "--lang", "en"], 100)
+    text = text.replace(str(tmp / "demo"), "compactlab-demo")
     return text, json.loads((tmp / "demo" / "result.json").read_text())
 
 
@@ -141,36 +149,93 @@ def crowd(res: dict) -> dict:
     return out
 
 
-def terminal_svg(text: str) -> str:
-    # keep the hero short: first model/role block plus the closing lines
-    blocks = text.split("\n\n")
-    first = [ln for ln in blocks[1].splitlines() if not ln.strip().startswith("· default")]
-    tail = [ln for ln in text.splitlines() if ln.startswith(("Profile shown first", "SYNTHETIC"))]
-    lines = ["$ uvx compactlab demo --lang en", blocks[0], *first, "  ...", *tail]
-    lh, pad, w = 22, 20, 1000
-    h = pad * 2 + 30 + lh * len(lines)
+SGR = re.compile(r"\x1b\[([0-9;]*)m")
+BASIC = {30: "#1a1915", 31: "#d97757", 32: "#5fb37f", 33: "#e3a548", 37: "#ecebe4", 90: "#8f8c83", 91: "#f2685c",
+         97: "#ffffff"}  # fmt: skip
+
+
+def ansi_lines(text: str) -> list[list[tuple[str, str, bool]]]:
+    """ANSI text -> per line [(text, colour, bold)] (SGR colour and bold only, which is all the renderer emits)."""
+    out = []
+    for raw in text.splitlines():
+        segs, col, bold, pos = [], "#ecebe4", False, 0
+        for m in SGR.finditer(raw):
+            if m.start() > pos:
+                segs.append((raw[pos : m.start()], col, bold))
+            codes = [int(c) for c in m.group(1).split(";") if c] or [0]
+            k = 0
+            while k < len(codes):
+                c = codes[k]
+                if c == 0:
+                    col, bold = "#ecebe4", False
+                elif c == 1:
+                    bold = True
+                elif c == 38 and codes[k + 1 : k + 2] == [2]:
+                    col = "#" + "".join(f"{v:02x}" for v in codes[k + 2 : k + 5])
+                    k += 4
+                elif c == 38 and codes[k + 1 : k + 2] == [5]:
+                    k += 2
+                elif c in BASIC:
+                    col = BASIC[c]
+                k += 1
+            pos = m.end()
+        if pos < len(raw):
+            segs.append((raw[pos:], col, bold))
+        out.append(segs)
+    return out
+
+
+def terminal_svg(text: str, title: str, cols: int, step: float = 0.035) -> str:
+    """A terminal window drawn from real ANSI output: each run of text is placed at its column and stretched to its
+    cell width (box drawing, blocks and braille line up whatever the font), rows fade in, reduced motion shows all."""
+    from compactlab.term.style import cw
+
+    lines = ansi_lines(text)
+    cwid, lh, pad, top = 8.4, 19, 18, 40
+    w, h = int(cols * cwid + pad * 2), int(top + lh * len(lines) + pad)
     rows = []
-    for i, ln in enumerate(lines):
-        delay = 0.4 if i == 0 else 1.4 + 0.18 * i
-        color = "#8b93ff" if i == 0 else ("#5eead4" if "SYNTHETIC" in ln else "#e6e8eb")
-        rows.append(
-            f'<text x="{pad}" y="{pad + 44 + i * lh}" fill="{color}" style="animation-delay:{delay:.2f}s">'
-            f"{html.escape(ln)}</text>"
-        )
+    for i, segs in enumerate(lines):
+        x, spans = 0, []
+        for t, col, bold in segs:
+            n = cw(t)
+            if t.strip():
+                weight = ' font-weight="700"' if bold else ""
+                spans.append(
+                    f'<tspan x="{pad + x * cwid:.1f}" textLength="{n * cwid:.1f}" lengthAdjust="spacingAndGlyphs" '
+                    f'fill="{col}"{weight}>{html.escape(t)}</tspan>'
+                )
+            x += n
+        if spans:
+            rows.append(
+                f'<text y="{top + i * lh + 14}" style="animation-delay:{0.2 + i * step:.2f}s">{"".join(spans)}</text>'
+            )
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img"
- aria-label="Terminal running compactlab demo on synthetic data">
+ aria-label="{html.escape(title)} (synthetic data)">
 <style>
 text{{font:13.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;opacity:0;
- animation:in .25s ease forwards}}
+ animation:in .3s ease forwards}}
 @keyframes in{{to{{opacity:1}}}}
 @media (prefers-reduced-motion:reduce){{text{{animation:none;opacity:1}}}}
+.ttl{{fill:#8f8c83;font-size:12px;opacity:1;animation:none}}
 </style>
-<rect width="{w}" height="{h}" rx="12" fill="#0e0f11"/>
+<rect width="{w}" height="{h}" rx="12" fill="#1a1915"/>
 <circle cx="22" cy="20" r="6" fill="#ff5f57"/><circle cx="42" cy="20" r="6" fill="#febc2e"/>
 <circle cx="62" cy="20" r="6" fill="#28c840"/>
-{"".join(rows)}
+<text x="{w / 2:.0f}" y="24" text-anchor="middle" class="ttl">{html.escape(title)}</text>
+{chr(10).join(rows)}
 </svg>
 """
+
+
+def hero(text: str) -> str:
+    """The demo's header, its first group panel, the no-change line and the recommendations: a short hero."""
+    plain = [SGR.sub("", ln) for ln in text.splitlines()]
+    keep = list(range(0, next(i for i, ln in enumerate(plain) if ln.startswith("╰")) + 1))
+    rest = next((i for i, ln in enumerate(plain) if ln.startswith("✓")), None)
+    if rest is not None:
+        keep += [-1, *range(rest, len(plain))]
+    src = text.splitlines()
+    return "\n".join("" if i == -1 else src[i] for i in keep)
 
 
 def social_html(result: dict) -> str:
@@ -207,7 +272,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         text, result = demo(tmp)
-        (ASSETS / "demo.svg").write_text(terminal_svg(text))
+        (ASSETS / "demo.svg").write_text(terminal_svg(hero(text), "compactlab demo", 100))
+        top = run_cli(["top", "--demo", "--once", "--width", "112", "--height", "30"], 112)
+        (ASSETS / "top.svg").write_text(terminal_svg(top, "compactlab top --demo", 112, step=0.012))
         b = chrome(a.chrome)
         from compactlab.report.html import render_html
 

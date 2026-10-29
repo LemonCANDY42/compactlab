@@ -396,6 +396,32 @@ def _dtime(c: dict[str, Any]) -> str:
     return f"{_hrs(c['d_time_s'])} ({c['d_time_min_per_day']:+.0f}m)"
 
 
+def _term(a: argparse.Namespace, stream: Any = None) -> tuple[Any, int] | None:
+    """(style, columns) for the terminal views, or None for the plain tables: --plain, or --color auto off a TTY."""
+    from ..term.style import Style
+
+    stream = stream or sys.stdout
+    mode = getattr(a, "color", "auto")
+    if getattr(a, "plain", False) or (mode == "auto" and not stream.isatty()):
+        return None
+    return Style.detect(stream, mode), max(30, min(shutil.get_terminal_size((100, 30)).columns, 200))
+
+
+def _lang1(a: argparse.Namespace) -> str:
+    return "zh" if getattr(a, "lang", "en") == "zh" else "en"
+
+
+def _summary_out(a: argparse.Namespace, res: dict[str, Any]) -> str:
+    """The terminal view on a TTY, the full plain tables otherwise."""
+    t = _term(a)
+    if not t:
+        return _summary(res, getattr(a, "lang", "both"))
+    from ..term.views import summary_view
+
+    style, cols = t
+    return str(style.lines(summary_view(res, cols, _lang1(a), getattr(a, "unit", "pct"))))
+
+
 def _summary(res: dict[str, Any], lang: str = "both") -> str:
     from ..sim.select import compare
 
@@ -648,7 +674,7 @@ def cmd_simulate(a: argparse.Namespace) -> int:
                 for g in res["groups"]
             ],
         },
-        _summary(res, a.lang) + f"\n\nwrote {a.out}",
+        _summary_out(a, res) + f"\n\nwrote {a.out}",
     )
     return 0
 
@@ -849,6 +875,12 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
     )
     lines.append(f"scan cache: {cf} ({'present' if cf.exists() else 'none'})")
+    t = _term(a)
+    if t and not a.json:
+        from ..term.views import doctor_view
+
+        print(t[0].lines(doctor_view(report, t[1])))
+        return 0
     _out(a, report, "\n".join(lines))
     return 0
 
@@ -929,9 +961,15 @@ def cmd_recommend(a: argparse.Namespace) -> int:
                           "impact": imp}, indent=2, ensure_ascii=False))  # fmt: skip
     else:
         print(text + ("\n" + "\n".join(notes) if notes else ""))
-        table = impact_text(res, a.lang)
-        if table:
-            print(table)
+        t = _term(a)
+        if t:
+            from ..term.views import recs_table
+
+            print("\n" + t[0].lines(recs_table(res, min(t[1], 120), _lang1(a), getattr(a, "unit", "pct"))))
+        else:
+            table = impact_text(res, a.lang)
+            if table:
+                print(table)
     if a.copy:
         if not snippets:
             print("nothing to copy", file=sys.stderr)
@@ -1033,9 +1071,19 @@ def cmd_serve(a: argparse.Namespace) -> int:
     except PermissionError as e:
         raise CLIError(str(e)) from e
     host, port = str(srv.server_address[0]), int(srv.server_address[1])
-    print(f"compactlab serving http://{host}:{port}/  (token in {state / 'service' / 'token'}; Ctrl-C stops)",
-          file=sys.stderr)  # fmt: skip
+    t = _term(a, sys.stderr)
+    if t:
+        from ..term.views import serve_view
+
+        print(t[0].lines(serve_view(f"http://{host}:{port}/", str(state / "service" / "token"), cal.next_text(),
+                                    str(state), bool(a.auto_apply), t[1])), file=sys.stderr)  # fmt: skip
+    else:
+        print(f"compactlab serving http://{host}:{port}/  (token in {state / 'service' / 'token'}; Ctrl-C stops)",
+              file=sys.stderr)  # fmt: skip
     logging.getLogger("compactlab.service").info("next calibration: %s", cal.next_text())
+    # where `compactlab top` finds this service (loopback address only; removed on exit)
+    endpoint = state / "service" / "endpoint.json"
+    endpoint.write_text(json.dumps({"host": host, "port": port, "pid": os.getpid()}))
     stop = threading.Event()
     threading.Thread(target=cal.loop, args=(stop,), daemon=True).start()
     try:
@@ -1045,6 +1093,7 @@ def cmd_serve(a: argparse.Namespace) -> int:
     finally:
         stop.set()
         srv.server_close()
+        endpoint.unlink(missing_ok=True)
     return 0
 
 
@@ -1142,10 +1191,61 @@ def cmd_consent(a: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_demo(a: argparse.Namespace) -> int:
-    from ..lens import summarize
+def cmd_top(a: argparse.Namespace) -> int:
+    """Live view of the latest result; one static frame when stdout is not a terminal (or with --once)."""
+    import tempfile
 
-    out = Path(a.out)
+    from ..term import top as tp
+    from ..term.style import Style
+
+    state = Path(a.state_dir).expanduser()
+    tmp = None
+    if a.demo:
+        tmp = tempfile.mkdtemp(prefix="compactlab-top-")
+        res: dict[str, Any] | None = _demo_result(Path(tmp), "en")
+        src: Path | None = None
+    else:
+        cands = (
+            [Path(a.result).expanduser()]
+            if a.result
+            else [state / "service" / "result.json", Path("compactlab-result.json"), state / "result.json"]
+        )
+        src = next((c for c in cands if c.exists()), None)
+        if src is None:
+            raise CLIError(
+                "no result found; run `compactlab simulate` (or `compactlab serve`), or try `compactlab top --demo`"
+            )
+        res = _load_result(str(src))
+    assert res is not None
+    mtime = [src.stat().st_mtime if src else 0.0]
+
+    def reload() -> dict[str, Any] | None:
+        if src and src.exists() and src.stat().st_mtime != mtime[0]:
+            mtime[0] = src.stat().st_mtime
+            return _load_result(str(src))
+        return None
+
+    def recalibrate() -> dict[str, Any] | None:
+        if a.demo:
+            return _demo_result(Path(tempfile.mkdtemp(prefix="compactlab-top-")), "en")
+        ns = build_parser().parse_args(["simulate", "--out", str(src or "compactlab-result.json"), "--lang", "en"])
+        ns.lens_out = ""
+        return run_analysis(ns)
+
+    # --demo never looks at the real service; open on the first model, not its harness row
+    st = tp.TopState(res=res, unit=a.unit, profile=a.profile, service={} if a.demo else tp.service_state(state), sel=1)
+    if a.once or not (sys.stdout.isatty() and sys.stdin.isatty()):
+        size = shutil.get_terminal_size((120, 36))
+        cols, rows = a.width or size.columns, a.height or size.lines
+        style = Style.detect(sys.stdout, a.color) if not a.plain else Style(0)
+        print(tp.static(st, style, max(30, min(cols, 200)), max(10, rows)))
+        return 0
+    tp.run(st, state, reload, recalibrate, a.interval)
+    return 0
+
+
+def _demo_result(out: Path, lang: str = "both") -> dict[str, Any]:
+    """Synthetic history under `out` analysed like `simulate` (never reads real data)."""
     synth.write_claude_code(out / "claude" / "projects", n_main=12, n_sub=6)
     synth.write_codex(out / "codex" / "sessions", n=6)
     demo_settings = out / "claude" / "settings.json"  # synthetic "current" config to show the comparison
@@ -1155,15 +1255,23 @@ def cmd_demo(a: argparse.Namespace) -> int:
     ns = build_parser().parse_args(
         ["simulate", "--claude-root", str(out / "claude" / "projects"), "--codex-root", str(out / "codex" / "sessions"),
          "--since-days", "0", "--no-cache", "--offline-pricing", "--claude-settings", str(demo_settings),
-         "--codex-config", str(out / "codex" / "config.toml"), "--lang", a.lang]
+         "--codex-config", str(out / "codex" / "config.toml"), "--lang", lang]
     )  # fmt: skip
     res = run_analysis(ns)
     assert res is not None
     res["demo"] = True
+    return res
+
+
+def cmd_demo(a: argparse.Namespace) -> int:
+    from ..lens import summarize
+
+    out = Path(a.out)
+    res = _demo_result(out, a.lang)
     (out / "result.json").write_text(json.dumps(res, sort_keys=True))
     (out / "lens.json").write_text(json.dumps(summarize(res), sort_keys=True))
     (out / "report.html").write_text(render_html(res))
-    print(_summary(res, getattr(a, "lang", "both")))
+    print(_summary_out(a, res))
     print(f"\nSYNTHETIC DEMO DATA (not your history). Report: {out / 'report.html'}")
     print(f"Copy the settings / 复制推荐设置: compactlab recommend --result {out / 'result.json'} [--copy]")
     if not a.no_open:
@@ -1176,12 +1284,34 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="compactlab", description=__doc__, epilog=EXAMPLES, formatter_class=fmt)
     p.add_argument("--version", action="version", version=f"compactlab {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="command")
+    _commands(sub, fmt)
+    for sp in sub.choices.values():  # every command: terminal look
+        g = sp.add_argument_group("terminal output")
+        g.add_argument("--plain", action="store_true", help="plain text tables, no colour or boxes")
+        g.add_argument("--color", choices=["auto", "always", "never"], default="auto",
+                       help="colour: auto (TTY, honours NO_COLOR), always, never")  # fmt: skip
+        g.add_argument("--unit", choices=["pct", "usd"], default="pct", help="lead with %% of the default or $ / day")
+    return p
+
+
+def _commands(sub: Any, fmt: Any) -> None:
 
     s = sub.add_parser("demo", help="build and open a report from bundled synthetic data", formatter_class=fmt)
     s.add_argument("--out", default="compactlab-demo")
     s.add_argument("--no-open", action="store_true", help="do not open the report")
     s.add_argument("--lang", choices=["both", "en", "zh"], default="both", help="summary language (default: both 中英)")
     s.set_defaults(f=cmd_demo)
+
+    s = sub.add_parser("top", help="live terminal view of the latest result (htop-like; keys: ? for help)")
+    s.add_argument("--result", help="result.json (default: the service's, ./compactlab-result.json, ~/.compactlab)")
+    s.add_argument("--demo", action="store_true", help="synthetic data instead of your history")
+    s.add_argument("--state-dir", default=STATE, help="service state, to show and reach a running service")
+    s.add_argument("--profile", choices=list(PROFILE_NAMES), help="show this profile for every model")
+    s.add_argument("--interval", type=float, default=5.0, help="seconds between reloads (default 5)")
+    s.add_argument("--once", action="store_true", help="print one frame and exit")
+    s.add_argument("--width", type=int, help="frame width for --once (default: the terminal's)")
+    s.add_argument("--height", type=int, help="frame height for --once")
+    s.set_defaults(f=cmd_top)
 
     s = sub.add_parser("doctor", help="detect harnesses, log locations, config paths, versions")
     s.add_argument("--json", action="store_true")
@@ -1306,7 +1436,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--cache-dir", default=f"{STATE}/cache")
     s.add_argument("--json", action="store_true")
     s.set_defaults(f=cmd_cache)
-    return p
 
 
 def main(argv: list[str] | None = None) -> int:

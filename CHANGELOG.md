@@ -6,6 +6,13 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Terminal views.** A stdlib-only renderer (`compactlab.term`: truecolor / 256 / 16 colours, NO_COLOR,
+  `--plain`, `--color`, `--unit`, CJK-aware widths 30..200) gives `demo`, `simulate`, `recommend`, `doctor` and `serve`
+  a fastfetch-style header and per-model panels (threshold gauge, was/now bars, cost sparkline, profile chips,
+  recommendations with keep-default reasons). Piped output keeps the full plain tables.
+- **`compactlab top`.** A live curses view (tree, braille cost/time chart, meters; keys for profile, unit, filter,
+  copy, recalibrate, help; mouse; one static frame off a TTY). `serve` writes an endpoint file for it.
+- `docs/assets/demo.svg` and the new `docs/assets/top.svg` are rendered from the real CLI output.
 - `compactlab serve` is quiet: one in-place progress line only on a terminal (cut to its width at a space, so it
   never wraps into extra rows), nothing otherwise; the log says `recalibrating (reason)` and `recalibrated in Ns:
   N files, M cached, K parsed, X groups; next calibration: <time>`, and the next calibration at start.
