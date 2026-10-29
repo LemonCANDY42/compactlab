@@ -165,6 +165,9 @@ svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .mute,td.mute{color:var(--ink3)!important}tspan.mute{fill:var(--ink3)}tspan.good{fill:var(--good)}tspan.warn{fill:var(--amber)}
 .smk{fill:var(--line2)}.ovrow.keep .ovname{fill:var(--ink3)}
 .bdg i{display:inline-flex;align-items:center;gap:2px}.bdg i svg.ic{width:10px;height:10px;vertical-align:0}.bdg.mute{opacity:.85}
+.kw{font-size:11.5px;line-height:1.35;color:var(--ink2);background:var(--bg2);border-radius:6px;padding:3px 7px;margin-top:4px;white-space:normal;text-align:left;max-width:340px;margin-left:auto}
+.pc .kw{margin:0;max-width:none}.ans2.kw{margin:0;padding:1px 7px}.ans2.kw::before{content:none}
+.kpi .v .nw{white-space:nowrap}#ovw .kpi .v{font-size:23px}
 .indep{font-size:11px;color:var(--ink3);margin-bottom:8px}
 #marks.compact .mk.r1 .tx{display:none}
 .live{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.live .tval{min-width:0;font-size:18px}
@@ -447,6 +450,8 @@ const I={
  cmpS:['/d','/天'], compAtDef:[n=>n+' compactions at default',n=>'默认下压缩 '+n+' 次'],
  peaksK:[n=>'session peaks (tallest '+n+')',n=>'会话峰值(最高 '+n+')'], unsafeK:[f=>'recall < '+f+' (lite proxy)',f=>'召回 < '+f+'(lite 代理值)'],
  kTotSub:[n=>'if the '+n+' “set” models are applied',n=>'应用 '+n+' 个“设置”模型时'], kKeep:['Keep default','保持默认'], mUnit:['models','个模型'],
+ kwAbove:[(a,b)=>'keep default: '+a+' is not below the default '+b,(a,b)=>'保持默认:'+a+' 不低于默认值 '+b],
+ kwScore:[(v,u,m,tv,n)=>'keep default: no net gain at $'+v+'/h · money '+u+', time '+m+' ('+tv+') → '+n+' per day',(v,u,m,tv,n)=>'保持默认:按 $'+v+'/小时 没有净收益 · 费用 '+u+',时间 '+m+'('+tv+')→ 每天 '+n],
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
@@ -503,6 +508,10 @@ function best(){const key=g=>[isSet(g)?1:0,Math.abs(usdOf(g)),g.n_turns];let b=-
   D.groups.forEach((g,i)=>{if(g.no_action_needed)return;const k=key(g);if(!bk||k[0]>bk[0]||(k[0]===bk[0]&&(k[1]>bk[1]+1e-9||(Math.abs(k[1]-bk[1])<=1e-9&&k[2]>bk[2])))){b=i;bk=k}});return b}
 function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i);
   return (thr>=d.threshold||p.combined_cost+p.time_s/3600*vot>=d.combined_cost+d.time_s/3600*vot)?'aKeep':'aSet'}
+// why a threshold keeps the default: the same two tests as action() and compactlab.sim.engine._comparison
+function keepWhy(g,thr,vot){const d=g.default;if(g.no_action_needed)return '';if(thr>=d.threshold)return t('kwAbove',fk(thr),fk(d.threshold));
+  const im=impJS(pt(g,g.grid.indexOf(thr)),d,g),u=im.usd.per_day,m=im.minutes.per_day,tv=m/60*vot;
+  return t('kwScore',vot,fsv(u),fmv(m),fsv(tv),fsv(u+tv))}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}
 function setGear(k){S.gear=k;if(k!=='custom'){S.T=G().profiles[k].threshold;S.vot=G().profiles[k].value_of_time}update()}
 function setT(T){S.gear=PROF.find(k=>G().profiles[k].threshold===T&&k===S.gear)||'custom';S.T=T;update()}
@@ -758,7 +767,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
   const fl=r.recall_floor,lo=Math.min(fl,p.recall,d.recall)-.02,gp=v=>((v-lo)/(1-lo)*100).toFixed(1)+'%';
   const dcp=im.compactions.per_day-im.ref_compactions.per_day;
   $('#ans').innerHTML=answer(im.usd.per_day,im.minutes.per_day,t('vsDefL',def))+(icur?'<span class="ans2">'+answer(icur.usd.per_day,icur.minutes.per_day,t('vsCurL',fk(g.current.configured??g.current.threshold)))+'</span>':'<span class="ans2 cap">'+esc(t('noCur'))+'</span>');
-  const cb=$('#cpOne'),keepIt=action(g,S.T,S.vot)!=='aSet';cb.disabled=keepIt;cb.dataset.tip=keepIt?t('cpKeep'):t('cpOneTip',snippet(g,S.T));cb.setAttribute('aria-label',t('cpCopy')+': '+(keepIt?t('cpKeep'):snippet(g,S.T)));
+  const cb=$('#cpOne'),keepIt=action(g,S.T,S.vot)!=='aSet';if(keepIt)$('#ans').insertAdjacentHTML('beforeend','<span class="ans2 kw">'+esc(keepWhy(g,S.T,S.vot))+'</span>');cb.disabled=keepIt;cb.dataset.tip=keepIt?t('cpKeep'):t('cpOneTip',snippet(g,S.T));cb.setAttribute('aria-label',t('cpCopy')+': '+(keepIt?t('cpKeep'):snippet(g,S.T)));
   $('#kpis').innerHTML=`
    <div class="kpi"><div class="kh">${ic('refresh')}<span>${t('kComp')}</span></div><div class="v">${im.compactions.per_day.toFixed(1)}</div>
      <div class="kr">${chip(arrow(dcp)+(dcp>=0?'+':MINUS)+Math.abs(dcp).toFixed(1),'')}<span class="cap">${esc(t('cCompSub',im.ref_compactions.per_day.toFixed(1),Math.round(im.compactions.per_month)))}</span></div></div>
@@ -798,7 +807,7 @@ function impactPanel(){const g=G(),box=$('#fImpact');
         `</div><span class="cap">${esc(t('cSplit',fmin(w,B),fmin(tg,B)))}</span></div>`}).join('');
     return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header>${ic(PICON[k],t(k))}<span class="pn">${t(k)}${k===g.profile?'&nbsp;★':''}</span>${flagIcons(P)}<span class="act ${act==='aSet'?'set':''}">${t(act)}</span></header>
      <div class="tb"><span class="cap">${t('threshold')}</span><span class="pt" title="${esc(t('iFrac',Math.round(frac*100),fk(emax)))}">${fk(P.threshold)}</span></div>
-     ${rows}</article>`}).join('');
+     ${act==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}${rows}</article>`}).join('');
   const cap=hasAct?t('iCap',fdays(Math.max(g.days,1)),fdays(g.active_days)):t('iCapNo',fdays(Math.max(g.days,1)));
   box.innerHTML=`<div class="ihead"><div class="seg sm" data-k="basis" role="group" aria-label="${t('bLabel')}">${bases.map(([k,l])=>`<button data-basis="${k}" aria-pressed="${B===k}">${t(l)}</button>`).join('')}</div><span class="cap">${esc(cap)}</span>${hasAct?'':ib(t('iNoActive'),'info')}<span class="est">${t('est')}</span></div>
    <div class="pcs">${cards}</div>`;
@@ -972,7 +981,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const tu=models.reduce((a,m)=>a+m.usd,0),tm=models.reduce((a,m)=>a+m.min,0),cnt=st=>models.filter(m=>m.st===st).length;
   const kpi=(icn,lab,v,cls,sub)=>`<div class="kpi"><div class="kh">${ic(icn)}<span>${t(lab)}</span></div><div class="v ${cls||''}">${v}</div>${sub?`<div class="cap">${sub}</div>`:''}</div>`;
   box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('votS',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
-   <div class="kpis">${kpi('coin','kTotUsd',fsv(tu)+'<span class="cap"> '+t('uDay')+'</span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>')+kpi('clock','kTotMin',fmv(tm)+'<span class="cap"> '+t('uDay')+'</span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
+   <div class="kpis">${kpi('coin','kTotUsd','<span class="nw">'+fsv(tu)+'<span class="cap"> '+t('uDay')+'</span></span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>')+kpi('clock','kTotMin','<span class="nw">'+fmv(tm)+'<span class="cap"> '+t('uDay')+'</span></span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
      kpi('sliders','kToSet',String(cnt('set')),'',esc(t('mUnit')))+kpi('scale','kKeep',String(cnt('keep')),'',esc(t('mUnit')))+kpi('check','kNoCh',String(cnt('noop')),'',esc(t('mUnit')))}</div>
    <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv"></div>
    <h2>${t('ovTable')}</h2><div class="card scroll" id="ovT"></div>`;
@@ -1003,7 +1012,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const rk=g=>g.no_action_needed?2:isSet(g,k)?0:1;
   const tr=D.groups.map((g,i)=>[g,i]).sort((a,b)=>rk(a[0])-rk(b[0])||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
   $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>'<th>'+t(c)+'</th>').join('')+'</tr>'+tr.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k),mu=a==='aSet'?'':' mute';
-    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span></td><td class="${tone(u)}${mu}">${g.no_action_needed?'–':fsv(u)}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':fmv(mn)}</td></tr>`}).join('')+'</table>';
+    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span>${a==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}</td><td class="${tone(u)}${mu}">${g.no_action_needed?'–':fsv(u)}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':fmv(mn)}</td></tr>`}).join('')+'</table>';
   $('#ovT').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>pick(+b.dataset.tab));
   copyPanel();renderS()}
 // update(): everything that depends on the selected threshold/profile; render(): full rebuild (group or language change)

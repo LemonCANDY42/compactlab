@@ -109,6 +109,11 @@ status icons.
   Rows open the model.
 - Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers
   (greyed unless the action is "set").
+- A "keep default" row carries a one-line reason from the same two tests the engine uses
+  (`sim/engine.py` `_comparison`): the profile threshold is not below the default, or its score (cost + time x
+  price of time) is not below the default's, e.g. `no net gain at $250/h · money ▼ $3.7, time ▲ +1.1 min
+  (▲ +$4.6) → ▲ +$0.9 per day`. The same reason shows on the model page's profile card and in the answer line
+  when the cursor sits on such a threshold.
 
 ## Sessions table
 

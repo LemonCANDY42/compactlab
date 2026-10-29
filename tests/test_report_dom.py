@@ -134,6 +134,9 @@ CHECK = """
       ok(v.startsWith(fsv(want)),'overview total '+v+' != '+fsv(want));
       ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#fOv .ovrow.keep'):true,'keep-default rows not greyed')}
     ok(/^All sessions/.test(document.getElementById('hSess').textContent),'overview sessions title');
+    // a "keep default" row says which rule kept it
+    D.groups.forEach((x,i)=>{const P=x.profiles[S.op];if(action(x,P.threshold,P.value_of_time)!=='aKeep')return;
+      const tr=document.querySelector(`#ovT [data-tab="${i}"]`).closest('tr');ok(tr.querySelector('.kw')&&/keep default: /.test(tr.querySelector('.kw').textContent),'keep-default row without a reason: '+x.model)});
     // a no-change group: a short state and the peaks chart, no empty cards, no warning triangles
     const ni=D.groups.findIndex(x=>x.no_action_needed);ok(ni>=0,'fixture has no no-change group');
     if(ni>=0){const nb=document.querySelector(`#tree [data-tab="${ni}"]`);if(nb)nb.click();else pick(ni);
