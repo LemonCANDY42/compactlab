@@ -26,9 +26,19 @@ CANDIDATES = [
 CHECK = """
 <script>
 (function(){
-  const fail=[];const ok=(c,m)=>{if(!c)fail.push(m)};
+  const fail=[];const ok=(c,m)=>{if(!c)fail.push(m)};const vis=n=>n&&n.offsetParent!==null;
   try{
+    // landing: the group with the largest per-day impact, never one that needs no change
+    const L=G();ok(S.view==='group'&&!L.no_action_needed,'landed on a no-change group');
+    D.groups.forEach(x=>{if(!x.no_action_needed)ok(Math.abs(usdOf(L))>=Math.abs(usdOf(x))-1e-9,'landing is not the largest impact: '+x.model+' '+x.role)});
+    ok(location.hash.startsWith('#g='),'hash not set');
+    // display names: date suffix only in the tooltip
+    ok(label('claude-haiku-4-5-20251001')==='Haiku 4.5'&&family('claude-haiku-4-5-20251001')==='Haiku','claude label');
+    ok(label('claude-opus-5-5')==='Opus 5.5'&&label('gpt-5-codex')==='GPT-5-codex','labels');
+    // chart first, then profiles, KPIs, table
+    const ids=[...document.querySelectorAll('#fMain,#fImpact,#kpis,#fCmp')].map(n=>n.id).join();ok(ids==='fMain,fImpact,kpis,fCmp','order '+ids);
     const n0=document.getElementById('rng');const g=D.groups[S.gi];const max=g.grid.length-1;
+    ok(n0&&n0.closest('#fMain'),'slider is not under the chart');
     n0.focus();
     for(const v of [0,3,Math.min(7,max),2,max,1]){
       n0.value=v;n0.dispatchEvent(new Event('input',{bubbles:true}));
@@ -38,6 +48,13 @@ CHECK = """
     }
     ok(document.activeElement===n0,'slider lost focus');
     ok(document.querySelector('[data-gear=custom]').getAttribute('aria-pressed')==='true','custom not active');
+    // drag on the chart: the cursor follows, the chart and slider nodes stay
+    const svg=document.querySelector('#fMain svg.mainc'),ov=svg.querySelector('rect.drag'),r0=ov.getBoundingClientRect();
+    const ev=(type,fx)=>ov.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:1,clientX:r0.left+r0.width*fx,clientY:r0.top+r0.height/2}));
+    ev('pointerdown',.004);const tA=S.T;ev('pointermove',.5);ev('pointermove',.996);const tB=S.T;ev('pointerup',.996);
+    ok(tA===g.grid[0]&&tB===g.grid[max],'drag did not move the threshold '+tA+' -> '+tB);
+    ok(document.querySelector('#fMain svg.mainc')===svg&&document.getElementById('rng')===n0,'chart or slider rebuilt during drag');
+    ok(+n0.value===max&&svg.querySelector('.chl').textContent===fk(S.T),'slider or cursor label not synced with the drag');
     document.querySelector('[data-gear=time]').click();
     ok(document.getElementById('rng')===n0,'slider node replaced after profile click');
     ok(+n0.value===g.grid.indexOf(g.profiles.time.threshold),'slider not moved to the time profile');
@@ -46,6 +63,9 @@ CHECK = """
     if(def){def.click();ok(S.gear==='custom'&&document.getElementById('rng')===n0,'default mark did not snap')}
     const pm=document.querySelector('.mk[data-g=balanced]');ok(pm,'balanced mark missing');
     if(pm){pm.click();ok(S.gear==='balanced','balanced mark did not select the profile')}
+    // a warning triangle in the bar only for the selected profile's guardrail flags
+    const want=g.profiles.balanced.flags.filter(f=>!NOTE(f)).length,warn=document.querySelectorAll('#flags .ib.low,#flags .ib.bad').length;
+    ok(warn===want,'bar shows '+warn+' warnings for flags '+g.profiles.balanced.flags.join(','));
     const b=document.querySelector('#fCopy .seg[data-k=profile] button[data-v=time]');
     b.focus();b.click();
     ok(document.activeElement&&document.activeElement.dataset.v==='time','copy panel lost focus');
@@ -57,8 +77,7 @@ CHECK = """
       const tip=document.getElementById('tip');ok(!tip.hidden&&/k/.test(tip.textContent),'tooltip not shown')}
     // per-day impact: three profile cards; the money cell shows the stored vs-default number for the chosen basis
     ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
-    if(!g.no_action_needed){
-      const im=g.comparison.balanced.vs_default.impact;
+    {const im=g.comparison.balanced.vs_default.impact;
       const money=()=>document.querySelector('#fImpact [data-pc=balanced] [data-m=usd-vs_default]').textContent;
       ok(money()===arrow(im.usd.per_day)+fusd(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
       document.querySelector('#fImpact [data-basis=per_month]').click();
@@ -78,7 +97,7 @@ CHECK = """
     const zh=(document.getElementById('main').innerText.match(/[\u4e00-\u9fff]+/g)||[]);ok(!zh.length,'Chinese text in the English view: '+zh.slice(0,5).join(','));
     // a guardrail that only moved the pick is a note (info icon), never a warning
     for(const k of ['cost','balanced','time']){const warn=document.querySelectorAll(`#fImpact [data-pc=${k}] .ib.low, #fImpact [data-pc=${k}] .ib.bad`).length;
-      const want=g.no_action_needed?0:g.profiles[k].flags.filter(f=>!['guardrail_applied','deep_recall_below_floor'].includes(f)).length;
+      const want=g.profiles[k].flags.filter(f=>!['guardrail_applied','deep_recall_below_floor'].includes(f)).length;
       ok(warn===want,k+': '+warn+' warning icons for flags '+g.profiles[k].flags.join(','))}
     // theme toggle sets data-theme on <html>
     document.querySelector('#themes [data-th=dark]').click();
@@ -88,6 +107,25 @@ CHECK = """
     // the control bar stays visible while scrolling
     scrollTo(0,document.body.scrollHeight);
     ok(Math.abs(document.getElementById('bar').getBoundingClientRect().top)<1,'control bar is not sticky');
+    scrollTo(0,0);
+    // sidebar: harness > family > model; folds toggle and are remembered; search filters
+    ok(document.querySelector('#tree .har .fam .mrow.cur .mn[aria-current=page]'),'selected model not in the tree');
+    const hf=document.querySelector('#tree .har>.fold');hf.click();
+    ok(hf.getAttribute('aria-expanded')==='false'&&hf.nextElementSibling.hidden&&S.fold[hf.dataset.fold]===false,'fold did not collapse');hf.click();
+    const tq=document.getElementById('tq');tq.value='zzzz';tq.dispatchEvent(new Event('input'));ok(!document.querySelector('#tree .mrow'),'search did not filter');
+    tq.value='';tq.dispatchEvent(new Event('input'));ok(document.querySelector('#tree .mrow'),'search did not reset');
+    // overview: one bar per model that needs a change, one table row per group
+    document.querySelector('#tree [data-ov]').click();
+    ok(S.view==='overview'&&vis(document.getElementById('fOv'))&&!vis(document.getElementById('fMain')),'overview not shown');
+    const nAct=new Set(D.groups.filter(x=>!x.no_action_needed).map(x=>x.harness+'|'+x.model)).size;
+    ok(document.querySelectorAll('#fOv .ovrow').length===nAct,'overview bars '+document.querySelectorAll('#fOv .ovrow').length+' != '+nAct);
+    ok(document.querySelectorAll('#ovT tr').length===D.groups.length+1,'roll-up rows');
+    // a no-change group: a short state and the peaks chart, no empty cards, no warning triangles
+    const ni=D.groups.findIndex(x=>x.no_action_needed);ok(ni>=0,'fixture has no no-change group');
+    if(ni>=0){const nb=document.querySelector(`#tree [data-tab="${ni}"]`);if(nb)nb.click();else pick(ni);
+      ok(S.view==='noop'&&vis(document.querySelector('#fNoop svg')),'no-change view not shown');
+      ok(![...document.querySelectorAll('.pc,.kpi')].some(vis),'empty cards shown for a no-change group');
+      ok(![...document.querySelectorAll('#main .ib.low,#main .ib.bad')].some(vis),'warning icon on a no-change group')}
   }catch(e){fail.push('error: '+e.message)}
   document.body.dataset.selftest=fail.length?'fail: '+fail.join(' | '):'ok';
 })();

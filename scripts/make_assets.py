@@ -4,8 +4,9 @@
   python scripts/make_assets.py [--chrome PATH]
 
 Produces:
-  docs/assets/report.png          first screen of the demo report (headless Chrome), plus report-dark.png,
-                                  report-mobile.png and report-mobile-dark.png
+  docs/assets/report.png          first screen of a synthetic showcase report at 1440 px (headless Chrome), plus
+                                  report-dark.png, report-overview.png, report-noop.png, report-mobile.png and
+                                  report-mobile-dark.png (390 px)
   docs/assets/social-preview.png  1280x640 card for the GitHub social preview (headless Chrome)
   docs/assets/demo.svg            animated terminal of `compactlab demo` (pure SVG/CSS, no Chrome needed)
 """
@@ -19,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,6 +59,47 @@ def demo(tmp: Path) -> tuple[str, dict]:
     )  # fmt: skip
     text = out.stdout.replace(str(tmp / "demo"), "compactlab-demo")
     return text, json.loads((tmp / "demo" / "result.json").read_text())
+
+
+def _extra_project(
+    root: Path, tag: str, models: tuple[str, ...], n_main: int, n_sub: int, seed: int, main_lines: int = 0
+) -> None:
+    """One more synthetic project next to the demo one, with its own session and message ids. `main_lines` cuts
+    main sessions short (short sessions never reach the default threshold)."""
+    from compactlab import synth
+
+    tmp = root.parent / f"x{tag}"
+    synth.write_claude_code(tmp, n_main=n_main, n_sub=n_sub, seed=seed, models=models)
+    src = tmp / "-proj-demo"
+    for p in sorted(src.rglob("*.jsonl")):
+        rel = Path(*[q.replace("s0", tag + "0", 1) if q.startswith("s0") else q for q in p.relative_to(src).parts])
+        out = root / f"-proj-{tag}" / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        lines = p.read_text().replace("msg_s", f"msg_{tag}").replace("tu_s", f"tu_{tag}").splitlines()
+        if main_lines and "subagents" not in rel.parts:
+            lines = lines[:main_lines]
+        out.write_text("\n".join(lines) + "\n")
+    shutil.rmtree(tmp)
+
+
+def showcase(tmp: Path) -> dict:
+    """Synthetic history with many models: heavy groups that need tuning, a model with a dated id whose main and
+    subagent runs never compact, a subagent-only model, and a Codex group. Never reads real data."""
+    from compactlab import synth
+    from compactlab.adapters import get_adapter
+    from compactlab.pricing import PricingTable
+    from compactlab.sim.engine import analyze
+
+    root = tmp / "claude"
+    synth.write_claude_code(root, n_main=12, n_sub=6)
+    _extra_project(root, "h", ("claude-haiku-5-5-20260915",), 4, 3, 21, main_lines=90)
+    _extra_project(root, "o", ("claude-opus-4-7", "claude-fable-5-1"), 6, 2, 31)
+    _extra_project(root, "f", ("claude-sonnet-5",), 0, 4, 41)
+    synth.write_codex(tmp / "codex", n=6)
+    ss = list(get_adapter("claude-code")(root).sessions()) + list(get_adapter("codex")(tmp / "codex").sessions())
+    res = analyze(ss, PricingTable.load(offline=True), current={("claude-code", "claude-opus-5-5"): (600_000, "t")})
+    res["demo"] = True
+    return res
 
 
 def terminal_svg(text: str) -> str:
@@ -127,15 +170,23 @@ def main() -> None:
         text, result = demo(tmp)
         (ASSETS / "demo.svg").write_text(terminal_svg(text))
         b = chrome(a.chrome)
-        page = (tmp / "demo" / "report.html").as_uri()
-        shot(b, page, ASSETS / "report.png", 1280, 1180)
-        shot(b, page, ASSETS / "report-dark.png", 1280, 1180, dark=True)
+        from compactlab.report.html import render_html
+
+        res = showcase(tmp / "showcase")
+        noop = next(g for g in res["groups"] if g["no_action_needed"] and g["role"] == "main")
+        (tmp / "showcase.html").write_text(render_html(res))
+        page = (tmp / "showcase.html").as_uri()
+        shot(b, page, ASSETS / "report.png", 1440, 1240)
+        shot(b, page, ASSETS / "report-dark.png", 1440, 1240, dark=True)
+        shot(b, page + "#overview", ASSETS / "report-overview.png", 1440, 1240)
+        key = urllib.parse.quote("|".join([noop["harness"], noop["model"], noop["role"]]))
+        shot(b, page + "#g=" + key, ASSETS / "report-noop.png", 1440, 760)
         # headless Chrome will not go below ~500px wide, so the phone view is an iframe in a host page
         host = tmp / "mobile.html"
         host.write_text(f'<!doctype html><body style="margin:0"><iframe src="{page}" '
-                        'style="width:390px;height:1500px;border:0;display:block"></iframe>')  # fmt: skip
-        shot(b, host.as_uri(), ASSETS / "report-mobile.png", 390, 1500)
-        shot(b, host.as_uri(), ASSETS / "report-mobile-dark.png", 390, 1500, dark=True)
+                        'style="width:390px;height:1600px;border:0;display:block"></iframe>')  # fmt: skip
+        shot(b, host.as_uri(), ASSETS / "report-mobile.png", 390, 1600)
+        shot(b, host.as_uri(), ASSETS / "report-mobile-dark.png", 390, 1600, dark=True)
         card = tmp / "social.html"
         card.write_text(social_html(result))
         shot(b, card.as_uri(), ASSETS / "social-preview.png", 1280, 640, scale=1)

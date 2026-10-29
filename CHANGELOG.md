@@ -6,6 +6,14 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Report layout.** Opens on the model with the largest per-day impact (never one that needs no change). Each
+  model page leads with one chart: $/day and min/day vs the default over the threshold axis, session peaks behind,
+  the recall-floor zone hatched, marks for default, current and the three profiles, and a draggable cursor with the
+  slider under it; then profile cards, KPIs and the table. Sidebar is a tree (harness > family > model, role chips,
+  impact badges, search, remembered folds, a collapsed "No change needed" bucket, drawer on phones) with an
+  Overview page (per-model bars and a roll-up of recommended settings). Models that never compact get a short
+  state and a peak chart instead of $0 cards. Warning triangles only for real guardrail flags. See
+  docs/REPORT_UI.md.
 - **Profiles replace tiers.** Three profiles, always computed side by side: `cost` ($10/h of agent time),
   `balanced` (default, $250/h) and `time` ($600/h). `--profile` on simulate / report / recommend / apply / retune
   picks the one to lead with or write; `--value-of-time` overrides its price of time and re-selects from a saved
