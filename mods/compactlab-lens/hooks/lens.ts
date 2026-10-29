@@ -298,8 +298,8 @@ export const cardRows = (c: CardInput): Tok[][] => {
       { key: `${key}-l`, text: lab, dim: true },
       { key: `${key}-u`, text: `${arrow(im.usd_per_day)}${full ? usd(im.usd_per_day) : usdShort(im.usd_per_day)}${unit}`, color: tone(im.usd_per_day) },
       { key: `${key}-m`, text: `◷${arrow(im.min_per_day)}${mins(im.min_per_day)}${unit}`, color: tone(im.min_per_day) },
-      { key: `${key}-w`, text: `${w.wait} ${mins(im.wait_min_per_day)}`, dim: true },
-      { key: `${key}-t`, text: `${w.turns} ${mins(tg)}`, dim: true },
+      { key: `${key}-w`, text: `${w.wait} ${arrow(im.wait_min_per_day)}${mins(im.wait_min_per_day)}`, dim: true },
+      { key: `${key}-t`, text: `${w.turns} ${arrow(tg)}${mins(tg)}`, dim: true },
       { key: `${key}-c`, text: `⟳${im.compactions_per_day.toFixed(1)}${unit}`, dim: true },
     ], c.cols))
   }

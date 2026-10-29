@@ -261,6 +261,8 @@ for (const lang of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         expect(parts.some(x => /^▲\+4\.8m\/(day|天|d)$/.test(x))).toBe(true)
         for (const x of parts) expect(x).not.toMatch(/^(k|y|ay|\/d|\/day)$/) // no stray unit fragments
         if (fold) expect(parts.some(x => x.includes('/autocompact 500k'))).toBe(true)
+        // the wait / turn-time split is a delta too: arrow and sign
+        if (fold) expect(parts.some(x => /▲\+6\.8m$/.test(x)) && parts.some(x => /▼−2\.0m$/.test(x))).toBe(true)
         if (cols >= 60 || (cols >= 55 && lang.startsWith('en'))) expect(rows[0]?.parts.includes('⟳0')).toBe(true) // one row
         if (lang.startsWith('en')) console.log(`--- ${cols} cols${fold ? ', unfolded' : ''} ---\n` + rows.map(r => r.text).join('\n'))
       }

@@ -66,7 +66,9 @@ CHECK = """
     // one answer line with a copy button; savings carry ▼ and no minus sign
     {const im=impJS(pt(g,g.grid.indexOf(S.T)),g.default);const a=document.getElementById('ans').textContent;
       ok(/per day vs default/.test(a)&&a.includes('$'+Math.abs(im.usd.per_day).toFixed(1)),'answer line: '+a);
-      ok(!/−\\$/.test(document.getElementById('fImpact').textContent),'minus-dollar figure in the profile cards');
+      // every delta carries its arrow and its sign: '▼ −$x' saves, '▲ +$x' adds; never a bare '−$x' or '▼ $x'
+      document.querySelectorAll('#fImpact [data-m]').forEach(c=>ok(/^(\\$0|0 min|[▼] −|[▲] \\+)/.test(c.textContent.trim()),'unsigned delta chip: '+c.textContent));
+      ok(!/(^|[^▼▲ ])[ ]?−\\$/.test(document.getElementById('ans').textContent)&&!/[▼▲] \\$/.test(document.getElementById('ans').textContent),'answer line sign: '+document.getElementById('ans').textContent);
       ok(document.getElementById('cpOne').disabled===(action(g,S.T,S.vot)!=='aSet'),'copy button state');
       ok(!!g.current===!document.querySelector('#ans .ans2.cap'),'current-setting note');
       ok(!!g.current===!!document.querySelector('#fMain .mcur'),'current mark')}
@@ -82,7 +84,9 @@ CHECK = """
     if(hv){const r=hv.getBoundingClientRect();
       const at={bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2};
       hv.dispatchEvent(new PointerEvent('pointermove',at));
-      const tip=document.getElementById('tip');ok(!tip.hidden&&/k/.test(tip.textContent),'tooltip not shown')}
+      const tip=document.getElementById('tip');ok(!tip.hidden&&/k/.test(tip.textContent),'tooltip not shown');
+      // rows name their basis: the window total is a plain amount, the per-day rows are signed deltas
+      ok(/Window cost \\(total\\)\\$[\\d,]/.test(tip.textContent)&&/Δ cost \\/ day vs default(\\$0|[▼▲] [−+]\\$)/.test(tip.textContent)&&/Δ time \\/ day vs default/.test(tip.textContent),'tooltip rows: '+tip.textContent)}
     // per-day impact: three profile cards; the money cell shows the stored vs-default number for the chosen basis
     ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
     {const im=g.comparison.balanced.vs_default.impact;
@@ -117,6 +121,11 @@ CHECK = """
     scrollTo(0,document.body.scrollHeight);
     ok(Math.abs(document.getElementById('bar').getBoundingClientRect().top)<1,'control bar is not sticky');
     scrollTo(0,0);
+    // the same rows in Chinese
+    document.querySelector('#langs [data-l=zh]').click();
+    {const hv2=document.querySelector('#fCost rect.hov'),r=hv2.getBoundingClientRect();hv2.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));
+      const tx=document.getElementById('tip').textContent;ok(/窗口总成本/.test(tx)&&/较默认每日费用/.test(tx)&&/较默认每日耗时/.test(tx),'zh tooltip rows: '+tx)}
+    document.querySelector('#langs [data-l=en]').click();
     // sidebar: harness > family > model; folds toggle and are remembered; search filters
     ok(document.querySelector('#tree .har .fam .mrow.cur .mn[aria-current=page]'),'selected model not in the tree');
     const hf=document.querySelector('#tree .har>.fold');hf.click();

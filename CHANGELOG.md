@@ -9,6 +9,9 @@ versioning: [SemVer](https://semver.org/).
 - `compactlab serve` is quiet: one in-place progress line only on a terminal (cut to its width at a space, so it
   never wraps into extra rows), nothing otherwise; the log says `recalibrating (reason)` and `recalibrated in Ns:
   N files, M cached, K parsed, X groups; next calibration: <time>`, and the next calibration at start.
+- **Signed deltas everywhere.** Every change against the default or current setting shows arrow and sign
+  (`▼ −$429.3/day`, `▲ +5.8 min`) in the report and the lens mod; absolute figures show neither. Chart tooltip rows
+  name their basis (window total vs per-day delta), in English and Chinese.
 - **Report review fixes.** Overview totals count only groups whose action is "set" (keep-default rows greyed, also in
   sidebar badges); one answer line with a Copy button in the sticky bar replaces the money and time KPIs; ▼ saves /
   ▲ adds instead of minus signs, with a key on the chart; chart labels de-overlapped (halos, side away from the

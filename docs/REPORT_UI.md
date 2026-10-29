@@ -45,9 +45,15 @@ shows.
 5. Two KPIs the cards do not show: compactions per day and recall (proxy).
 6. Comparison table, copy panel, then details (trade-off, time breakdown, history, lite vs deep, sessions).
 
-Sign convention for impact figures: ▼ saves (green, no minus sign), ▲ adds (amber, with +). Axis ticks use the
-same arrows. Tables of whole-history deltas keep signed numbers. Dollar figures carry an `est.` tag nearby and the
-header carries a one-line "independent tool, list-price estimates" note.
+Sign convention: every delta (against the default or the current setting) carries both an arrow and a sign:
+`▼ −$429.3/day`, `▼ −117 min` save (green), `▲ +$1.2/day`, `▲ +5.8 min` add (amber). This holds for the chart's
+cursor labels and axis ticks, the tooltip, the answer line, the profile cards (including the wait / turn-time split),
+the comparison table, the Overview KPIs, bars and table, the sidebar badges, and the lens mod's band and card.
+Absolute figures (a window's total cost, recall, compactions per day) carry neither, so the two kinds never look
+alike. Chart tooltip rows name their basis: `Window cost (total)`, `Δ cost / day vs default` (with the change in
+total cost in brackets), `Δ time / day vs default`, `Compactions / day`, `Recall (proxy)`; in Chinese `窗口总成本`,
+`较默认每日费用`, `较默认每日耗时`, `每日压缩次数`. Dollar figures carry an `est.` tag nearby and the header
+carries a one-line "independent tool, list-price estimates" note.
 
 Status icons: a warning triangle only for the selected profile's guardrail flags (red when a guardrail is broken,
 amber for a guardrail warning such as below a quarter of the window). A guardrail that only moved the pick and all

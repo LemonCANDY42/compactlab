@@ -323,9 +323,10 @@ const fm=s=>{const a=Math.abs(s)/60;return (s>=0?'+':MINUS)+(a>=10?Math.round(a)
 // minutes on a basis; months switch to hours
 const fmin=(v,basis)=>{if(v==null)return '–';if(Math.abs(v)<.05)return '0 min';const sg=v<0?MINUS:'+',a=Math.abs(v);
   if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
-// sign convention for impact figures: ▼ saves (green, no minus sign), ▲ adds (amber, with +); the arrow carries it
-const fsv=v=>v==null?'–':Math.abs(v)<.05?'$0':(v<0?'▼ ':'▲ +')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
-const fmv=(v,basis)=>{if(v==null)return '–';const a=Math.abs(v);if(a<.05)return '0 min';const sg=v<0?'▼ ':'▲ +';
+// sign convention for deltas (vs default or current): arrow AND sign, '▼ −$429.3' saves (green), '▲ +$1.2' adds
+// (amber). Absolute figures (a window's total cost, a level per day) carry neither, so the two never look alike.
+const fsv=v=>v==null?'–':Math.abs(v)<.05?'$0':(v<0?'▼ −':'▲ +')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
+const fmv=(v,basis)=>{if(v==null)return '–';const a=Math.abs(v);if(a<.05)return '0 min';const sg=v<0?'▼ −':'▲ +';
   if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
 const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
 const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
@@ -373,8 +374,8 @@ const I={
  uB_per_day:['day','天'], uB_per_active_day:['active day','活跃天'], uB_per_month:['month','月'],
  iMoney:['money','费用'], iTime:['wall-clock','耗时'], iComp:['compactions','压缩次数'],
  iFrac:[(p,w)=>p+'% of '+w,(p,w)=>w+' 的 '+p+'%'],
- iCap:[(d,a)=>'▼ saves · ▲ adds · '+d+' d, '+a+' active',(d,a)=>'▼ 节省 · ▲ 增加 · '+d+' 天,'+a+' 活跃'],
- iCapNo:[d=>'▼ saves · ▲ adds · '+d+' d',d=>'▼ 节省 · ▲ 增加 · '+d+' 天'],
+ iCap:[(d,a)=>'▼ − saves · ▲ + adds · '+d+' d, '+a+' active',(d,a)=>'▼ − 节省 · ▲ + 增加 · '+d+' 天,'+a+' 活跃'],
+ iCapNo:[d=>'▼ − saves · ▲ + adds · '+d+' d',d=>'▼ − 节省 · ▲ + 增加 · '+d+' 天'],
  iHelp:['For each profile vs the harness default and vs your current setting. Per day = total ÷ calendar days in the history; per active day = total ÷ days with at least one turn (closer to a heavy day of use); per month = per day × 30. Green saves, amber adds; red marks a broken guardrail. Time splits into compaction wait and faster turns from a smaller context. List-price estimates; recall is a lite-mode proxy.',
         '每个方案分别对比 harness 默认值和你当前的设置。每天 = 总量 ÷ 历史覆盖的自然日;每活跃天 = 总量 ÷ 至少有一轮的天数(更接近重度使用的一天);每月 = 每天 × 30。绿色节省,琥珀色增加,红色表示护栏被突破。耗时拆成压缩等待和上下文变小带来的每轮提速。按公开标价估算;召回率是 lite 模式代理值。'],
  iNoActive:['Active days are missing from this result; re-run compactlab simulate.','这份结果没有活跃天数;重新运行 compactlab simulate。'],
@@ -438,9 +439,10 @@ const I={
  noopT:['Never reaches the threshold: nothing to tune.','从未达到压缩阈值:没有可调的。'],
  noopSub:['Every session peaks below the default auto-compact threshold, so no threshold in range changes cost or time.','每个会话的峰值都低于默认自动压缩阈值,范围内的任何阈值都不会改变成本或时间。'],
  mPeak:['peak','峰值'], zoneL:['auto-compacts here','此区间会自动压缩'],
- kTotUsd:['Money / day','费用 / 天'], kTotMin:['Wall-clock / day','耗时 / 天'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
+ kTotUsd:['Δ cost / day vs default','较默认每日费用'], kTotMin:['Δ time / day vs default','较默认每日耗时'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
  ovChart:['Per-day impact by model','各模型每日影响'], ovHelp:['Estimated money per day against the harness default for the chosen profile if the “set” groups are applied, split into main and subagent runs; right of each bar the minutes per day. Grey rows would keep the default (not counted in the totals). Click a row to open the model.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
  ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['$ / day','美元 / 天'], cMin:['min / day','分钟 / 天'],
+ tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost / day vs default','较默认每日费用'], tDMin:['Δ time / day vs default','较默认每日耗时'], tComp:['Compactions / day','每日压缩次数'],
  votS:[v=>'time @ $'+v+'/h',v=>'时间 @ $'+v+'/小时'], est:['est.','估算'],
  indepL:['Independent open-source tool · not affiliated with any model vendor · list-price estimates','独立开源工具 · 与任何模型厂商无关 · 按公开标价估算'],
  bKeep:[u=>'keep default: '+u+' per day if set anyway (est.)',u=>'保持默认:若仍设置,每天 '+u+'(估算)'], bSess:[n=>n+' sessions',n=>n+' 个会话'],
@@ -499,7 +501,7 @@ function label(m){const b=baseId(m);let x=/^claude-[a-z]+-(\d+(?:-\d+)*)$/.exec(
 const roleS=r=>r==='main'?t('rMainS'):r==='subagent'?t('rSubS'):r,roleL=r=>r==='main'?t('rMain'):r==='subagent'?t('rSub'):r;
 const roleIc=r=>r==='subagent'?'bot':'user';
 // compact signed money for badges: '−$12.9', '−$140'
-const fus=v=>Math.abs(v)<.05?'':(v<0?'▼':'▲+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):Math.abs(v).toFixed(1));
+const fus=v=>Math.abs(v)<.05?'':(v<0?'▼−':'▲+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):Math.abs(v).toFixed(1));
 // totals count only groups whose action is "set": a "keep default" group would not be changed
 const isSet=(g,k=S.op)=>!g.no_action_needed&&action(g,g.profiles[k].threshold,g.profiles[k].value_of_time)==='aSet';
 const setUsd=(g,k=S.op)=>isSet(g,k)?usdOf(g,k):0,setMin=(g,k=S.op)=>isSet(g,k)?minOf(g,k):0;
@@ -635,12 +637,8 @@ function buildBar(){const g=G();
   $('#cpOne').onclick=async()=>{const b=$('#cpOne'),ok=await copyStr(snippet(G(),S.T));b.querySelector('span').textContent=ok?t('cpCopied'):t('cpFail');
     clearTimeout(b.tm);b.tm=setTimeout(()=>{b.querySelector('span').textContent=t('cpCopy')},2200)}}
 // one answer line: 'saves $44.9 + 14.7 min per day vs default 967k', each part coloured by its own sign
-function answer(u,m,vs){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05,vb=v=>v<0?t('saves'):t('adds');
-  const $u='$'+Math.abs(u).toFixed(1),$m=(Math.abs(m)>=100?Math.round(Math.abs(m)):Math.abs(m).toFixed(1))+' min';
-  let h;if(zu&&zm)h=`<span>${t('noDiff')}</span>`;
-  else if(zm)h=`<span class="${tone(u)}">${vb(u)} ${$u}</span>`;else if(zu)h=`<span class="${tone(m)}">${vb(m)} ${$m}</span>`;
-  else if((u<0)===(m<0))h=`<span class="${tone(u)}">${vb(u)} ${$u} + ${$m}</span>`;
-  else h=`<span class="${tone(u)}">${vb(u)} ${$u}</span>, <span class="${tone(m)}">${vb(m)} ${$m}</span>`;
+function answer(u,m,vs){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05;
+  const h=zu&&zm?`<span>${t('noDiff')}</span>`:[zu?'':`<span class="${tone(u)}">${fsv(u)}</span>`,zm?'':`<span class="${tone(m)}">${fmv(m)}</span>`].filter(Boolean).join(' · ');
   return h+` <span class="cap">${esc(vs)}</span>`}
 // the setting for this one model at threshold T, in the harness's own config syntax
 function snippet(g,T){return g.harness==='codex'?`model_auto_compact_token_limit = ${T}`:JSON.stringify({modelSettings:{[g.model]:{autoCompactWindow:T}}})}
@@ -652,8 +650,8 @@ function ticksN(lo,hi,min){let n=min,o=nice(lo,hi,n);while(o.length<min&&n<12)o=
 function nice(lo,hi,n=4){const st0=(hi-lo||1)/n,mag=10**Math.floor(Math.log10(st0)),f=st0/mag,st=(f<1.5?1:f<3?2:f<7?5:10)*mag,out=[];
   for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-6;v+=st)out.push(Math.abs(v)<st*1e-6?0:+v.toPrecision(12));return out}
 // axis ticks: ▼ below the default line saves, ▲ above adds
-const fusdT=v=>v===0?'0':(v<0?'▼':'▲')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1));
-const fminT=v=>v===0?'0':(v<0?'▼':'▲')+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1))+'m';
+const fusdT=v=>v===0?'0':(v<0?'▼−':'▲+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1));
+const fminT=v=>v===0?'0':(v<0?'▼−':'▲+')+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1))+'m';
 // charts drawn at the box's own width keep their text at its real size on a phone
 const boxW=(box,pad=36)=>{const w=box.clientWidth;return w>0?Math.max(300,Math.round(w-pad)):940};
 function peaksOf(g){return D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)).map(s=>s.peak)}
@@ -724,7 +722,7 @@ function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.defau
   const key=[`<span class="ky"><i class="sw swp"></i>${esc(t('peaksK',Math.max(...cnt)))}</span>`,`<span class="ky"><i class="sw swh"></i>${esc(t('unsafeK',fl))}</span>`,
     `<span class="ky"><i class="sw swd"></i>${esc(t('rDefault')+' '+fk(d.threshold))}</span>`,
     g.current?`<span class="ky"><i class="sw swc"></i>${esc(t('rCurrent')+' '+fk(g.current.configured??g.current.threshold))}</span>`:`<span class="ky cap">${esc(t('noCurS'))}</span>`,
-    `<span class="ky"><b class="good">▼</b>${t('saves')} <b class="warn">▲</b>${t('adds')}</span>`];
+    `<span class="ky"><b class="good">▼ −</b>${t('saves')} <b class="warn">▲ +</b>${t('adds')}</span>`];
   box.innerHTML=`<h3 class="mh">${t('mTitle')}${ib(t('mHelp'))}<span class="est">${t('est')}</span></h3><div class="key">${key.join('')}</div>`;box.append(svg);
   const tr=document.createElement('div');tr.className='track';tr.style.margin=`0 calc(${(R/W*100).toFixed(3)}% - 8px) 0 calc(${(L/W*100).toFixed(3)}% - 8px)`;
   tr.innerHTML=`<input type="range" min="0" max="${n-1}" step="1" id="rng" aria-label="${t('threshold')}"><div id="marks">${marks.join('')}</div>`;box.append(tr);
@@ -802,9 +800,9 @@ function impactPanel(){const g=G(),box=$('#fImpact');
     const rows=refs.map(([r,lab,thr,rk])=>{const im=impOf(g,k,r);if(!im)return '';const u=im.usd[B],m=im.minutes[B],w=im.wait_minutes[B],tg=-im.turn_gain_minutes[B],cc=im.compactions[B],rc=im.ref_compactions[B];
       return `<div class="irow" data-ref="${r}"><span class="cap">${esc(t(lab,thr))}</span><div class="chips">`+
         chip(fsv(u),tone(u),'coin',t('iMoney')+' '+fsv(u)+unit+' ('+(u<0?t('saves'):t('adds'))+', '+t('est')+')',` data-m="usd-${r}"`)+
-        chip(fmv(m,B),tone(m),'clock',t('iTime')+' '+fmv(m,B)+unit+' · '+t('iSplitTip',fmin(w,B),fmin(tg,B)),` data-m="min-${r}"`)+
+        chip(fmv(m,B),tone(m),'clock',t('iTime')+' '+fmv(m,B)+unit+' · '+t('iSplitTip',fmv(w,B),fmv(tg,B)),` data-m="min-${r}"`)+
         chip(cf(cc)+' '+t('cmpS'),'','refresh',t('iComp')+' '+cf(cc)+unit+' · '+t(rk)+' '+cf(rc))+
-        `</div><span class="cap">${esc(t('cSplit',fmin(w,B),fmin(tg,B)))}</span></div>`}).join('');
+        `</div><span class="cap">${esc(t('cSplit',fmv(w,B),fmv(tg,B)))}</span></div>`}).join('');
     return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header>${ic(PICON[k],t(k))}<span class="pn">${t(k)}${k===g.profile?'&nbsp;★':''}</span>${flagIcons(P)}<span class="act ${act==='aSet'?'set':''}">${t(act)}</span></header>
      <div class="tb"><span class="cap">${t('threshold')}</span><span class="pt" title="${esc(t('iFrac',Math.round(frac*100),fk(emax)))}">${fk(P.threshold)}</span></div>
      ${act==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}${rows}</article>`}).join('');
@@ -814,8 +812,8 @@ function impactPanel(){const g=G(),box=$('#fImpact');
   box.querySelectorAll('[data-basis]').forEach(b=>b.onclick=()=>{S.basis=b.dataset.basis;keep(impactPanel)})}
 // ---------- chart tooltips ----------
 function tipRow(k,v){return `<div class="r"><span>${k}</span><span>${v}</span></div>`}
-function tipHTML(g,i){const p=pt(g,i),d=g.default,c=cmp(p,d),im=impJS(p,d);return `<b>${fk(p.threshold)}</b>`+tipRow(t('lCost'),fd(p.combined_cost)+' ('+pc(c.dcp)+')')+
-  tipRow(t('kMoney'),fusd(im.usd.per_day))+tipRow(t('kTimeD'),fmin(im.minutes.per_day))+tipRow(t('kComp'),c.cpd.toFixed(1))+tipRow(t('kRecall'),p.recall.toFixed(3))}
+function tipHTML(g,i){const p=pt(g,i),d=g.default,c=cmp(p,d),im=impJS(p,d);return `<b>${fk(p.threshold)}</b>`+tipRow(t('tWin'),fd(p.combined_cost))+
+  tipRow(t('tDUsd'),fsv(im.usd.per_day)+' ('+arrow(c.dcp)+pc(c.dcp)+')')+tipRow(t('tDMin'),fmv(im.minutes.per_day))+tipRow(t('tComp'),c.cpd.toFixed(1))+tipRow(t('kRecall'),p.recall.toFixed(3))}
 function showTip(html,x,y,below){const tp_=$('#tip');tp_.innerHTML=html;tp_.hidden=false;const w=tp_.offsetWidth,h=tp_.offsetHeight;
   tp_.style.left=Math.max(8,Math.min(x+(below?0:14),innerWidth-w-8))+'px';
   tp_.style.top=(below?(y+h>innerHeight-8?Math.max(8,y-h-34):y):Math.max(8,(y-h-12<8?y+16:y-h-12)))+'px'}
@@ -839,9 +837,9 @@ function comparison(){const g=G(),d=g.default,box=$('#fCmp'),cur=g.current;
     const sel=!isDef&&(P?S.gear===P.profile:S.gear==='custom'&&p.threshold===S.T);
     const vc=cur&&c&&p!==cur?cmp(p,cur):null;
     return `<tr class="${sel?'sel':''}"><td>${name}</td><td>${no?'–':fk(p.threshold??p.configured)}</td><td>${act?`<span class="act ${act==='aSet'?'set':''}">${t(act)}</span>`:'–'}</td>`+
-      (c?`<td class="${tone(c.dc)}">${fds(c.dc)} (${pc(c.dcp)})</td><td class="${tone(c.dt)}">${fh(c.dt)} (${fm(c.dtd)})</td><td>${fm(c.addd)}</td><td>${c.cpd.toFixed(1)}</td><td>${p.recall.toFixed(3)}</td>`
+      (c?`<td class="${tone(c.dc)}">${arrow(c.dc)}${fds(c.dc)} (${pc(c.dcp)})</td><td class="${tone(c.dt)}">${arrow(c.dt)}${fh(c.dt)} (${fm(c.dtd)})</td><td>${arrow(c.addd)}${fm(c.addd)}</td><td>${c.cpd.toFixed(1)}</td><td>${p.recall.toFixed(3)}</td>`
         :`<td>${fd(p.combined_cost)}</td><td>${fha(p.time_s)}</td><td>–</td><td>${(p.compactions/Math.max(g.days,1)).toFixed(1)}</td><td>${p.recall.toFixed(3)}</td>`)+
-      (cur?`<td>${vc?pc(vc.dcp)+' · '+fh(vc.dt):'–'}</td>`:'')+`<td>${P&&!no?flagIcons(P):''}</td></tr>`}).join('')+'</table>'}
+      (cur?`<td>${vc?arrow(vc.dcp)+pc(vc.dcp)+' · '+arrow(vc.dt)+fh(vc.dt):'–'}</td>`:'')+`<td>${P&&!no?flagIcons(P):''}</td></tr>`}).join('')+'</table>'}
 function pareto(){const g=G(),box=$('#fPareto'),sc=SC(g);figHead(box,t('pTitle'),t('pSub'));
   const f=frame(460,300,{l:50,r:14,t:12,b:30}),xs=sc,ys=g.recall,dx=SCp(g,g.default);f.svg.setAttribute('aria-label',t('pTitle'));
   let x0=Math.min(...xs,dx),x1=Math.max(...xs,dx),y0=Math.min(...ys,g.default.recall),y1=Math.max(...ys,g.default.recall);
@@ -889,7 +887,7 @@ function timeChart(){const g=G(),d=g.default,box=$('#fTime'),tm=g.time_model,xs=
   figHead(box,t('tTitle'),t('tSub'),ib(conf,own?'clock':'warn',own?'':'low'));
   const f=frame(940,260,{l:54,r:14,t:12,b:30}),all=[...saved,...added,...net,0],lo=Math.min(...all),hi=Math.max(...all),pad=(hi-lo||1)*.1;f.svg.setAttribute('aria-label',t('tTitle'));
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-(v-(lo-pad))/((hi+pad)-(lo-pad))*(f.y0-f.y1);
-  const st=Math.ceil(xs.length/10);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(lo-pad,hi+pad,4),fk,fh);
+  const st=Math.ceil(xs.length/10);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(lo-pad,hi+pad,4),fk,v=>Math.abs(v)<30?'0':arrow(v)+fh(v));
   f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(0),y2:Y(0),stroke:'var(--ink3)','stroke-width':.8}));
   line(f,X,Y,xs,saved,'var(--good)',1.1);line(f,X,Y,xs,added,'var(--amber)',1.1);line(f,X,Y,xs,net,'var(--acc)',2);
   f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc)','stroke-dasharray':'3 3',opacity:.7}));
@@ -994,7 +992,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const sv=rows.map(m=>m.gs.map(i=>val(m,D.groups[i])));const pos=sv.map(v=>v.filter(x=>x>0).reduce((a,b)=>a+b,0)),neg=sv.map(v=>v.filter(x=>x<0).reduce((a,b)=>a+b,0));
   const lo=Math.min(0,...neg),hi=Math.max(0,...pos,1e-9),X=v=>L+(v-lo)/((hi-lo)||1)*(W-L-R);
   svg.append(el('line',{x1:X(0),x2:X(0),y1:6,y2:H-22,class:'zero'}));
-  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼$':'▲+$')+(+Math.abs(v).toFixed(1))));
+  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼−$':'▲+$')+(+Math.abs(v).toFixed(1))));
   rows.forEach((m,r)=>{const y=10+r*rowH,gr=el('g',{class:'ovrow'+(m.st==='keep'?' keep':''),'data-tab':m.gs[0]});gr.append(el('rect',{x:0,y:y-4,width:W,height:rowH,rx:6,class:'ovbg'}));
     const by=wide?y+2:y+22;gr.append(el('text',{x:8,y:y+11,class:'ovname'},label(m.id)));if(wide)gr.append(el('text',{x:8,y:y+24,class:'ovsub'},m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + ')));
     let ap=0,an=0;m.gs.forEach((i,j)=>{const v=sv[r][j];if(Math.abs(v)<1e-9)return;const a=v>0?ap:an+v;if(v>0)ap+=v;else an+=v;

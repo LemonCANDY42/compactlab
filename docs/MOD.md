@@ -54,9 +54,9 @@ the bar and the context, and the chips follow.
 ⚠
 ▄ context per turn
 default 967k ▼−$205/d ◷▲+4.8m/d
-wait +6.8m turns −2.0m ⟳3.0/d
-current 400k ▲+$1/d ◷▼−0.3m/d wait +1.7m
-turns −2.0m ⟳3.0/d
+wait ▲+6.8m turns ▼−2.0m ⟳3.0/d
+current 400k ▲+$1/d ◷▼−0.3m/d
+wait ▲+1.7m turns ▼−2.0m ⟳3.0/d
 cost 200k [ balanced 500k ] time 575k
 [ ⧉ /autocompact 500k ]
 ⚠ live 967k ≠ balanced 500k
