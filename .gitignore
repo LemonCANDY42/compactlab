@@ -19,3 +19,8 @@ compactlab-demo/
 .compactlab/
 settings.json
 config.toml
+
+# private promotion / launch material lives outside the repo (~/compactlab-private)
+docs/LAUNCH.md
+launch/
+*.private.md
