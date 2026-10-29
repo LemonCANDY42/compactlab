@@ -5,8 +5,10 @@
 <img src="docs/assets/demo.svg" alt="compactlab demo 终端输出(合成数据)" width="760">
 
 ```bash
-uvx compactlab demo     # 用内置合成数据生成报告并打开,不需要历史记录、网络或 API key
+uvx --from git+https://github.com/LemonCANDY42/compactlab compactlab demo   # 用内置合成数据生成报告并打开,不需要历史记录或 API key
 ```
+
+安装(从 GitHub 安装,PyPI 上没有):`uv tool install git+https://github.com/LemonCANDY42/compactlab`(或 `pipx install git+https://github.com/LemonCANDY42/compactlab`),之后直接运行 `compactlab ...`。
 
 ## 它解决什么问题
 
@@ -93,7 +95,7 @@ HTML 报告是一个离线文件(不加载任何字体、脚本或图片),中文
 <img src="docs/assets/top.svg" alt="compactlab top(合成数据)" width="760">
 
 ```bash
-uvx compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换单位,c 复制,r 重新校准,q 退出
+compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换单位,c 复制,r 重新校准,q 退出
 ```
 
 按键说明见 [docs/TUI.md](docs/TUI.md)。

@@ -186,3 +186,13 @@ def test_terminal_svgs_render_without_animation_or_whitespace_handling(name):
     spans = re.findall(r"<tspan ([^>]*)>([^<]*)</tspan>", svg)
     assert spans and all('x="' in a and "textLength" in a for a, _ in spans)
     assert all(t == t.strip() and "  " not in t for _, t in spans), "runs of spaces must be split into positioned runs"
+
+
+def test_docs_only_show_install_commands_that_work():
+    """compactlab is installed from GitHub (not on PyPI): no bare `uvx compactlab` / `pip install compactlab`."""
+    root = Path(__file__).parent.parent
+    bad = re.compile(r"\b(?:uvx|pipx install|pip install|uv tool install|uv add)\s+compactlab\b")
+    files = [*root.glob("*.md"), *(root / "docs").glob("*.md"), *(root / "mods").rglob("*.md"),
+             *(root / "docs" / "assets").glob("*.svg"), *(root / "src").rglob("*.py")]  # fmt: skip
+    hits = [f"{f.relative_to(root)}: {m.group(0)}" for f in files for m in bad.finditer(f.read_text(errors="ignore"))]
+    assert not hits, hits

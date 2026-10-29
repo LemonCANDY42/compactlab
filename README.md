@@ -12,10 +12,10 @@ Measure cost vs. context-rot trade-offs per model and per role, then tune auto-c
 <img src="docs/assets/demo.svg" alt="compactlab demo printing cost, balanced and time thresholds per model and role (synthetic data)" width="760">
 
 ```bash
-uvx compactlab demo
+uvx --from git+https://github.com/LemonCANDY42/compactlab compactlab demo
 ```
 
-<sub>Builds a report from bundled synthetic sessions and opens it. No history, network or API key needed.</sub>
+<sub>Builds a report from bundled synthetic sessions and opens it. No history or API key needed; uvx fetches compactlab from GitHub.</sub>
 
 </div>
 
@@ -32,14 +32,16 @@ you where the trade-off sits, per model and per role (main agent vs subagent).
 ## Quickstart
 
 ```bash
-uvx compactlab demo                       # synthetic data -> report (zero config)
-uvx compactlab doctor                     # where are my logs and configs?
-uvx compactlab report --open              # lite analysis of your last 30 days -> HTML report
-uvx compactlab simulate --out result.json # same analysis, saved for apply
-uvx compactlab apply --result result.json --claude-settings ~/.claude/settings.json   # dry-run diff
+uv tool install git+https://github.com/LemonCANDY42/compactlab   # or: pipx install git+https://github.com/LemonCANDY42/compactlab
+
+compactlab demo                       # synthetic data -> report (zero config)
+compactlab doctor                     # where are my logs and configs?
+compactlab report --open              # lite analysis of your last 30 days -> HTML report
+compactlab simulate --out result.json # same analysis, saved for apply
+compactlab apply --result result.json --claude-settings ~/.claude/settings.json   # dry-run diff
 ```
 
-`pipx install compactlab` or `pip install compactlab` work too. Python 3.11+, no runtime dependencies.
+compactlab installs from GitHub (it is not on PyPI). Python 3.11+, no runtime dependencies.
 
 ## What you get
 
@@ -188,7 +190,7 @@ htop-like view of the latest result: models on the left, the selected one's cost
 <img src="docs/assets/top.svg" alt="compactlab top: models with was/now bars on the left, the selected model's cost and time curves over the threshold on the right (synthetic data)" width="760">
 
 ```bash
-uvx compactlab top --demo     # synthetic data; keys: ? help, p profile, % unit, c copy, r recalibrate, q quit
+compactlab top --demo     # synthetic data; keys: ? help, p profile, % unit, c copy, r recalibrate, q quit
 ```
 
 Details and key bindings: [docs/TUI.md](docs/TUI.md).

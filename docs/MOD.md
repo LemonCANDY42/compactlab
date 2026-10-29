@@ -95,7 +95,8 @@ line says so.
 
 ## Install
 
-At the prompt of a Claude Code terminal session (once the repository is published):
+The lens shows what `compactlab simulate` writes, so install compactlab first (`uv tool install git+https://github.com/LemonCANDY42/compactlab`, or
+`pipx install git+https://github.com/LemonCANDY42/compactlab`). Then, at the prompt of a Claude Code terminal session:
 
 ```
 /plugin install compactlab-lens --marketplace LemonCANDY42/compactlab

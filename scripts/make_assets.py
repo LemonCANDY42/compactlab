@@ -8,7 +8,7 @@ Produces:
                                   report-dark.png, report-overview.png, report-noop.png, report-mobile.png and
                                   report-mobile-dark.png (390 px)
   docs/assets/social-preview.png  1280x640 card for the GitHub social preview (headless Chrome)
-  docs/assets/demo.svg            animated terminal of `compactlab demo` (pure SVG/CSS, no Chrome needed)
+  docs/assets/demo.svg, top.svg   terminal windows of `compactlab demo` / `top --demo`, from the real ANSI output
 """
 
 from __future__ import annotations
@@ -62,6 +62,11 @@ def run_cli(args: list[str], cols: int) -> str:
     out = subprocess.run([sys.executable, "-m", "compactlab.cli.main", *args, "--color", "always"],
                          check=True, capture_output=True, text=True, cwd=ROOT, env=env)  # fmt: skip
     return out.stdout
+
+
+def prompt(cmd: str) -> str:
+    """The typed command above a capture: what a visitor runs after `uv tool install git+…/compactlab`."""
+    return f"\x1b[38;2;143;140;131m$ \x1b[0m\x1b[1;38;2;236;235;228m{cmd}\x1b[0m\n\n"
 
 
 def demo(tmp: Path) -> tuple[str, dict]:
@@ -278,8 +283,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         text, result = demo(tmp)
-        (ASSETS / "demo.svg").write_text(terminal_svg(hero(text), "compactlab demo", 100))
+        (ASSETS / "demo.svg").write_text(terminal_svg(prompt("compactlab demo") + hero(text), "compactlab demo", 100))
         top = run_cli(["top", "--demo", "--once", "--width", "112", "--height", "30"], 112)
+        top = prompt("compactlab top --demo") + top
         (ASSETS / "top.svg").write_text(terminal_svg(top, "compactlab top --demo", 112, step=0.012))
         b = chrome(a.chrome)
         from compactlab.report.html import render_html

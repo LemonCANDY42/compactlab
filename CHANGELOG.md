@@ -6,6 +6,9 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Install instructions use the GitHub source (`uv tool install git+https://github.com/LemonCANDY42/compactlab`,
+  `pipx install git+…`, or `uvx --from git+… compactlab demo`); compactlab is not on PyPI. A test keeps bare
+  `uvx compactlab` / `pip install compactlab` out of the docs. The terminal SVGs show the command they ran.
 - **Terminal views.** A stdlib-only renderer (`compactlab.term`: truecolor / 256 / 16 colours, NO_COLOR,
   `--plain`, `--color`, `--unit`, CJK-aware widths 30..200) gives `demo`, `simulate`, `recommend`, `doctor` and `serve`
   a fastfetch-style header and per-model panels (threshold gauge, was/now bars, cost sparkline, profile chips,
