@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 // The test runner prints console output; the hooks environment's types declare none.
 declare const console: { log: (text: string) => void }
 
-import { command, dotBar, factsFrom, livePoint, spark, usd } from '../hooks/lens'
+import { command, dotBar, factsFrom, livePoint, spark, strWidth, usd } from '../hooks/lens'
 
 const impact = (u: number, m: number) => ({
   usd_per_day: u, usd_per_active_day: u * 1.4, min_per_day: m, wait_min_per_day: m + 2,
@@ -218,4 +218,63 @@ test('a stale calibration says so in the card', async ($, on) => {
   expect(all).toContain('◴3.0d')
   expect(all).toContain('compactlab recalibrate')
   await band.unmount()
+})
+
+type Drawn = { type?: string; props?: { flexDirection?: string; plain?: boolean }; children?: unknown[] }
+const flat = (n: unknown): string =>
+  typeof n === 'string' || typeof n === 'number' ? String(n) : ((n as Drawn)?.children ?? []).map(flat).join('')
+/** The drawn rows: each row Box's children as [text, columns] pairs (a boxed Button draws `[ label ]`). */
+const drawnRows = (tree: unknown): { text: string; width: number; parts: string[] }[] => {
+  const out: { text: string; width: number; parts: string[] }[] = []
+  const walk = (n: unknown) => {
+    const d = n as Drawn
+    if (d?.type === 'Box' && d.props?.flexDirection === 'row') {
+      const kids = (d.children ?? []) as Drawn[]
+      const parts = kids.map(flat)
+      const width = kids.reduce((a, c, i) => a + strWidth(parts[i] ?? '') + (c.type === 'Button' && !c.props?.plain ? 4 : 0), 0)
+        + Math.max(0, kids.length - 1)
+      out.push({ text: kids.map((c, i) => (c.type === 'Button' && !c.props?.plain ? `[ ${parts[i]} ]` : parts[i])).join(' '), width, parts })
+      return
+    }
+    for (const c of d?.children ?? []) walk(c)
+  }
+  walk(tree)
+  return out
+}
+
+for (const lang of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
+  for (const cols of [30, 40, 55, 80, 120]) {
+    test(`band fits ${cols} columns (${lang.slice(0, 2)}), folded and unfolded, no token split`, async ($, on) => {
+      engine(on, { lens: { ...LENS, calibration: { at: 1_800_000_000 - 7200, every_s: 86400 } }, lang })
+      await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, bodyColumns: cols } })
+      for (const fold of [false, true]) {
+        if (fold) await band.press({ key: 'fold' })
+        const rows = drawnRows(JSON.parse(await text(band)) as unknown)
+        expect(rows.length).toBeGreaterThan(0)
+        for (const r of rows) expect(r.width).toBeLessThanOrEqual(cols)
+        const parts = rows.flatMap(r => r.parts)
+        // numbers keep their units: thresholds and the per-day chips are each one drawn piece
+        expect(parts).toContain('┃500k')
+        expect(parts).toContain('┊967k')
+        expect(parts.some(x => /^▼−\$204\.8\/(day|天)$|^▼−\$205\/(d|天)$/.test(x))).toBe(true)
+        expect(parts.some(x => /^▲\+4\.8m\/(day|天|d)$/.test(x))).toBe(true)
+        for (const x of parts) expect(x).not.toMatch(/^(k|y|ay|\/d|\/day)$/) // no stray unit fragments
+        if (fold) expect(parts.some(x => x.includes('/autocompact 500k'))).toBe(true)
+        if (cols >= 60 || (cols >= 55 && lang.startsWith('en'))) expect(rows[0]?.parts.includes('⟳0')).toBe(true) // one row
+        if (lang.startsWith('en')) console.log(`--- ${cols} cols${fold ? ', unfolded' : ''} ---\n` + rows.map(r => r.text).join('\n'))
+      }
+      await band.unmount()
+    })
+  }
+}
+
+test('the desktop pane keeps its SVG and fits a narrow pane', async ($, on) => {
+  engine(on, { lens: LENS })
+  await $.session.start({ cwd: '/w', surface: 'desktop', isInteractive: true })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 34 } })
+  const tree = JSON.parse(await text(pane)) as unknown
+  expect(JSON.stringify(tree)).toContain('"type":"Svg"')
+  for (const r of drawnRows(tree)) expect(r.width).toBeLessThanOrEqual(34)
+  await pane.unmount()
 })

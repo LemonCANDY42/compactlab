@@ -9,10 +9,29 @@ shows what `compactlab simulate` estimated that choice saves or adds per day.
 
 ## What it draws
 
-**Terminal: one row above the prompt.**
+**Terminal: a band above the prompt, laid out for the columns it has.** Rows break only between pieces, never
+inside a number and its unit. Wide or CJK glyphs count as two columns. From 60 columns the band is one row with full
+units. From 40 it is one row in a compact form (`▼−$205/d`, a shorter bar) when that fits. Below that, row one holds
+the bar and the context, and the chips follow.
+
+120 or 80 columns:
 
 ```
-▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ⚠
+▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ◴2.0h ⚠
+```
+
+55 columns:
+
+```
+▸ ●●┃··┊ 412k ┊967k ┃500k ▼−$205/d ▲+4.8m/d ⟳0 ◴2.0h ⚠
+```
+
+30 columns:
+
+```
+▸ ●●●●●●●●●··┃·········┊· 412k
+┊967k ┃500k ▼−$205/d ▲+4.8m/d
+⟳0 ◴2.0h ⚠
 ```
 
 | Glyph | Meaning |
@@ -23,25 +42,35 @@ shows what `compactlab simulate` estimated that choice saves or adds per day.
 | `▼−$204.8/day` | money per calendar day vs the default; green ▼ saves, amber ▲ adds |
 | `▲+4.8m/day` | wall-clock minutes per day vs the default |
 | `⟳0` | compactions so far in this session |
+| `◴2.0h` | age of the calibration; amber once older than twice the interval |
 | `⚠` | the auto-compact window in force differs from the profile's threshold |
 | `ⓘ` | no compactlab figures for this model yet: run `compactlab simulate` |
 
-`▸` unfolds the card:
+`▸` unfolds the card (here at 40 columns):
 
 ```
-▾ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ⚠
+▾ ●●●●●●●●●●·┃··········┊· 412k
+┊967k ┃500k ▼−$205/d ▲+4.8m/d ⟳0 ◴2.0h
+⚠
 ▄ context per turn
-default 967k $ ▼−$204.8/day ◷ ▲+4.8m/day (wait +6.8m · turns −2.0m) ⟳ 3.0/day
-current 400k $ ▲+$0.7/day ◷ ▼−0.3m/day (wait +1.7m · turns −2.0m) ⟳ 3.0/day
-cost 200k balanced 500k time 575k ⧉ /autocompact 500k
-⚠ Live auto-compact window 967k differs from balanced 500k
-vs harness default · list-price estimate · recall is a lite-mode proxy
+default 967k ▼−$205/d ◷▲+4.8m/d
+wait +6.8m turns −2.0m ⟳3.0/d
+current 400k ▲+$1/d ◷▼−0.3m/d wait +1.7m
+turns −2.0m ⟳3.0/d
+cost 200k [ balanced 500k ] time 575k
+[ ⧉ /autocompact 500k ]
+⚠ live 967k ≠ balanced 500k
+vs harness default ·
+list-price estimate ·
+recall is a lite-mode proxy
 ```
 
-The figures above are from the mod's test fixture, not from anyone's history.
+The figures are from the mod's test fixture, not from anyone's history; the tests check every one of these widths
+(30, 40, 55, 80 and 120 columns, in English and Chinese, folded and unfolded): no row wider than the band, no number
+cut from its unit.
 
-**Desktop: a pane** (opened at session start, or with `/compactlab-lens` anywhere). It has the same rows, and draws
-the context curve as a small SVG with the default (dashed) and the profile (accent) as horizontal lines. Labels use
+**Desktop: a pane** (opened at session start, or with `/compactlab-lens` anywhere). It has the same rows, packed to
+the pane's width, and draws the context curve as a small SVG with the default (dashed) and the profile (accent) as horizontal lines. Labels use
 one language, following `LANG`/`LC_ALL` or the `language` option (`auto`, `en`, `zh`).
 
 The profile buttons change only what the card shows. `⧉ /autocompact 500k` copies that command to the clipboard;

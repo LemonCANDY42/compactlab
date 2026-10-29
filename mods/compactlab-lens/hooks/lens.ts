@@ -16,7 +16,7 @@ const L = {
     expand: 'Show the lens card', collapse: 'Hide the lens card', wait: 'wait', turns: 'turns', keep: 'keep default',
     caption: 'vs harness default · list-price estimate · recall is a lite-mode proxy', demo: 'synthetic demo data',
     curve: 'context per turn', profile: 'Profile', title: 'compactlab lens', calibrated: 'calibrated',
-    stale: 'stale: run compactlab recalibrate', ago: 'ago',
+    stale: 'stale: run compactlab recalibrate', ago: 'ago', perD: '/d', liveShort: 'live',
   },
   zh: {
     cost: '省钱', balanced: '均衡', time: '省时', ctx: '上下文', def: '默认', cur: '当前',
@@ -27,7 +27,7 @@ const L = {
     expand: '展开 lens 卡片', collapse: '收起 lens 卡片', wait: '等待', turns: '每轮', keep: '保持默认',
     caption: '对 harness 默认 · 按公开标价估算 · 召回为 lite 代理值', demo: '合成演示数据',
     curve: '每轮上下文', profile: '方案', title: 'compactlab lens', calibrated: '校准于',
-    stale: '已过期:运行 compactlab recalibrate', ago: '前',
+    stale: '已过期:运行 compactlab recalibrate', ago: '前', perD: '/天', liveShort: '当前',
   },
 } as const
 
@@ -166,3 +166,162 @@ export const curveSvg = (curve: readonly number[], max: number, def: number, pro
 export const age = (seconds: number): string =>
   seconds < 3600 ? `${Math.max(0, Math.round(seconds / 60))}m` : seconds < 86400 ? `${(seconds / 3600).toFixed(seconds < 36000 ? 1 : 0)}h` : `${(seconds / 86400).toFixed(seconds < 864000 ? 1 : 0)}d`
 export const isStale = (at: number, every: number | null, now: number): boolean => now - at > 2 * (every ?? 86400)
+
+// ---------- width-aware layout: tokens are never split; rows break only between tokens ----------
+
+/** Terminal columns a string takes: East Asian wide and fullwidth characters (and ⚠) count two. */
+export const strWidth = (text: string): number => {
+  let n = 0
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0
+    const wide = (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3)
+      || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)
+      || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x20000 && c <= 0x3fffd) || c === 0x26a0
+    n += c === 0xfe0f ? 0 : wide ? 2 : 1
+  }
+  return n
+}
+
+export type Press = 'fold' | 'copy' | 'p-cost' | 'p-balanced' | 'p-time'
+/** One unbreakable piece of a row: a text, a dot bar (`cells`), or a button (`press`). */
+export type Tok = {
+  key: string; text: string; color?: string; dim?: boolean; bold?: boolean
+  cells?: Cell[]; press?: Press; label?: string; boxed?: boolean; primary?: boolean
+}
+
+/** A boxed (non-plain) Button is drawn `[ label ]` on the terminal: four more columns. */
+export const tokWidth = (t: Tok): number => (t.cells ? t.cells.length : strWidth(t.text)) + (t.boxed ? 4 : 0)
+export const rowWidth = (row: readonly Tok[]): number =>
+  row.reduce((a, t) => a + tokWidth(t), 0) + Math.max(0, row.length - 1)
+
+/** A prose token wider than the row is broken at its spaces (a number keeps its unit: they share a word), and
+ * a word still too wide, as CJK text without spaces is, between characters. Bars and buttons are never split. */
+const fit = (t: Tok, cols: number): Tok[] => {
+  if (t.cells || t.press || tokWidth(t) <= cols) return [t]
+  const out: Tok[] = []
+  const words = t.text.split(' ')
+  words.forEach(word => {
+    let part = ''
+    for (const ch of word) {
+      if (part && strWidth(part + ch) > cols) {
+        out.push({ ...t, key: `${t.key}.${out.length}`, text: part })
+        part = ''
+      }
+      part += ch
+    }
+    if (part) out.push({ ...t, key: `${t.key}.${out.length}`, text: part })
+  })
+  return out
+}
+
+/** Greedy rows of at most `cols` columns (one column between tokens), breaking only between tokens. */
+export const pack = (toks: readonly Tok[], cols: number): Tok[][] => {
+  const rows: Tok[][] = []
+  let row: Tok[] = []
+  for (const t of toks.flatMap(x => fit(x, cols))) {
+    if (row.length && rowWidth([...row, t]) > cols) {
+      rows.push(row)
+      row = []
+    }
+    row.push(t)
+  }
+  if (row.length) rows.push(row)
+  return rows
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const usdShort = (v: number): string =>
+  Math.abs(v) < 0.5 ? '$0' : `${v < 0 ? MINUS : '+'}$${Math.round(Math.abs(v)).toLocaleString('en-US')}`
+
+export type BandInput = {
+  cols: number; isOpen: boolean; tokens: number; window: number; def: number | null; prof: number | null
+  usd: number | null; min: number | null; compactions: number; calAge: string | null; calStale: boolean
+  isOff: boolean; hasFacts: boolean; w: Words
+}
+
+/**
+ * The band's rows for `cols` columns. From 60 columns: one row with full units (`▼−$243.9/day`). From 40: one row,
+ * compact (`▼−$244/d`, a shorter bar) when it fits. Below that, or when even the compact row does not fit: row one
+ * holds the fold, the bar and the context, and the chips follow, wrapped between chips.
+ */
+export const bandRows = (b: BandInput): Tok[][] => {
+  const { w } = b
+  const fold: Tok = { key: 'fold', text: b.isOpen ? '▾' : '▸', press: 'fold', label: b.isOpen ? w.collapse : w.expand }
+  const ctx: Tok = { key: 'ctx', text: k(b.tokens), bold: true }
+  const chips = (full: boolean): Tok[] => [
+    ...(b.def != null ? [{ key: 'def', text: `┊${k(b.def)}`, dim: true }] : []),
+    ...(b.prof != null ? [{ key: 'prof', text: `┃${k(b.prof)}`, color: 'claude' }] : []),
+    ...(b.usd != null ? [{ key: 'usd', color: tone(b.usd),
+      text: full ? `${arrow(b.usd)}${usd(b.usd)}${w.perDay}` : `${arrow(b.usd)}${usdShort(b.usd)}${w.perD}` }] : []),
+    ...(b.min != null ? [{ key: 'min', color: tone(b.min),
+      text: `${arrow(b.min)}${mins(b.min)}${full ? w.perDay : w.perD}` }] : []),
+    { key: 'cmp', text: `⟳${b.compactions}`, dim: true },
+    ...(b.calAge != null ? [{ key: 'cal', text: `◴${b.calAge}`, color: b.calStale ? 'warning' : undefined, dim: !b.calStale }] : []),
+    ...(b.isOff ? [{ key: 'off', text: '⚠', color: 'warning' }] : []),
+    ...(!b.hasFacts ? [{ key: 'hint', text: 'ⓘ', color: 'warning' }] : []),
+  ]
+  const bar = (cells: number): Tok => ({ key: 'bar', text: '', cells: dotBar(b.tokens, b.window, b.def, b.prof, cells) })
+  if (b.cols >= 40) {
+    for (const full of b.cols >= 60 ? [true, false] : [false]) {
+      const rest = [ctx, ...chips(full)]
+      const free = b.cols - rowWidth([fold, ...rest]) - 1
+      const cells = Math.min(full ? 24 : 16, free)
+      if (cells >= (full ? 8 : 6)) return [[fold, bar(cells), ...rest]]
+    }
+  }
+  const cells = clamp(b.cols - tokWidth(fold) - tokWidth(ctx) - 2, 4, 24)
+  return [[fold, bar(cells), ctx], ...pack(chips(b.cols >= 60), b.cols)]
+}
+
+export type CardInput = {
+  cols: number; w: Words; name: LensProfileName; group: LensGroup; curve: readonly number[]; tokens: number
+  window: number; isOff: boolean; here: number | null; isEnv: boolean; isStale: boolean; isDemo: boolean
+  withSpark: boolean
+}
+
+/** The unfolded card's rows, every one within `cols`. */
+export const cardRows = (c: CardInput): Tok[][] => {
+  const { w, group: g } = c
+  const p = g.profiles[c.name]
+  const full = c.cols >= 60
+  const unit = full ? w.perDay : w.perD
+  const rows: Tok[][] = []
+  if (c.withSpark) {
+    const label: Tok = { key: 'curve', text: w.curve, dim: true }
+    const width = clamp(c.cols - tokWidth(label) - 1, 4, 24)
+    rows.push(...pack([{ key: 'spark', text: spark(c.curve.length ? c.curve : [c.tokens], c.window, width), color: 'claude' }, label], c.cols))
+  }
+  const line = (key: string, lab: string, im: LensImpact | null) => {
+    if (!im) return
+    const tg = -im.turn_gain_min_per_day
+    rows.push(...pack([
+      { key: `${key}-l`, text: lab, dim: true },
+      { key: `${key}-u`, text: `${arrow(im.usd_per_day)}${full ? usd(im.usd_per_day) : usdShort(im.usd_per_day)}${unit}`, color: tone(im.usd_per_day) },
+      { key: `${key}-m`, text: `◷${arrow(im.min_per_day)}${mins(im.min_per_day)}${unit}`, color: tone(im.min_per_day) },
+      { key: `${key}-w`, text: `${w.wait} ${mins(im.wait_min_per_day)}`, dim: true },
+      { key: `${key}-t`, text: `${w.turns} ${mins(tg)}`, dim: true },
+      { key: `${key}-c`, text: `⟳${im.compactions_per_day.toFixed(1)}${unit}`, dim: true },
+    ], c.cols))
+  }
+  line('def', `${w.def} ${k(g.default_threshold)}`, p.vs_default)
+  if (g.current_threshold != null) line('cur', `${w.cur} ${k(g.current_threshold)}`, p.vs_current)
+  rows.push(...pack([
+    ...PROFILES.map((n): Tok => ({ key: `p-${n}`, press: `p-${n}`, text: `${w[n]} ${k(g.profiles[n].threshold)}`,
+      label: `${w.profile}: ${w[n]} ${k(g.profiles[n].threshold)}`, boxed: n === c.name, primary: n === c.name })),
+    { key: 'copy', press: 'copy', boxed: true, text: `⧉ ${command(p.threshold)}`, label: `${w.copy} ${command(p.threshold)}` },
+    ...(p.action === 'keep default' ? [{ key: 'keep', text: w.keep, dim: true }] : []),
+  ], c.cols))
+  if (c.isOff && c.here != null) {
+    rows.push(...pack([
+      { key: 'off', text: '⚠', color: 'warning' },
+      { key: 'off-l', text: `${full ? w.live : w.liveShort} ${k(c.here)}`, color: 'warning' },
+      { key: 'off-n', text: '≠', color: 'warning' },
+      { key: 'off-p', text: `${w[c.name]} ${k(p.threshold)}`, color: 'warning' },
+      ...(c.isEnv ? [{ key: 'off-e', text: w.env, color: 'warning' }] : []),
+    ], c.cols))
+  }
+  if (c.isStale) rows.push(...pack([{ key: 'stale', text: `◴ ${w.stale}`, color: 'warning' }], c.cols))
+  const caption = [...(c.isDemo ? [w.demo] : []), ...w.caption.split(' · ')]
+  rows.push(...pack(caption.map((t, i) => ({ key: `cap-${i}`, text: i < caption.length - 1 ? `${t} ·` : t, dim: true })), c.cols))
+  return rows
+}

@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderChildren } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, RenderElement } from 'claude-code'
 
 import type { LensFacts, LensLive, LensProfileName } from '../types'
 import {
-  PROFILES, age, arrow, command, curveSvg, differs, dotBar, factsFrom, k, langOf, livePoint, mins, spark, tone, usd, words, isStale,
+  PROFILES, age, bandRows, cardRows, command, curveSvg, differs, factsFrom, isStale, k, langOf, livePoint, pack, words,
 } from './lens'
-import type { Cell, Lang } from './lens'
+import type { Cell, Lang, Tok, Words } from './lens'
 
 // compactlab-lens: this session's context against the harness default and the compactlab-optimised auto-compact
 // threshold, with the per-day savings `compactlab simulate` estimated for this model. A one-row band above the
@@ -105,44 +105,23 @@ export const register: Register = (on, options) => {
     const f = await read($, facts)
     const name = await profileFor($, fallback)
     const open = await read($, isOpen)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
     const g = f?.status === 'ok' ? f.group : null
     const p = g?.profiles[name] ?? null
     const def = g?.default_threshold ?? null
-    const prof = p?.threshold ?? null
-    const cells = Math.max(10, Math.min(24, Math.floor((e.props.bodyColumns - 60) / 2)))
-    const bar = dotBar(l.tokens, l.window, def, prof, cells)
-    const im = p?.vs_default ?? null
     const here = def != null ? livePoint(l.compactWindow, l.source, def) : null
-    const isOff = here != null && prof != null && !g?.no_action_needed && differs(here, prof)
+    const isOff = here != null && p != null && !g?.no_action_needed && differs(here, p.threshold)
     const now = (await $.clock.now()) / 1000
     const c = f?.status === 'ok' ? f.calibration : null
-    const cal = c ? { age: age(now - c.at), isStale: isStale(c.at, c.every_s, now) } : null
-
-    const head = (
-      <Box key="row" flexDirection="row" gap={1}>
-        <Button key="fold" plain label={open ? w.collapse : w.expand} onPress={() => update($, isOpen, v => !v)}>
-          {open ? '▾' : '▸'}
-        </Button>
-        <Text>{bar.map(c => <Text color={cellColor(c)} dimColor={c.tone === 'empty'}>{c.ch}</Text>)}</Text>
-        <Text bold>{k(l.tokens)}</Text>
-        {def != null && <Text dimColor>┊{k(def)}</Text>}
-        {prof != null && <Text color="claude">┃{k(prof)}</Text>}
-        {im && <Text color={tone(im.usd_per_day)}>{arrow(im.usd_per_day)}{usd(im.usd_per_day)}{w.perDay}</Text>}
-        {im && <Text color={tone(im.min_per_day)}>{arrow(im.min_per_day)}{mins(im.min_per_day)}{w.perDay}</Text>}
-        <Text dimColor>⟳{l.compactions}</Text>
-        {cal && <Text color={cal.isStale ? 'warning' : undefined} dimColor={!cal.isStale}>◴{cal.age}</Text>}
-        {isOff && <Text color="warning">⚠</Text>}
-        {!g && <Text color="warning">ⓘ</Text>}
-      </Box>
-    )
-    if (!open) return head
-    return (
-      <Box flexDirection="column">
-        {head}
-        {detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here, null, cal?.isStale ?? false)}
-      </Box>
-    )
+    const stale = c ? isStale(c.at, c.every_s, now) : false
+    const cols = Math.max(20, e.props.bodyColumns)
+    const rows = bandRows({
+      cols, isOpen: open, tokens: l.tokens, window: l.window, def, prof: p?.threshold ?? null,
+      usd: p?.vs_default?.usd_per_day ?? null, min: p?.vs_default?.min_per_day ?? null, compactions: l.compactions,
+      calAge: c ? age(now - c.at) : null, calStale: stale, isOff, hasFacts: Boolean(g), w,
+    })
+    if (open) rows.push(...card(w, l, f, name, isOff, here, stale, cols, true))
+    return draw($, els, e.surface, rows, f, name, w)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -151,31 +130,49 @@ export const register: Register = (on, options) => {
     const f = await read($, facts)
     const name = await profileFor($, fallback)
     const table = $.ui.resolve(e)
-    const { Box, Button, Text } = table
+    const { Box, Text } = table
     const g = f?.status === 'ok' ? f.group : null
     const p = g?.profiles[name] ?? null
     const here = l && g ? livePoint(l.compactWindow, l.source, g.default_threshold) : null
     const isOff = here != null && p != null && !g?.no_action_needed && differs(here, p.threshold)
     const now = (await $.clock.now()) / 1000
     const stale = f?.status === 'ok' && f.calibration ? isStale(f.calibration.at, f.calibration.every_s, now) : false
-    const chart = e.surface === 'desktop' && 'Svg' in table && l && g && p
+    const cols = Math.max(20, e.props.bodyColumns)
+    const hasSvg = e.surface === 'desktop' && 'Svg' in table
+    const chart = hasSvg && l && g && p
       ? (() => {
           const { Svg } = table as typeof table & { Svg: (props: { source: string; alt: string; width?: number }) => RenderChildren }
           return (
             <Svg
               source={curveSvg(l.curve.length ? l.curve : [l.tokens], l.window, g.default_threshold, p.threshold)}
               alt={`${w.curve}: ${k(l.tokens)} · ${w.def} ${k(g.default_threshold)} · ${w[name]} ${k(p.threshold)}`}
-              width={Math.min(320, e.props.bodyColumns * 8)}
+              width={Math.min(320, cols * 8)}
             />
           )
         })()
       : null
     return (
       <Box flexDirection="column" gap={1}>
-        <Text bold>{l?.model ?? '–'}</Text>
-        {l ? detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here, chart, stale) : <Text dimColor>…</Text>}
+        <Text bold wrap="truncate">{l?.model ?? '–'}</Text>
+        {chart}
+        {l ? draw($, table, e.surface, card(w, l, f, name, isOff, here, stale, cols, !chart), f, name, w) : <Text dimColor>…</Text>}
       </Box>
     )
+  })
+}
+
+/** The unfolded card as rows, or the one-line reason there are no figures. */
+function card(
+  w: Words, l: LensLive, f: LensFacts | null, name: LensProfileName, isOff: boolean, here: number | null,
+  stale: boolean, cols: number, withSpark: boolean,
+): Tok[][] {
+  if (!f || f.status !== 'ok') {
+    const msg = !f || f.status === 'missing' ? w.hint : f.status === 'no-group' ? w.noGroup : w.unreadable
+    return pack([{ key: 'why-i', text: 'ⓘ', color: 'warning' }, { key: 'why', text: msg, color: 'warning' }], cols)
+  }
+  return cardRows({
+    cols, w, name, group: f.group, curve: l.curve, tokens: l.tokens, window: l.window, isOff, here,
+    isEnv: l.source === 'env', isStale: stale, isDemo: f.isDemo, withSpark,
   })
 }
 
@@ -184,59 +181,33 @@ const cellColor = (c: Cell): string | undefined =>
 
 type Els = { Box: (p: any) => any; Button: (p: any) => any; Text: (p: any) => any } // eslint-disable-line @typescript-eslint/no-explicit-any
 
-/** The expanded card: curve, chips vs default and current, profile switch, copy, and one caption line. */
-function detail(
-  $: EngineInterface, { Box, Button, Text }: Els, surface: string, w: ReturnType<typeof words>, l: LensLive,
-  f: LensFacts | null, name: LensProfileName, isOff: boolean, here: number | null, chart: RenderChildren = null, stale = false,
-): RenderChildren {
-  if (!f || f.status !== 'ok') {
-    const msg = !f || f.status === 'missing' ? w.hint : f.status === 'no-group' ? w.noGroup : w.unreadable
-    return <Text color="warning">ⓘ {msg}</Text>
+/** Rows of tokens as Boxes that never wrap: the rows were packed to the width, so each token stays whole. */
+function draw($: EngineInterface, { Box, Button, Text }: Els, surface: string, rows: Tok[][], f: LensFacts | null,
+  name: LensProfileName, w: Words): RenderElement {
+  const p = f?.status === 'ok' ? f.group.profiles[name] : null
+  const act = (t: Tok): (() => unknown) => {
+    if (t.press === 'fold') return () => update($, isOpen, v => !v)
+    if (t.press === 'copy' && p) {
+      return async () => {
+        const r = await $.ui.copy({ text: command(p.threshold), surface: surface as never })
+        $.ui.toast(r.isCopied ? `${w.copied}: ${command(p.threshold)}` : w.noClip)
+      }
+    }
+    const n = (t.press ?? '').replace('p-', '') as LensProfileName
+    return () => update($, chosen, () => n)
   }
-  const g = f.group, p = g.profiles[name]
-  const chips = (label: string, im: typeof p.vs_default) =>
-    im && (
-      <Box key={label} flexDirection="row" gap={1}>
-        <Text dimColor>{label}</Text>
-        <Text color={tone(im.usd_per_day)}>$ {arrow(im.usd_per_day)}{usd(im.usd_per_day)}{w.perDay}</Text>
-        <Text color={tone(im.min_per_day)}>◷ {arrow(im.min_per_day)}{mins(im.min_per_day)}{w.perDay}</Text>
-        <Text dimColor>({w.wait} {mins(im.wait_min_per_day)} · {w.turns} {mins(-im.turn_gain_min_per_day)})</Text>
-        <Text dimColor>⟳ {im.compactions_per_day.toFixed(1)}{w.perDay}</Text>
-      </Box>
+  const node = (t: Tok) =>
+    t.cells ? (
+      <Text>{t.cells.map(c => <Text color={cellColor(c)} dimColor={c.tone === 'empty'}>{c.ch}</Text>)}</Text>
+    ) : t.press ? (
+      <Button key={t.key} label={t.label ?? t.text} plain={t.boxed ? undefined : true}
+        variant={t.primary ? 'primary' : undefined} onPress={act(t)}>{t.text}</Button>
+    ) : (
+      <Text color={t.color} dimColor={t.dim} bold={t.bold} wrap="truncate">{t.text}</Text>
     )
   return (
     <Box flexDirection="column">
-      {chart ?? (
-        <Box flexDirection="row" gap={1}>
-          <Text color="claude">{spark(l.curve.length ? l.curve : [l.tokens], l.window)}</Text>
-          <Text dimColor>{w.curve}</Text>
-        </Box>
-      )}
-      {chips(`${w.def} ${k(g.default_threshold)}`, p.vs_default)}
-      {g.current_threshold != null && chips(`${w.cur} ${k(g.current_threshold)}`, p.vs_current)}
-      <Box flexDirection="row" gap={1}>
-        {PROFILES.map(n => (
-          <Button key={`p-${n}`} plain={n === name ? undefined : true} variant={n === name ? 'primary' : undefined}
-            label={`${w.profile}: ${w[n]} ${k(g.profiles[n].threshold)}`} onPress={() => update($, chosen, () => n)}>
-            {w[n]} {k(g.profiles[n].threshold)}
-          </Button>
-        ))}
-        <Button key="copy" label={`${w.copy} ${command(p.threshold)}`}
-          onPress={async () => {
-            const r = await $.ui.copy({ text: command(p.threshold), surface: surface as never })
-            $.ui.toast(r.isCopied ? `${w.copied}: ${command(p.threshold)}` : w.noClip)
-          }}>
-          ⧉ {command(p.threshold)}
-        </Button>
-        {p.action === 'keep default' && <Text dimColor>{w.keep}</Text>}
-      </Box>
-      {isOff && here != null && (
-        <Text color="warning">
-          ⚠ {w.live} {k(here)} {w.differs} {w[name]} {k(p.threshold)}{l.source === 'env' ? ` · ${w.env}` : ''}
-        </Text>
-      )}
-      {stale && <Text color="warning">◴ {w.stale}</Text>}
-      <Text dimColor>{f.isDemo ? `${w.demo} · ` : ''}{w.caption}</Text>
+      {rows.map(row => <Box flexDirection="row" gap={1} flexWrap="nowrap">{row.map(node)}</Box>)}
     </Box>
   )
 }

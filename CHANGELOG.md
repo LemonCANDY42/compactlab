@@ -42,6 +42,12 @@ versioning: [SemVer](https://semver.org/).
   macOS keychain.
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
+### Fixed
+- compactlab-lens: the band wrapped mid-token in narrow terminals (`┃525` / `k`). Rows are now packed to the band's
+  real width (`bodyColumns`), counting wide glyphs as two columns, and break only between whole pieces. The compact
+  form starts below 60 columns and the two-row form below about 40. The unfolded card follows the same rules, and
+  tests cover 30–120 columns in both languages.
+
 ### Added
 - **Service mode.** `compactlab serve` is a stdlib-only service that binds loopback only (other binds are refused
   without `--unsafe-bind`) and checks the Host header. It serves the live report, `/api/result`,
