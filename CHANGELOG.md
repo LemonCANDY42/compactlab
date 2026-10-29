@@ -5,6 +5,21 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Clearer terminal and report wording** (from a review while making the promo video):
+  - one verdict line first in `demo` / `simulate` (terminal and plain output) and `top`:
+    `→ Opus 5.5 main: set 625k  ▼ −22% cost  ▲ +3.0 min/day wall-clock`;
+  - the action "set" is now "change" (zh 建议改): it reads as advice, not as already applied;
+  - time is labelled "wall-clock" (zh 总耗时) everywhere, the net change (added compaction wait minus faster
+    turns), so it no longer shares a word with the "time" profile; cost is 成本 in Chinese, not the profile name;
+  - keep-default reasons in plain words: `not worth it at $250/h: saves $3.7/day but adds 1.1 min/day of
+    wall-clock (= $4.6)`;
+  - `top` drops the "◴ – · next –" and "service down" placeholders until something has calibrated or a service
+    was set up ("service not running" then), draws the default `┊`, current `╎` and profile `┃` marks differently,
+    labels the selected threshold on the axis, keys the `░` saved hatch, and shows "keep default" instead of a
+    hatched bar for models that keep it;
+  - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
+
 ### Fixed
 - **Cache TTL and write price from the logs.** The replay assumed a 5-minute prompt cache priced at the 5-minute
   write tier, but Claude Code on a subscription caches the main session for 1 hour, billed at 2× the input price.

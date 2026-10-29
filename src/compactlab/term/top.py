@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .style import Line, Style, clip, cw, pad, width
-from .views import PGLYPH, PROFILES, figs, keep_reason, label, status, totals
+from .views import PGLYPH, PROFILES, figs, keep_reason, label, status, totals, verdict
 from .widgets import braille, chip, fmin, fpct, fusd, k, pack, was_now
 
 KEYS = [
@@ -158,13 +158,18 @@ def _meters(st: TopState, cols: int) -> list[Line]:
     toks: list[Line] = []
     if t["n"]:
         toks.append([("Σ ", "dim"), *chip(t["pc"], fusd(t["d"]) + "/d", st.unit), (" cost", "dim")])
-        toks.append([*chip(t["pt"], fmin(t["dm"]) + "/d", st.unit), (" time", "dim")])
-        toks.append([(f"{t['n']} model{'s' if t['n'] != 1 else ''} set", "dim")])
+        toks.append([*chip(t["pt"], fmin(t["dm"]) + "/d", st.unit), (" wall-clock", "dim")])
+        toks.append([(f"{t['n']} model{'s' if t['n'] != 1 else ''} to change", "dim")])
     sv = st.service
-    toks.append([("◴ ", "dim"), (sv.get("age") or "–", "ink"), (" · next " + (sv.get("next") or "–"), "dim")])
-    toks.append([("● ", "good" if sv.get("up") else "dim"), ("service " + ("up" if sv.get("up") else "down"), "ink")])
+    if sv.get("age"):  # only once something has calibrated; no placeholders
+        nxt = f" · next {sv['next']}" if sv.get("next") else ""
+        toks.append([("◴ ", "dim"), ("calibrated " + sv["age"], "ink"), (nxt, "dim")])
+    if sv.get("known"):  # only once a service was set up
+        toks.append([("● ", "good" if sv.get("up") else "dim"), ("service " + ("up" if sv.get("up") else "not running"),
+                     "ink" if sv.get("up") else "dim")])  # fmt: skip
     toks.append([(PGLYPH.get(st.profile or "", "◆") + " ", "acc"), (st.profile or "own profile", "ink")])
-    return pack(toks, cols, "   ")
+    v = verdict(st.res, prof=st.profile)
+    return ([clip(v, cols)] if v else []) + pack(toks, cols, "   ")
 
 
 def _tree(st: TopState, cols: int, height: int) -> list[Line]:
@@ -194,8 +199,11 @@ def _tree(st: TopState, cols: int, height: int) -> list[Line]:
             if s == "noop":
                 tail = [("✓ no change", "dim")]
             elif f:
-                _, b = was_now(f["was"], f["now"], 6)
-                tail = [*b, (" ", None), *(chip(f["pc"], None, st.unit) if s == "set" else [("keep", "dim")])]
+                if s == "set":
+                    _, b = was_now(f["was"], f["now"], 6)
+                    tail = [*b, (" ", None), *chip(f["pc"], None, st.unit)]
+                else:
+                    tail = [("keep default", "dim")]
             room = cols - width(line) - width(tail) - 1
             line = [*line, (" " * max(room, 1), None), *tail] if room >= 1 else clip(line, cols)
         out.append(pad(line, cols))
@@ -221,8 +229,11 @@ def _detail(st: TopState, cols: int, height: int) -> list[Line]:
     pr, d = g["profiles"][p], g["default"]
     f = figs(g, p)
     s = status(g, p)
+    ttl = g.get("cache_ttl")
+    cache = (f" · cache {ttl // 3600} h" if ttl >= 3600 else f" · cache {ttl // 60} min") if ttl else ""
+    cache = cache if g["harness"] == "claude-code" else ""  # only Anthropic bills by cache tier
     body = [[(label(g["model"]), "title"), (f" · {g['role']} · {g['harness']} · {g['n_sessions']} sessions · "
-                                            f"{g['days']:.1f} d", "dim")]]  # fmt: skip
+                                            f"{g['days']:.1f} d{cache}", "dim")]]  # fmt: skip
     if s == "noop":
         body += [
             [("✓ never reaches the default threshold: nothing to tune", "good")],
@@ -230,11 +241,11 @@ def _detail(st: TopState, cols: int, height: int) -> list[Line]:
         ]
     elif f:
         ans = [[(k(pr["threshold"]), "big")], [*chip(f["pc"], None, st.unit), (" cost", "dim")],
-               [*chip(f["pt"], None, st.unit), (" time", "dim")],
+               [*chip(f["pt"], None, st.unit), (" wall-clock", "dim")],
                [(f"{fusd(f['d'])} · {fmin(f['dm'])} per day vs default {k(d['threshold'])}", "dim")]]  # fmt: skip
         if st.unit != "pct":
             ans[1] = [(fusd(f["d"], True), ("good" if f["d"] < 0 else "warn") + "_b"), (" cost", "dim")]
-            ans[2] = [(fmin(f["dm"], True), ("good" if f["dm"] < 0 else "warn") + "_b"), (" time", "dim")]
+            ans[2] = [(fmin(f["dm"], True), ("good" if f["dm"] < 0 else "warn") + "_b"), (" wall-clock", "dim")]
         body += pack(ans, cols)
         if s == "keep":
             body += pack([[("▪ keep default: " + keep_reason(g, p), "dim")]], cols)
@@ -249,19 +260,25 @@ def _detail(st: TopState, cols: int, height: int) -> list[Line]:
         ax = 7
         cw_ = max(cols - ax, 8)
         col = lambda v: round((v - grid[0]) / ((grid[-1] - grid[0]) or 1) * (cw_ - 1))  # noqa: E731
-        vl = [(col(d["threshold"]), "dim"), (col(pr["threshold"]), "acc")]
+        vl = [(col(d["threshold"]), "dim", "┊")]
         if g.get("current"):
-            vl.insert(1, (col(g["current"]["threshold"]), "dim"))
+            vl.append((col(g["current"]["threshold"]), "dim", "╎"))
+        vl.append((col(pr["threshold"]), "acc_b", "┃"))
         ch = max(min(height - len(body) - 6, 14), 3)
         plot = braille([(tt, "dim"), (cc, "acc")], cw_, ch, lo, hi, vl)
         for i, ln in enumerate(plot):
             tick = f"{hi:+.0f}%" if i == 0 else f"{lo:+.0f}%" if i == len(plot) - 1 else ""
             body.append([(tick.rjust(ax - 1) + " ", "dim"), *ln])
-        gap = " " * max(cw_ - len(k(grid[0])) - len(k(grid[-1])), 1)
-        body.append([(" " * ax, None), (k(grid[0]), "dim"), (gap, None), (k(grid[-1]), "dim")])
-        body.append(
-            [(" " * ax, None), ("⠿ cost", "acc"), ("  ⠿ time", "dim"), ("  │ default · profile · current", "dim")]
-        )
+        lo_t, hi_t, sel = k(grid[0]), k(grid[-1]), k(pr["threshold"])
+        c0 = col(pr["threshold"]) - len(sel) // 2
+        if len(lo_t) < c0 and c0 + len(sel) < cw_ - len(hi_t):  # selected threshold labelled under its marker
+            axis: Line = [(lo_t + " " * (c0 - len(lo_t)), "dim"), (sel, "acc_b"),
+                          (" " * (cw_ - len(hi_t) - c0 - len(sel)) + hi_t, "dim")]  # fmt: skip
+        else:
+            axis = [(lo_t + " " * max(cw_ - len(lo_t) - len(hi_t), 1) + hi_t, "dim")]
+        body.append([(" " * ax, None), *axis])
+        legend = "  ┊ default  ┃ profile" + ("  ╎ current" if g.get("current") else "")
+        body.append([(" " * ax, None), ("⠿ cost", "acc"), ("  ⠿ wall-clock", "dim"), (legend, "dim")])
         a, b = was_now(f["was"], f["now"], max(min(cols - 26, 40), 6))
         body.append([("cost was ", "dim"), *a, (f" ${f['was']:,.1f}", "dim")])
         body.append(
@@ -272,6 +289,8 @@ def _detail(st: TopState, cols: int, height: int) -> list[Line]:
                 (fpct(f["pc"]), "good" if f["d"] < 0 else "warn"),
             ]
         )
+        if f["d"] < 0:
+            body.append([("         ", None), ("░ = saved", "good")])
     toks = []
     for n in PROFILES:
         fn = figs(g, n)
@@ -334,8 +353,9 @@ def _overlay(screen: list[Line], cols: int) -> list[Line]:
 
 def service_state(state_dir: Path) -> dict[str, Any]:
     """Whether the local service answers (its endpoint file + /api/health), and the calibration times."""
-    out: dict[str, Any] = {"up": False}
     st = state_dir / "service" / "state.json"
+    ep = state_dir / "service" / "endpoint.json"
+    out: dict[str, Any] = {"up": False, "known": st.exists() or ep.exists()}
     if st.exists():
         try:
             s = json.loads(st.read_text())
@@ -343,7 +363,6 @@ def service_state(state_dir: Path) -> dict[str, Any]:
                 out["age"] = _ago(time.time() - s["last_ok"]) + " ago"
         except ValueError:
             pass
-    ep = state_dir / "service" / "endpoint.json"
     if ep.exists():
         try:
             e = json.loads(ep.read_text())

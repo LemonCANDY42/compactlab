@@ -34,22 +34,27 @@ W: dict[str, dict[str, str]] = {
     "en": {"history": "history", "harnesses": "harnesses", "models": "models", "calibrated": "calibrated",
            "service": "service", "impact": "if applied", "sessions": "sessions", "turns": "turns", "days": "d",
            "cost": "cost", "balanced": "balanced", "time": "time", "was": "was", "now": "now", "per_day": "/day",
-           "vs_default": "per day vs default", "set": "set", "keep": "keep default", "noop": "no change",
+           "vs_default": "per day vs default", "set": "change", "keep": "keep default", "wall": "wall-clock",
+           "costm": "cost", "noop": "no change",
            "no_change": "No change needed", "never": "never reaches the default", "recs": "Recommended settings",
            "by_thr": "cost by threshold", "foot": "Δ vs the harness default · list-price estimates · recall is a "
-           "lite-mode proxy · --plain prints the full tables", "models_set": "{n} model(s) set", "ago": "{t} ago",
+           "lite-mode proxy · --plain prints the full tables", "models_set": "{n} model(s) to change", "ago": "{t} ago",
            "next": "next {t}", "up": "up", "down": "not running", "none": "–",
            "kw_above": "{a} is not below the default {b}",
-           "kw_score": "no net gain at ${v:g}/h: money {u}, time {m} (= {tv}) → {n}/day",
-           "unsafe": "░ recall < {f:g}"},
+           "kw_score": "no net gain at ${v:g}/h (net {n}/day)",
+           "kw_worth": "not worth it at ${v:g}/h: saves {u}/day but adds {m}/day of wall-clock (= {tv})",
+           "unsafe": "░ recall < {f:g}", "saved": "░ = saved", "cache": "cache {t}", "to": "set", "more": "+{n} more"},
     "zh": {"history": "历史", "harnesses": "工具", "models": "模型", "calibrated": "校准", "service": "服务",
            "impact": "若应用", "sessions": "会话", "turns": "轮", "days": "天", "cost": "省钱", "balanced": "均衡",
            "time": "省时", "was": "原来", "now": "现在", "per_day": "/天", "vs_default": "每天,对默认",
-           "set": "设置", "keep": "保持默认", "noop": "无需调整", "no_change": "无需调整", "never": "从未达到默认阈值",
+           "set": "建议改", "keep": "保持默认", "wall": "总耗时", "costm": "成本", "noop": "无需调整",
+           "no_change": "无需调整", "never": "从未达到默认阈值",
            "recs": "推荐设置", "by_thr": "各阈值成本", "foot": "差值相对 harness 默认值 · 按公开标价估算 · 召回为 "
-           "lite 代理值 · --plain 输出完整表格", "models_set": "{n} 个模型设置", "ago": "{t}前", "next": "下次 {t}",
+           "lite 代理值 · --plain 输出完整表格", "models_set": "{n} 个模型建议改", "ago": "{t}前", "next": "下次 {t}",
            "up": "运行中", "down": "未运行", "none": "–", "kw_above": "{a} 不低于默认值 {b}",
-           "kw_score": "按 ${v:g}/小时 没有净收益:费用 {u},时间 {m}(= {tv})→ 每天 {n}", "unsafe": "░ 召回 < {f:g}"},
+           "kw_score": "按 ${v:g}/小时 没有净收益(每天净 {n})",
+           "kw_worth": "按 ${v:g}/小时 不划算:每天省 {u},但总耗时每天多 {m}(折合 {tv})", "unsafe": "░ 召回 < {f:g}",
+           "saved": "░ = 省下的部分", "cache": "缓存 {t}", "to": "设为", "more": "另 {n} 个"},
 }  # fmt: skip
 
 
@@ -96,8 +101,9 @@ def keep_reason(g: dict[str, Any], prof: str, lang: str = "en") -> str:
     assert f is not None
     vot = float(p["value_of_time"])
     tv = f["dm"] / 60 * vot
-    return w["kw_score"].format(v=vot, u=fusd(f["d"], True), m=fmin(f["dm"], True), tv=fusd(tv, True),
-                                n=fusd(f["d"] + tv, True))  # fmt: skip
+    if f["d"] < 0 < f["dm"]:
+        return w["kw_worth"].format(v=vot, u=f"${-f['d']:,.1f}", m=f"{f['dm']:.1f} min", tv=f"${tv:,.1f}")
+    return w["kw_score"].format(v=vot, n=fusd(f["d"] + tv, True))
 
 
 def totals(res: dict[str, Any], prof: str | None = None) -> dict[str, Any]:
@@ -120,6 +126,35 @@ def totals(res: dict[str, Any], prof: str | None = None) -> dict[str, Any]:
 def _ago(sec: float) -> str:
     sec = max(sec, 0)
     return f"{sec / 60:.0f}m" if sec < 3600 else f"{sec / 3600:.1f}h" if sec < 86400 else f"{sec / 86400:.1f}d"
+
+
+def _ttl(g: dict[str, Any], w: dict[str, str]) -> list[Line]:
+    sec = g.get("cache_ttl")
+    if not sec or g.get("harness") != "claude-code":  # only Anthropic bills by cache tier
+        return []
+    return [[(w["cache"].format(t=f"{sec // 3600} h" if sec >= 3600 else f"{sec // 60} min"), "dim")]]
+
+
+def verdict(res: dict[str, Any], lang: str = "en", prof: str | None = None) -> Line:
+    """One line to act on and share: the group with the largest saving among those to change, or nothing."""
+    w = W[lang]
+    picks = []
+    for g in res["groups"]:
+        p = prof or g.get("profile") or "balanced"
+        f = figs(g, p) if status(g, p) == "set" else None
+        if f:
+            picks.append((f["d"], g, p, f))
+    if not picks:
+        return []
+    picks.sort(key=lambda x: x[0])
+    _, g, p, f = picks[0]
+    line: Line = [("→ ", "acc_b"), (f"{label(g['model'])} {g['role']}", "ink_b"), (": " + w["to"] + " ", "dim"),
+                  (k(g["profiles"][p]["threshold"]), "acc_b"), ("  ", None), (fpct(f["pc"]), _t(f["d"])),
+                  (" " + w["costm"] + "  ", "dim"), (fmin(f["dm"], True) + w["per_day"], _t(f["dm"])),
+                  (" " + w["wall"], "dim")]  # fmt: skip
+    if len(picks) > 1:
+        line.append(("  · " + w["more"].format(n=len(picks) - 1), "dim"))
+    return line
 
 
 def summary_facts(res: dict[str, Any], lang: str = "en", unit: str = "pct", service: str | None = None,
@@ -163,7 +198,7 @@ def group_panel(
     title: Line = [(label(g["model"]), "title"), (f" · {g['role']} · {g['harness']}", "dim")]
     body: list[Line] = []
     body += pack([[(f"{g['n_sessions']} {w['sessions']}", "dim")], [(f"{g['n_turns']:,} {w['turns']}", "dim")],
-                  [(f"{g['days']:.1f} {w['days']}", "dim")]], iw, " · ")  # fmt: skip
+                  [(f"{g['days']:.1f} {w['days']}", "dim")], *_ttl(g, w)], iw, " · ")  # fmt: skip
     # gauge: default, current and the three profiles on the threshold axis; red where recall is below the floor
     grid = g["grid"]
     floor = g["recommendation"]["recall_floor"]
@@ -193,27 +228,29 @@ def group_panel(
     if f:
         ans: list[Line] = [
             [(k(p["threshold"]), "big")],
-            [*chip(f["pc"], None, unit), (" " + w["cost"], "dim")],
-            [*chip(f["pt"], None, unit), (" " + w["time"], "dim")],
+            [*chip(f["pc"], None, unit), (" " + w["costm"], "dim")],
+            [*chip(f["pt"], None, unit), (" " + w["wall"], "dim")],
             [(f"{fusd(f['d'])} · {fmin(f['dm'])} {w['vs_default']} {k(d['threshold'])}", "dim")],
         ]
         if unit != "pct":
-            ans[1] = [(fusd(f["d"], True), (_t(f["d"]) or "ink") + "_b"), (" " + w["cost"], "dim")]
-            ans[2] = [(fmin(f["dm"], True), (_t(f["dm"]) or "ink") + "_b"), (" " + w["time"], "dim")]
+            ans[1] = [(fusd(f["d"], True), (_t(f["d"]) or "ink") + "_b"), (" " + w["costm"], "dim")]
+            ans[2] = [(fmin(f["dm"], True), (_t(f["dm"]) or "ink") + "_b"), (" " + w["wall"], "dim")]
         body += pack(ans, iw)
         if st == "keep":
             body += pack([[("▪ " + w["keep"] + ": ", "dim"), (keep_reason(g, prof, lang), "dim")]], iw)
-        lab = max(cw(w["was"]), cw(w["now"])) + cw(w["cost"]) + 2
+        lab = max(cw(w["was"]), cw(w["now"])) + max(cw(w["costm"]), cw(w["wall"])) + 2
         bw = max(min(iw - lab - 22, 56), 6)
         for key, was, now in (("cost", f["was"], f["now"]), ("time", f["wasm"], f["nowm"])):
             a, b = was_now(was, now, bw)
             fmt = money if key == "cost" else (lambda v: f"{v:.0f} min")
-            name = w[key]
+            name = w["costm"] if key == "cost" else w["wall"]
             body.append([(name + " " * (lab - cw(name) - cw(w["was"]) - 1), "dim"), (w["was"] + " ", "dim"), *a,
                          (f" {fmt(was)}{w['per_day']}", "dim")])  # fmt: skip
             pc = f["pc"] if key == "cost" else f["pt"]
             body.append([(" " * (lab - cw(w["now"]) - 1), None), (w["now"] + " ", "dim"), *b,
                          (f" {fmt(now)}{w['per_day']} ", "ink"), (fpct(pc), _t(pc))])  # fmt: skip
+        if f["d"] < 0:
+            body.append([(" " * lab, None), (w["saved"], "good")])
         cost = [c / max(g["days"], 1) for c in g["combined_cost"]]
         sel = grid.index(p["threshold"]) if p["threshold"] in grid else None
         sw = max(iw - cw(w["by_thr"]) - 14, 6)
@@ -269,7 +306,7 @@ def recs_table(res: dict[str, Any], cols: int, lang: str = "en", unit: str = "pc
         thr: Line = [("–" if st == "noop" else k(g["profiles"][prof]["threshold"]), "ink")]
         act: Line = [(f"[{w[st]}]", "acc_b" if st == "set" else "dim")]
         ch: Line = [] if st == "noop" or not f else [*chip(f["pc"], fusd(f["d"]) + w["per_day"], unit), ("  ", None),
-                                                     *chip(f["pt"], None, unit), (" " + w["time"], "dim")]  # fmt: skip
+                                                     *chip(f["pt"], None, unit), (" " + w["wall"], "dim")]  # fmt: skip
         why = keep_reason(g, prof, lang) if st == "keep" else ""
         rows.append((name, thr, act, ch, why))
     nw = max((width(r[0]) for r in rows), default=0)
@@ -292,6 +329,8 @@ def summary_view(res: dict[str, Any], cols: int, lang: str = "en", unit: str = "
                  service: str | None = None) -> list[Line]:  # fmt: skip
     cols = max(30, min(cols, 200))
     lines = header(summary_facts(res, lang, unit, service), cols)
+    v = verdict(res, lang)
+    lines += [[], v] if v else []
     lines.append([])
     gs = [g for g in res["groups"] if not g["no_action_needed"]]
     gs.sort(key=lambda g: (status(g, g["profile"]) != "set", -abs((figs(g, g["profile"]) or {"d": 0})["d"])))

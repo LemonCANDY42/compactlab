@@ -199,9 +199,10 @@ DOTS = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))  # [row][col] bi
 
 
 def braille(series: list[tuple[Sequence[float], str]], cols: int, rows: int, lo: float, hi: float,
-            vlines: Sequence[tuple[int, str]] = ()) -> list[Line]:  # fmt: skip
-    """Line chart in braille dots (2x4 per cell). Each series: (values over the x range, role). `vlines`: (column,
-    role) markers drawn as '│' where no dot falls. Later series win a shared cell's colour."""
+            vlines: Sequence[tuple[int, str] | tuple[int, str, str]] = ()) -> list[Line]:  # fmt: skip
+    """Line chart in braille dots (2x4 per cell). Each series: (values over the x range, role). `vlines`:
+    (column, role[, glyph]) markers drawn as the glyph (default '│') where no dot falls. Later series win a shared
+    cell's colour."""
     w, h = max(cols, 2), max(rows, 1)
     bits = [[0] * w for _ in range(h)]
     role: list[list[str | None]] = [[None] * w for _ in range(h)]
@@ -223,14 +224,14 @@ def braille(series: list[tuple[Sequence[float], str]], cols: int, rows: int, lo:
                 bits[cy][cx] |= DOTS[y % 4][x % 2]
                 role[cy][cx] = r
     out: list[Line] = []
-    vl = dict(vlines)
+    vl = {v[0]: (v[1], v[2] if len(v) > 2 else "│") for v in vlines}
     for cy in range(h):
         cells = []
         for cx in range(w):
             if bits[cy][cx]:
                 cells.append((chr(BRAILLE + bits[cy][cx]), role[cy][cx]))
             elif cx in vl:
-                cells.append(("│", vl[cx]))
+                cells.append((vl[cx][1], vl[cx][0]))
             else:
                 cells.append((" ", None))
         out.append(_merge(cells))

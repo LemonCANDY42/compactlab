@@ -422,7 +422,7 @@ const I={
  hTrade:['Trade-off','取舍'], hTime:['Time','时间'], hDeep:['Lite vs deep','lite 与 deep'], hHist:['Your history','你的历史'], hSess:['Sessions','会话'], hNotes:['Assumptions','假设'],
  cTier:['profile','方案'], cWin:['window','阈值'], cAct:['action','建议'], cDc:['Δcost','成本差'], cDt:['Δwall-clock (/day)','耗时差(/天)'], cWait:['wait / day','等待/天'], cComp:['compactions / day','压缩/天'], cRec:['recall','召回'], cCur:['vs current','对当前'], cFlags:['',''],
  rDefault:['default','默认'], rCurrent:['current','当前'], rSel:['slider','滑块'],
- aSet:['set','设置'], aKeep:['keep default','保持默认'], aNo:['no change','无需调整'],
+ aSet:['change','建议改'], aKeep:['keep default','保持默认'], aNo:['no change','无需调整'],
  cmpNote:[(n,c)=>'Default: '+n+(c?' Current: '+c+'.':''),(n,c)=>'默认依据:'+n+(c?' 当前:'+c+'。':'')],
  pTitle:['Pareto frontier','帕累托前沿'], pSub:['Each dot is a threshold; up and left is cheaper and safer (assumed recall). Profiles are ringed, the default is a square.','每个点是一个阈值;越靠左上越省钱、越安全(假设召回率)。圆圈是方案,方块是默认值。'],
  pFloor:['recall floor','召回下限'],
@@ -488,7 +488,7 @@ const I={
  tWait:['compaction wait','压缩等待'], tTurn:['turn time','每轮耗时'],
  srRow:[(n,w,c,v,p,tw,tn)=>n+': was '+w+' per day, now '+c+', '+v+' '+p+' percent; wall-clock was '+tw+', now '+tn,(n,w,c,v,p,tw,tn)=>n+':原来每天 '+w+',现在 '+c+','+v+' '+p+'%;耗时原来 '+tw+',现在 '+tn],
  srKeep:[(n,w)=>n+': keep default, '+w+' per day',(n,w)=>n+':保持默认,每天 '+w], ovHelp:['Per model: the grey bar is the cost (or wall-clock) per day with the harness default, the accent bar the same with the chosen profile applied to its “set” groups; the green hatch between them is the saving, amber an addition. “Keep default” models show only the grey bar. The total sums the “set” models. Absolute shares one axis; “each row = 100%” makes every grey bar the same length. List-price estimates; hover a row for main / subagent and, for time, wait vs turn time.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
- ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['Δ $ / day','Δ 美元 / 天'], cMin:['Δ min / day','Δ 分钟 / 天'], cUsdP:['Δ cost %','Δ 费用 %'], cMinP:['Δ time %','Δ 耗时 %'], sortBy:['Sort by','排序:'],
+ ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['Δ $ / day','Δ 美元 / 天'], cMin:['Δ min / day','Δ 分钟 / 天'], cUsdP:['Δ cost %','Δ 费用 %'], cMinP:['Δ wall-clock %','Δ 总耗时 %'], sortBy:['Sort by','排序:'],
  kTotPct:['% of the default cost (or wall-clock) per day of the models marked “set”: their summed change divided by their summed default, the same base as the chart\'s Total row and the sidebar badges; group percents are never averaged.','占“设置”模型默认每日费用(或耗时)的百分比:它们的变化之和除以它们的默认值之和,与图表合计行和侧栏徽标同一基数;不对分组百分比取平均。'],
  tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost vs default','较默认费用'], tDMin:['Δ time vs default','较默认耗时'],
  unitL:['Show changes as','变化显示为'], unit_pct:['percent of the default','占默认值的百分比'], unit_usd:['amount per day','每日金额'],
@@ -505,7 +505,8 @@ const I={
  peaksK:[n=>'session peaks (tallest '+n+')',n=>'会话峰值(最高 '+n+')'], unsafeK:[f=>'recall < '+f+' (lite proxy)',f=>'召回 < '+f+'(lite 代理值)'],
  kTotSub:[n=>'if the '+n+' “set” models are applied',n=>'应用 '+n+' 个“设置”模型时'], kKeep:['Keep default','保持默认'], mUnit:['models','个模型'],
  kwAbove:[(a,b)=>'keep default: '+a+' is not below the default '+b,(a,b)=>'保持默认:'+a+' 不低于默认值 '+b],
- kwScore:[(v,u,m,tv,n)=>'keep default: no net gain at $'+v+'/h · money '+u+', time '+m+' ('+tv+') → '+n+' per day',(v,u,m,tv,n)=>'保持默认:按 $'+v+'/小时 没有净收益 · 费用 '+u+',时间 '+m+'('+tv+')→ 每天 '+n],
+ kwScore:[(v,n)=>'keep default: no net gain at $'+v+'/h (net '+n+' per day)',(v,n)=>'保持默认:按 $'+v+'/小时 没有净收益(每天净 '+n+')'],
+ kwWorth:[(v,u,m,tv)=>'keep default: not worth it at $'+v+'/h · saves '+u+'/day but adds '+m+'/day of wall-clock (= '+tv+')',(v,u,m,tv)=>'保持默认:按 $'+v+'/小时 不划算 · 每天省 '+u+',但总耗时每天多 '+m+'(折合 '+tv+')'],
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
@@ -568,7 +569,8 @@ function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,
 // why a threshold keeps the default: the same two tests as action() and compactlab.sim.engine._comparison
 function keepWhy(g,thr,vot){const d=g.default;if(g.no_action_needed)return '';if(thr>=d.threshold)return t('kwAbove',fk(thr),fk(d.threshold));
   const im=impJS(pt(g,g.grid.indexOf(thr)),d,g),u=im.usd.per_day,m=im.minutes.per_day,tv=m/60*vot;
-  return t('kwScore',vot,fsv(u),fmv(m),fsv(tv),fsv(u+tv))}
+  if(u<0&&m>0)return t('kwWorth',vot,'$'+(-u).toFixed(1),m.toFixed(1)+' min','$'+tv.toFixed(1));
+  return t('kwScore',vot,fsv(u+tv))}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}
 function setGear(k){S.gear=k;if(k!=='custom'){S.T=G().profiles[k].threshold;S.vot=G().profiles[k].value_of_time}update()}
 function setT(T){S.gear=PROF.find(k=>G().profiles[k].threshold===T&&k===S.gear)||'custom';S.T=T;update()}

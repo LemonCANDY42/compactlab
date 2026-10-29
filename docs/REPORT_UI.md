@@ -138,11 +138,11 @@ status icons.
 - The model page repeats the language in a compact pair next to the answer line: cost and time at the cursor,
   was vs now, with the legend in its tooltip and accessible name.
 - Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers
-  (greyed unless the action is "set").
+  (greyed unless the action is "change").
 - A "keep default" row carries a one-line reason from the same two tests the engine uses
   (`sim/engine.py` `_comparison`): the profile threshold is not below the default, or its score (cost + time x
-  price of time) is not below the default's, e.g. `no net gain at $250/h · money ▼ $3.7, time ▲ +1.1 min
-  (▲ +$4.6) → ▲ +$0.9 per day`. The same reason shows on the model page's profile card and in the answer line
+  price of time) is not below the default's, e.g. `not worth it at $250/h · saves $3.7/day but adds 1.1 min/day of
+  wall-clock (= $4.6)` (or `no net gain at $250/h (net ▲ +$0.9 per day)` when it saves neither). The same reason shows on the model page's profile card and in the answer line
   when the cursor sits on such a threshold.
 
 ## Sessions table

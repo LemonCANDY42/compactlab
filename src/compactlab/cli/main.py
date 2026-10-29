@@ -458,7 +458,13 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
         return ACTION_ZH.get(action, action) if lang == "zh" else f"{action}/{ACTION_ZH.get(action, action)}"
 
     head = f"mode: {res['mode']}" + (f"  (deep spent ${res['deep']['spent_usd']:.2f})" if res.get("deep") else "")
+    from ..term.views import verdict
+
     lines = [head]
+    for x in langs:
+        v = "".join(t for t, _ in verdict(res, x))
+        if v:
+            lines.append(v)
     for g in res["groups"]:
         d, days, sel = g["default"], g["days"], g["profile"]
         lines.append(
