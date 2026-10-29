@@ -125,6 +125,7 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 - lite 模式的召回率是**假设曲线**,不是任何模型的实测数据;deep 模式测的是对 compactlab 摘录的抽样结果。
 - 回放成本是按公开标价的估算,用于比较不同阈值,不等于你的账单(不考虑订阅、折扣和额度)。
 - 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。
-- dsh、opencode、pi 的适配器在计划中,欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
+- DeepSeek Harness(dsh)为**实验性**支持:按 dsh 源码和它自带的快照日志实现,还没在真实历史上跑过。日志在 `~/.dsh/sessions`(`.jsonl.zstd` 需要 Python 3.14+ 或 `zstd` 命令);`recommend` 给出 compaction-basic 插件的 `modelPolicies`(`thresholdRatio`)片段,`apply` 不改 dsh 配置。
+- OpenCode、Gemini CLI、Hermes、Qwen Code、Kimi CLI、Goose 的适配器在计划中,顺序见 [路线图](docs/ROADMAP.md),欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
 
 MIT 许可。英文完整说明见 [README.md](README.md)。

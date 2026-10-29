@@ -50,13 +50,18 @@ class ScanCache:
                 if e["size"] == st.st_size and e["mtime_ns"] == st.st_mtime_ns:
                     self.stats["hit"] += 1
                     return adapter.parser_cls.load(e["state"]).finish()
-                if st.st_size > e["offset"] and len(head) and e["size"] <= st.st_size:
+                if adapter.resumable and st.st_size > e["offset"] and len(head) and e["size"] <= st.st_size:
                     parser = adapter.parser_cls.load(e["state"])
                     offset = self._consume(f, e["offset"], parser)
                     self.stats["resumed"] += 1
                     return self._store(key, ver, head, st, offset, parser)
             parser = adapter.new_parser(path)
-            offset = self._consume(f, 0, parser)
+            if adapter.resumable:
+                offset = self._consume(f, 0, parser)
+            else:
+                for rec in adapter.read_records(path, parser):
+                    parser.feed(rec)
+                offset = st.st_size
             self.stats["parsed"] += 1
             return self._store(key, ver, head, st, offset, parser)
 

@@ -47,6 +47,9 @@ class Parser(abc.ABC):
 class Adapter(abc.ABC):
     name: ClassVar[str] = ""
     parser_cls: ClassVar[type[Parser]]
+    # False when a file cannot be resumed from a byte offset (e.g. compressed logs): the scan cache then
+    # reuses an unchanged file and re-parses a changed one from the start.
+    resumable: ClassVar[bool] = True
 
     def __init__(self, roots: Sequence[str | os.PathLike[str]] | str | os.PathLike[str] | None = None):
         if roots is None:
@@ -74,9 +77,13 @@ class Adapter(abc.ABC):
     def new_parser(self, path: Path) -> Parser:
         return self.parser_cls.load({"path": str(path)})
 
+    def read_records(self, path: Path, parser: Parser | None = None) -> Iterator[dict[str, Any]]:
+        """Records of one log file; override for logs that are not plain JSONL."""
+        return iter_jsonl(path, parser)
+
     def parse_file(self, path: Path) -> Session:
         p = self.new_parser(path)
-        for rec in iter_jsonl(path, p):
+        for rec in self.read_records(path, p):
             p.feed(rec)
         return p.finish()
 

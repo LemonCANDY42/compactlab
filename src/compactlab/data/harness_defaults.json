@@ -40,5 +40,15 @@
     "source": "https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs (ModelInfo::auto_compact_token_limit)",
     "status": "public-source",
     "note_zh": "未设置 model_auto_compact_token_limit 时,上限为上下文窗口的 90%;设置的值也会被截到这 90%"
+  },
+  "dsh": {
+    "rule": "pressure",
+    "threshold_ratio": 0.8,
+    "headroom_tokens": 65536,
+    "reserved_output": 256000,
+    "note": "dsh-compaction-basic compacts at min(80% of the window, window - reserved output (256k) - headroom (65,536)): about 678k on a 1,000,000 window, 727k on 1,048,576",
+    "note_zh": "dsh-compaction-basic 在「窗口×80%」与「窗口 − 预留输出(256k) − 余量(65,536)」中较小者处压缩:100 万窗口约 678k,1,048,576 窗口约 727k",
+    "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/packages/compaction/compaction-basic/src/config.ts (resolveConfig, resolveCompactSpec); packages/llm/llm-deepseek/src/defaults.ts (DEFAULT_MAX_TOKENS)",
+    "status": "public-source"
   }
 }

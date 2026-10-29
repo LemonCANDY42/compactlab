@@ -78,6 +78,11 @@ def _source(p: argparse.ArgumentParser) -> None:
         "--codex-root", action="append", help="Codex sessions dir (default $CODEX_HOME/sessions or ~/.codex/sessions)"
     )
     g.add_argument(
+        "--dsh-root",
+        action="append",
+        help="DeepSeek Harness sessions dir (default $DSH_HOME/sessions or ~/.dsh/sessions)",
+    )
+    g.add_argument(
         "--since-days", type=float, default=30, help="only files modified in the last N days (0 = all; default 30)"
     )
     g.add_argument("--no-cache", action="store_true", help="do not read or write the scan cache")
@@ -153,7 +158,7 @@ def _config_args(g: Any) -> None:
 
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
-    return {"claude-code": a.claude_root, "codex": a.codex_root}
+    return {"claude-code": a.claude_root, "codex": a.codex_root, "dsh": a.dsh_root}
 
 
 def _progress(msg: str) -> None:
@@ -835,7 +840,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "pricing": {},
         "cache": {},
     }
-    bins = {"claude-code": "claude", "codex": "codex"}
+    bins = {"claude-code": "claude", "codex": "codex", "dsh": "dsh"}
     for name in adapter_names():
         ad = get_adapter(name)
         roots = ad.default_roots()
@@ -847,13 +852,17 @@ def cmd_doctor(a: argparse.Namespace) -> int:
                     {
                         "path": str(r),
                         "exists": r.exists(),
-                        "jsonl_files": sum(1 for _ in r.rglob("*.jsonl")) if r.exists() else 0,
+                        "jsonl_files": sum(1 for _ in ad(r).find_files()) if r.exists() else 0,
                     }
                     for r in roots
                 ],
                 "config": [{"path": str(c), "exists": c.exists()} for c in ad.config_paths()],
             }
         )
+        if name == "dsh":
+            from ..adapters.dsh import zstd_available
+
+            report["harnesses"][-1]["zstd"] = zstd_available()
     rp = DEFAULT_REFRESHED.expanduser()
     report["pricing"] = {
         "bundled": PricingTable.bundled().get("retrieved"),
@@ -870,6 +879,9 @@ def cmd_doctor(a: argparse.Namespace) -> int:
             for r in h["log_roots"]
         ]
         lines += [f"  config {'ok ' if c['exists'] else '-- '} {c['path']}" for c in h["config"]]
+        if h["name"] == "dsh":
+            zs = "decoder available" if h["zstd"] else "no decoder: Python 3.14+ or the zstd command"
+            lines.append(f"  zstd   {'ok ' if h['zstd'] else '-- '} {zs}")
     lines.append(
         f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"

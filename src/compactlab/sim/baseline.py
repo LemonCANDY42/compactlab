@@ -29,19 +29,35 @@ def default_threshold(harness: str, model: str, window: int) -> tuple[int, str]:
         return window, d["otherwise_note"]
     if harness == "codex" and d:
         return int(window * d["fraction"]), d["note"]
+    if harness == "dsh" and d:
+        return dsh_trigger(window, d["threshold_ratio"], d["headroom_tokens"]), d["note"]
     return window, "unknown harness: assuming compaction at the context window"
+
+
+def dsh_trigger(window: int, ratio: float, headroom: int) -> int:
+    """dsh-compaction-basic pressure point: min(window x ratio, window - reserved output - headroom).
+    The reserve is the route's max output (256k for DeepSeek's own API). A smaller window cannot fit that, so for
+    windows up to twice the reserve the route's own cap is assumed to be a quarter of the window."""
+    reserved = int(defaults()["dsh"]["reserved_output"])
+    if window <= 2 * reserved:
+        reserved = window // 4
+    return max(int(min(window * ratio, window - reserved - headroom)), 0)
 
 
 def effective_max(harness: str, window: int) -> int:
     """Largest threshold the harness will actually honour."""
     if harness == "codex":
         return int(window * defaults()["codex"]["fraction"])
+    if harness == "dsh":
+        return dsh_trigger(window, 1.0, 0)  # thresholdRatio 1 with headroomTokens 0: only the output reserve remains
     return window
 
 
 def read_current(harness: str, model: str, path: Path | None) -> tuple[int | None, str]:
     """Currently configured threshold for `model` from one config file, read-only.
     Returns (value or None for 'not set / auto', description)."""
+    if harness == "dsh":
+        return None, "not read: where dsh keeps the compaction-basic plugin config is not verified"
     if path is None or not path.exists():
         return None, "no config file"
     text = path.read_text()

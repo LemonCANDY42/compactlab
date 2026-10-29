@@ -255,9 +255,10 @@ from latency curves fitted to your own timestamps. Details and formulas:
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
 | Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only) | supported |
-| dsh, opencode, pi | | | planned: one `Adapter` + fixtures ([guide](docs/ADDING_A_HARNESS.md)) |
+| DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
+| OpenCode, Gemini CLI, Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
 
-Neither harness lets subagents have their own threshold, so `apply` writes the main-role value.
+None of these harnesses lets subagents have their own threshold, so `apply` writes the main-role value. dsh reads its threshold as a fraction of the window (default: the lower of 80% and window − 256k output reserve − 65,536, about 727k on DeepSeek's 1M models); where its plugin config lives is not verified, so `apply` leaves it alone.
 
 ## Safety and privacy
 

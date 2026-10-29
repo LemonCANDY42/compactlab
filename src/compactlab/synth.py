@@ -203,3 +203,58 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
         path.write_text("\n".join(json.dumps(x) for x in lines) + "\n")
         out.append(path)
     return out
+
+
+def write_dsh(root: Path, n: int = 4, seed: int = 13, model: str = "deepseek-v4-flash") -> list[Path]:
+    """DeepSeek Harness logs as plain JSONL (dsh writes this with persistenceCompression 'none')."""
+    rng = random.Random(seed)
+    out = []
+    for i in range(n):
+        sdir = root / "--proj--" / f"dsh-{i}"
+        sdir.mkdir(parents=True, exist_ok=True)
+        path = sdir / "session.v4.jsonl"
+        t = EPOCH + timedelta(days=i)
+        seq = 0
+
+        def ev(typ: str, data: dict[str, Any], when: datetime) -> dict[str, Any]:
+            nonlocal seq
+            seq += 1
+            return {"type": typ, "seq": seq - 1, "time": int(when.timestamp() * 1000), "data": data}
+
+        lines: list[dict[str, Any]] = [
+            {
+                "type": "session",
+                "version": 4,
+                "id": f"dsh-{i}",
+                "createdAt": int(t.timestamp() * 1000),
+                "cwd": "/proj",
+                "isSeeded": False,
+                "delegationDepth": 0,
+            },
+            ev("request/context", {"provider": "deepseek-official", "model": model, "contextWindow": 1_048_576}, t),
+        ]
+        steps = _steps(rng, rng.randint(80, 160), 20_000, 600_000)
+        for k, (ctx, gap, key, utext, compacted, pre) in enumerate(steps):
+            t += timedelta(seconds=gap)
+            if compacted:
+                lines.append(ev("compaction/start", {"compactionId": f"c{k}", "turn": k}, t))
+                t += _clat(rng, pre)
+                summary = {"compactionId": f"c{k}", "summary": "Summary of work so far.\n" + SUMMARY_FILLER,
+                           "shadowedTokenCount": pre, "provider": "deepseek-official", "model": model}  # fmt: skip
+                lines += [ev("compaction/summary", summary, t), ev("compaction/end", {"compactionId": f"c{k}"}, t)]
+            if utext:
+                lines.append(ev("user/message", {"content": [{"type": "text", "text": utext}]}, t))
+            body = "y" * rng.randint(300, 4000)
+            lines.append(ev("tool/result", {"message": {"role": "tool", "toolCallId": f"t{k - 1}",
+                                                        "content": [{"type": "text", "text": body}]}}, t))  # fmt: skip
+            t += _lat(rng, ctx)
+            hit = int(ctx * 0.85)
+            usage = {"inputTokens": ctx - hit, "cacheReadTokens": hit, "outputTokens": rng.randint(50, 600)}
+            msg = {"role": "assistant", "source": {"kind": "model", "provider": "deepseek-official", "model": model}}
+            lines.append(ev("assistant/message", {"turn": k, "step": 1, "message": msg, "usage": usage}, t))
+            lines.append(
+                ev("tool/call", {"callId": f"t{k}", "name": "read", "arguments": json.dumps({"file_path": key})}, t)
+            )
+        path.write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        out.append(path)
+    return out

@@ -150,7 +150,7 @@ def test_scan_json_and_doctor(tmp_path, claude_root, codex_root, capsys, isolate
     assert main(["doctor", "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     names = {h["name"] for h in doc["harnesses"]}
-    assert names == {"claude-code", "codex"}
+    assert names == {"claude-code", "codex", "dsh"}
     assert all(str(isolated_home) in r["path"] for h in doc["harnesses"] for r in h["log_roots"])
 
 

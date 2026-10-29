@@ -4,7 +4,8 @@
   "status_legend": {
     "documented": "stated in the vendor's public docs",
     "public-tool": "relied on by a public open-source parser (CodexBar, ccusage); not checked against vendor docs",
-    "assumed": "compactlab's own reading; needs verification against real files with the user's approval"
+    "assumed": "compactlab's own reading; needs verification against real files with the user's approval",
+    "public-source": "read from the harness's own open-source code, docs or test snapshots; not yet checked against a user's real logs"
   },
   "harnesses": {
     "claude-code": {
@@ -127,6 +128,66 @@
         "value": "90% of the resolved context window; configured values clamped to it",
         "status": "public-source",
         "source": "https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs"
+      }
+    },
+    "dsh": {
+      "log_roots": {
+        "value": [
+          "$DSH_HOME/sessions",
+          "~/.dsh/sessions/--<cwd>--/<session>/session[.vN].jsonl[.zstd]"
+        ],
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/.agents/notes/archived/architecture/2026-07-24-project-session-directories.md"
+      },
+      "generations": {
+        "value": "one file per format generation; the highest vN (no suffix = 0) is current",
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/packages/session/session-persistence-jsonl/src/format.ts"
+      },
+      "compression": {
+        "value": ".jsonl.zstd = concatenated independent zstd frames (header frame, then one per append batch); plain .jsonl when persistenceCompression is 'none'; a torn last frame is truncated",
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/.agents/notes/archived/architecture/2026-07-19-zstandard-jsonl-session-logs.md"
+      },
+      "line_shape": {
+        "value": "header {type:'session', version, id, createdAt, cwd?, parentSession?, origin?:'subagent', isSeeded, delegationDepth}; events {type, seq, time (epoch ms), data}",
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/packages/core/session/src/types.ts"
+      },
+      "token_counts": {
+        "value": "assistant/message data.usage {inputTokens (uncached), cacheReadTokens, cacheWriteTokens, outputTokens, reasoningTokens?}; counts are disjoint, billed input = the sum of the first three",
+        "status": "documented",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/packages/llm/llm/src/types.ts (TokenUsage)"
+      },
+      "reasoning_in_output": {
+        "value": "reasoningTokens is assumed to be included in outputTokens (DeepSeek completion_tokens includes reasoning)",
+        "status": "assumed",
+        "source": ""
+      },
+      "compaction_event": {
+        "value": "compaction/start, compaction/summary {summary|rawOutput, shadowedTokenCount, usage}, compaction/end {error?}",
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/subsystems/compaction.md"
+      },
+      "fork_lineage": {
+        "value": "seeded forks (isSeeded) copy parent events up to session/end-seed; subagents have origin 'subagent' and parentSession",
+        "status": "public-source",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/subsystems/session.md"
+      },
+      "row_time": {
+        "value": "rows carry time (epoch ms); when absent, the latest provider-stream chunk time of an assistant/message is used",
+        "status": "assumed",
+        "source": ""
+      },
+      "compact_setting": {
+        "value": "dsh-compaction-basic: thresholdRatio (0.8), headroomTokens (65536), modelPolicies[]; trigger = min(window x ratio, window - reserved output - headroom)",
+        "status": "documented",
+        "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/config-catalog.md#deepseek-aidsh-compaction-basic"
+      },
+      "config_location": {
+        "value": "where a user's plugin config lives (profile patch / cordis.yml under $DSH_HOME) is not verified; apply does not write it",
+        "status": "assumed",
+        "source": ""
       }
     }
   }

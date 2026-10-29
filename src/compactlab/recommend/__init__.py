@@ -85,7 +85,7 @@ def register(cls: type[Recommender]) -> type[Recommender]:
 
 
 def recommenders() -> dict[str, type[Recommender]]:
-    from . import claude_code, codex  # noqa: F401  (register)
+    from . import claude_code, codex, dsh  # noqa: F401  (register)
 
     return dict(_REG)
 

@@ -75,6 +75,16 @@
       "harness": "codex", "where": "environment variable", "values": "", "min_version": "",
       "note": "No documented environment variable sets the auto-compact limit.", "status": "none",
       "source": "https://learn.chatgpt.com/docs/config-file/config-reference", "verified_on": "2026-10-29"
+    },
+    "dsh.plugin.compaction-basic.modelPolicies": {
+      "harness": "dsh", "where": "config of the @deepseek-ai/dsh-compaction-basic plugin (Cordis YAML)",
+      "values": "thresholdRatio: fraction of the context window (default 0.8, must exceed retainRatio 0.16); headroomTokens: tokens kept free beyond the output reserve (default 65536); trigger = min(window x thresholdRatio, window - reserved output - headroomTokens); modelPolicies[] overrides per exact provider/model",
+      "min_version": "",
+      "scopes": ["dsh profile / cordis.yml (location not verified)"],
+      "note": "Experimental: the keys come from dsh's published config catalog, but where a user's plugin config lives was not verified; check that the plugin loads after editing.",
+      "status": "documented",
+      "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/config-catalog.md#deepseek-aidsh-compaction-basic",
+      "verified_on": "2026-10-29"
     }
   },
   "providers": {

@@ -46,6 +46,10 @@ class MyAdapter(Adapter):
 
 Import the module in `adapters/__init__.py`.
 
+Logs that are not plain append-only JSONL (compressed, one file per generation) override `find_files()` and
+`read_records()` and set `resumable = False`: the scan cache then reuses unchanged files and re-parses changed ones
+from the start instead of resuming at a byte offset. The dsh adapter is the example.
+
 ## 2. Emit the normalized fields correctly
 
 | Field | Meaning |

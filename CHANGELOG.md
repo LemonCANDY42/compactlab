@@ -5,6 +5,17 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **DeepSeek Harness (`dsh`) adapter, experimental.** Reads `$DSH_HOME/sessions` (default `~/.dsh/sessions`): the
+  newest `session[.vN].jsonl[.zstd]` per session, zstd via the standard library on Python 3.14+ or the `zstd`
+  command (a torn last frame is dropped), disjoint usage counts, `compaction/*` events (failed ones dropped),
+  subagents and seeded forks. Default rule: the lower of 80% of the window and window − 256k output reserve − 65,536
+  (727,040 on a 1,048,576 window). `recommend --harness dsh` prints a compaction-basic `modelPolicies` entry
+  (`thresholdRatio`, `headroomTokens: 0`, explicit `maxTokens`); `apply` does not write dsh config. DeepSeek
+  V4 Flash / Pro pricing rows (off-peak list price). `--dsh-root`; `doctor` reports the zstd decoder. The scan cache
+  re-parses changed compressed files instead of resuming them (`Adapter.resumable`, `Adapter.read_records`).
+- docs/ROADMAP.md.
+
 ### Changed
 - Install instructions use the GitHub source (`uv tool install git+https://github.com/LemonCANDY42/compactlab`,
   `pipx install git+…`, or `uvx --from git+… compactlab demo`); compactlab is not on PyPI. A test keeps
