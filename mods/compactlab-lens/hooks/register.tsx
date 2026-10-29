@@ -3,7 +3,7 @@ import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { LensFacts, LensLive, LensProfileName } from '../types'
 import {
-  PROFILES, arrow, command, curveSvg, differs, dotBar, factsFrom, k, langOf, livePoint, mins, spark, tone, usd, words,
+  PROFILES, age, arrow, command, curveSvg, differs, dotBar, factsFrom, k, langOf, livePoint, mins, spark, tone, usd, words, isStale,
 } from './lens'
 import type { Cell, Lang } from './lens'
 
@@ -115,6 +115,9 @@ export const register: Register = (on, options) => {
     const im = p?.vs_default ?? null
     const here = def != null ? livePoint(l.compactWindow, l.source, def) : null
     const isOff = here != null && prof != null && !g?.no_action_needed && differs(here, prof)
+    const now = (await $.clock.now()) / 1000
+    const c = f?.status === 'ok' ? f.calibration : null
+    const cal = c ? { age: age(now - c.at), isStale: isStale(c.at, c.every_s, now) } : null
 
     const head = (
       <Box key="row" flexDirection="row" gap={1}>
@@ -128,6 +131,7 @@ export const register: Register = (on, options) => {
         {im && <Text color={tone(im.usd_per_day)}>{arrow(im.usd_per_day)}{usd(im.usd_per_day)}{w.perDay}</Text>}
         {im && <Text color={tone(im.min_per_day)}>{arrow(im.min_per_day)}{mins(im.min_per_day)}{w.perDay}</Text>}
         <Text dimColor>⟳{l.compactions}</Text>
+        {cal && <Text color={cal.isStale ? 'warning' : undefined} dimColor={!cal.isStale}>◴{cal.age}</Text>}
         {isOff && <Text color="warning">⚠</Text>}
         {!g && <Text color="warning">ⓘ</Text>}
       </Box>
@@ -136,7 +140,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {head}
-        {detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here)}
+        {detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here, null, cal?.isStale ?? false)}
       </Box>
     )
   })
@@ -152,6 +156,8 @@ export const register: Register = (on, options) => {
     const p = g?.profiles[name] ?? null
     const here = l && g ? livePoint(l.compactWindow, l.source, g.default_threshold) : null
     const isOff = here != null && p != null && !g?.no_action_needed && differs(here, p.threshold)
+    const now = (await $.clock.now()) / 1000
+    const stale = f?.status === 'ok' && f.calibration ? isStale(f.calibration.at, f.calibration.every_s, now) : false
     const chart = e.surface === 'desktop' && 'Svg' in table && l && g && p
       ? (() => {
           const { Svg } = table as typeof table & { Svg: (props: { source: string; alt: string; width?: number }) => RenderChildren }
@@ -167,7 +173,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" gap={1}>
         <Text bold>{l?.model ?? '–'}</Text>
-        {l ? detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here, chart) : <Text dimColor>…</Text>}
+        {l ? detail($, { Box, Button, Text }, e.surface, w, l, f, name, isOff, here, chart, stale) : <Text dimColor>…</Text>}
       </Box>
     )
   })
@@ -181,7 +187,7 @@ type Els = { Box: (p: any) => any; Button: (p: any) => any; Text: (p: any) => an
 /** The expanded card: curve, chips vs default and current, profile switch, copy, and one caption line. */
 function detail(
   $: EngineInterface, { Box, Button, Text }: Els, surface: string, w: ReturnType<typeof words>, l: LensLive,
-  f: LensFacts | null, name: LensProfileName, isOff: boolean, here: number | null, chart: RenderChildren = null,
+  f: LensFacts | null, name: LensProfileName, isOff: boolean, here: number | null, chart: RenderChildren = null, stale = false,
 ): RenderChildren {
   if (!f || f.status !== 'ok') {
     const msg = !f || f.status === 'missing' ? w.hint : f.status === 'no-group' ? w.noGroup : w.unreadable
@@ -229,6 +235,7 @@ function detail(
           ⚠ {w.live} {k(here)} {w.differs} {w[name]} {k(p.threshold)}{l.source === 'env' ? ` · ${w.env}` : ''}
         </Text>
       )}
+      {stale && <Text color="warning">◴ {w.stale}</Text>}
       <Text dimColor>{f.isDemo ? `${w.demo} · ` : ''}{w.caption}</Text>
     </Box>
   )

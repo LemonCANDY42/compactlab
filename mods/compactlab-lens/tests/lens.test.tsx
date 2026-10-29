@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 // The test runner prints console output; the hooks environment's types declare none.
@@ -37,11 +37,12 @@ const PANE = {
   props: { title: 'compactlab lens', isFocused: false, bodyColumns: 48, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
 
-type Seed = { lens?: unknown; source?: string; rawMax?: number; tokens?: number; lang?: string }
+type Seed = { lens?: unknown; source?: string; rawMax?: number; tokens?: number; lang?: string; now?: number }
 
 /** Stands in for the engine: usage, model, env and a read-only file system holding the lens file (or not). */
 function engine(on: On, seed: Seed = {}) {
   const copies: string[] = []
+  mock.clock(on, { now: (seed.now ?? 1_800_000_000) * 1000 })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
   on('session.usage', () => ({
@@ -194,5 +195,27 @@ test('capture: the band folded and unfolded, as text', async ($, on) => {
   await band.press({ key: 'fold' })
   const tree = JSON.parse(await text(band)) as unknown
   console.log('--- unfolded ---\n' + rows(tree).join('\n'))
+  await band.unmount()
+})
+
+test('calibration age shows as an icon, amber once older than twice the interval', async ($, on) => {
+  const NOW = 1_800_000_000
+  engine(on, { now: NOW, lens: { ...LENS, calibration: { at: NOW - 3 * 3600, every_s: 86400 } } })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  const fresh = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await text(fresh)).toContain('◴3.0h')
+  expect(await text(fresh)).not.toContain('compactlab recalibrate')
+  await fresh.unmount()
+})
+
+test('a stale calibration says so in the card', async ($, on) => {
+  const NOW = 1_800_000_000
+  engine(on, { now: NOW, lens: { ...LENS, calibration: { at: NOW - 3 * 86400, every_s: 86400 } } })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'fold' })
+  const all = await text(band)
+  expect(all).toContain('◴3.0d')
+  expect(all).toContain('compactlab recalibrate')
   await band.unmount()
 })

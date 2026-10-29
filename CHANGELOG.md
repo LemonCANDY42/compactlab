@@ -43,6 +43,20 @@ versioning: [SemVer](https://semver.org/).
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
 ### Added
+- **Service mode.** `compactlab serve` is a stdlib-only service that binds loopback only (other binds are refused
+  without `--unsafe-bind`) and checks the Host header. It serves the live report, `/api/result`,
+  `/api/profile/<name>` and `/api/health`, plus a token-guarded `POST /api/recalibrate`. It recalibrates in lite mode
+  every `--every` (s/m/h/d/w or off): incremental scan, single-flight, backoff after failures, lower priority, a
+  rotating log, no network.
+- `compactlab recalibrate` (one run).
+- `compactlab schedule print|install|status|uninstall` for launchd and systemd user units. It writes only into the
+  user's unit folder, never loads them, and never overwrites a foreign file.
+- `compactlab consent set|show|clear` and `--auto-apply` / `--dry-run`. Auto-apply has minimum history, a low-confidence
+  skip, a dead-band and minimum benefit, a 100k max step, a 7-day cooldown, guardrail checks per step and manual-edit
+  detection (`notify`, never overwrite). It reuses apply's backup and manifest, adds a change journal, and `revert`
+  understands it.
+- The report shows calibration age and next run, a recalibrate button when served, and a drift marker. The lens mod
+  shows calibration age (amber when stale). See docs/SERVICE.md.
 - Larger default picks: `balanced` now prices time at $250/h with a 40% minimum window, `time` at $600/h with 50%
   (were $100/h with 25% and $400/h with 35%). The report shows a guardrail that merely moved the pick as an info
   icon instead of a warning; warnings are reserved for flags that need attention.

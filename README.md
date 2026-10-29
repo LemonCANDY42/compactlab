@@ -165,6 +165,20 @@ only command that writes, under pre-authorization. The report has the same panel
 
 Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
 
+## Run as a service
+
+```bash
+compactlab serve --every 1d                 # localhost-only live report + JSON API, recalibrates daily (lite)
+compactlab schedule print                   # launchd / systemd files to run it unattended; install writes, you load
+compactlab consent set --file ~/.claude/settings.json --models claude-opus-5-5   # optional: allow auto-apply
+compactlab recalibrate --auto-apply --dry-run
+```
+
+Rescans are incremental, one run at a time, at low priority, with no network. Auto-apply is opt-in and goes through
+`apply`'s backups and manifests (`compactlab revert` undoes it). It moves a setting at most 100k per run, at most
+weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
+[docs/SERVICE.md](docs/SERVICE.md).
+
 ## In-session lens (Claude Code mod)
 
 `mods/compactlab-lens` is an optional Claude Code mod. It adds one row above the prompt, and a pane on desktop, with

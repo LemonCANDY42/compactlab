@@ -46,7 +46,7 @@ h1 .rl{color:var(--ink3)}
 h2{font:500 20px/1.25 var(--serif);letter-spacing:-.01em;margin:40px 0 12px;display:flex;align-items:center;gap:6px}
 h3{font:600 13px/1.35 var(--sans);margin:0 0 8px;display:flex;align-items:center;gap:6px}
 .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;font-size:12.5px;color:var(--ink2);align-items:center}
-.mi{display:inline-flex;align-items:center;gap:6px;min-height:28px}.mi .ic{color:var(--ink3)}
+.mi{display:inline-flex;align-items:center;gap:6px;min-height:28px}.mi .ic{color:var(--ink3)}.mi.warn,.mi.warn .ic{color:var(--amber)}
 .badge{display:inline-block;font-size:11px;border:1px solid var(--acc);color:var(--acc);border-radius:999px;padding:0 8px}
 .cap{font-size:11.5px;color:var(--ink3);line-height:1.4}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
@@ -236,6 +236,7 @@ const fmin=(v,basis)=>{if(v==null)return '–';if(Math.abs(v)<.05)return '0 min'
   if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
 const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
 const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
+const dur=s=>{s=Math.max(0,s);return s<3600?Math.round(s/60)+'m':s<86400?(s/3600).toFixed(s<36000?1:0)+'h':(s/86400).toFixed(s<864000?1:0)+'d'};
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const strip=h=>String(h).replace(/<[^>]*>/g,'');
 // green saves, amber adds; arrows carry the direction
@@ -247,7 +248,11 @@ const I={
  disclaimer:['Independent open-source tool · list-price estimates · recall is a lite-mode proxy','独立开源工具 · 按公开标价估算 · 召回率为 lite 模式代理值'],
  thAuto:['Theme: follow system','主题:跟随系统'], thLight:['Theme: light','主题:浅色'], thDark:['Theme: dark','主题:深色'],
  synthetic:['synthetic demo','合成演示'],
- mRange:['History','历史范围'], mSource:['Data source','数据来源'], mMode:['Mode','模式'], mSize:['Sample','样本'],
+ mRange:['History','历史范围'], mCal:['Calibration','校准'],
+ ago:[x=>'calibrated '+x+' ago',x=>x+'前校准'], nextIn:[x=>'next in '+x,x=>x+'后下次校准'], calOff:['manual only','仅手动'],
+ calStale:['stale: older than twice the interval','已过期:超过两倍校准间隔'], recal:['Recalibrate now','立即重新校准'],
+ recalBusy:['Recalibrating…','正在校准…'], recalFail:['Recalibration could not start','无法开始校准'],
+ drift:[(a,b)=>'drift: last applied '+a+', now recommends '+b,(a,b)=>'漂移:上次应用 '+a+',现在推荐 '+b], mSource:['Data source','数据来源'], mMode:['Mode','模式'], mSize:['Sample','样本'],
  rangeTxt:[(a,b,d,ad)=>a+' → '+b+' · '+d+' d · '+ad+' active',(a,b,d,ad)=>a+' → '+b+' · '+d+' 天 · '+ad+' 活跃'],
  rangeNo:[(d,ad)=>d+' d · '+ad+' active',(d,ad)=>d+' 天 · '+ad+' 活跃'],
  srcLocal:[h=>'local '+h+' logs',h=>'本机 '+h+' 日志'],
@@ -411,7 +416,22 @@ function header(){const g=G(),d=fdays(Math.max(g.days,1)),ad=g.active_days!=null
   const src=D.demo?'<span class="badge">'+t('synthetic')+'</span>':esc(t('srcLocal',g.harness));
   const mi=(icon,lab,v)=>`<span class="mi">${ic(icon,t(lab))}${v}</span>`;
   $('#meta').innerHTML=mi('cal','mRange',esc(range))+mi('db','mSource',src)+mi('layers','mMode',t(D.mode==='deep'?'modeDeep':'modeLite')+(D.generated?' · '+esc(D.generated.replace('data through ','≤ ')):''))+
-    mi('flag','mSize',esc(t('sizeTxt',g.n_sessions,g.n_turns.toLocaleString('en-US'))))+ib(t('caveat'))}
+    mi('flag','mSize',esc(t('sizeTxt',g.n_sessions,g.n_turns.toLocaleString('en-US'))))+calMeta(g)+ib(t('caveat'))}
+// calibration age, next run, drift since the last auto-apply, and (when served) a recalibrate button
+function calMeta(g){const sv=D.service,c=D.calibration||{},at=sv?sv.last_calibrated:c.at;if(!at&&!sv)return '';
+  const now=Date.now()/1000,every=sv?sv.every_s:c.every_s,stale=!at||now-at>2*(every||86400);
+  let h=at?esc(t('ago',dur(now-at))):'–';if(sv)h+=' · '+esc(sv.next_calibration?t('nextIn',dur(sv.next_calibration-now)):t('calOff'));
+  let out=`<span class="mi${stale?' warn':''}">${ic('clock',t('mCal'))}${h}</span>`;if(stale)out+=ib(t('calStale'),'warn','low');
+  if(sv)out+=`<button type="button" class="ib" id="recal" aria-label="${t('recal')}" data-tip="${t('recal')}">${ic('refresh')}</button>`;
+  const ap=sv&&sv.applied&&sv.applied[g.model],rec=g.profiles[g.profile].threshold;
+  if(ap&&ap.value!==rec)out+=ib(t('drift',fk(ap.value),fk(rec)),'warn','low');
+  return out}
+async function recalibrate(){const b=$('#recal');if(!b)return;b.disabled=true;b.dataset.tip=t('recalBusy');b.setAttribute('aria-label',t('recalBusy'));
+  try{const r=await fetch('/api/recalibrate',{method:'POST',headers:{Authorization:'Bearer '+D.service.token}});
+    if(r.status!==202&&r.status!==409)throw new Error(r.status);
+    for(;;){await new Promise(z=>setTimeout(z,2000));const h=await (await fetch('/api/health')).json();if(!h.running){location.reload();return}}}
+  catch(e){b.disabled=false;b.dataset.tip=t('recalFail');b.setAttribute('aria-label',t('recalFail'));b.classList.add('bad')}}
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#recal'))recalibrate()});
 // The control bar (profile buttons, slider, marks) is built once per group/language and then only updated in
 // place, so dragging the slider never replaces the <input type=range> under the pointer.
 function buildBar(){const g=G(),n=g.grid.length,lo=g.grid[0],hi=g.grid[n-1];

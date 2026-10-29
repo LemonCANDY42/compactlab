@@ -1,7 +1,7 @@
 // Pure helpers for compactlab-lens: reading the lens file, matching this session's model, and the glyph drawings.
 // Nothing here touches `$`, so the tests can call these directly.
 
-import type { LensFacts, LensGroup, LensImpact, LensProfileName } from '../types'
+import type { LensCalibration, LensFacts, LensGroup, LensImpact, LensProfileName } from '../types'
 
 export const PROFILES: readonly LensProfileName[] = ['cost', 'balanced', 'time']
 export type Lang = 'en' | 'zh'
@@ -15,7 +15,8 @@ const L = {
     env: 'set by CLAUDE_CODE_AUTO_COMPACT_WINDOW, which wins over /autocompact', compactions: 'compactions this session',
     expand: 'Show the lens card', collapse: 'Hide the lens card', wait: 'wait', turns: 'turns', keep: 'keep default',
     caption: 'vs harness default · list-price estimate · recall is a lite-mode proxy', demo: 'synthetic demo data',
-    curve: 'context per turn', profile: 'Profile', title: 'compactlab lens',
+    curve: 'context per turn', profile: 'Profile', title: 'compactlab lens', calibrated: 'calibrated',
+    stale: 'stale: run compactlab recalibrate', ago: 'ago',
   },
   zh: {
     cost: '省钱', balanced: '均衡', time: '省时', ctx: '上下文', def: '默认', cur: '当前',
@@ -25,7 +26,8 @@ const L = {
     env: '由 CLAUDE_CODE_AUTO_COMPACT_WINDOW 设定,优先于 /autocompact', compactions: '本会话压缩次数',
     expand: '展开 lens 卡片', collapse: '收起 lens 卡片', wait: '等待', turns: '每轮', keep: '保持默认',
     caption: '对 harness 默认 · 按公开标价估算 · 召回为 lite 代理值', demo: '合成演示数据',
-    curve: '每轮上下文', profile: '方案', title: 'compactlab lens',
+    curve: '每轮上下文', profile: '方案', title: 'compactlab lens', calibrated: '校准于',
+    stale: '已过期:运行 compactlab recalibrate', ago: '前',
   },
 } as const
 
@@ -58,9 +60,9 @@ export const canonical = (model: string): string =>
 
 /** Reads either lens.json (schema 1) or a full result.json, and picks this model's group for `role`. */
 export const factsFrom = (text: string, path: string, model: string, role = 'main'): LensFacts => {
-  let data: { groups?: unknown; demo?: unknown }
+  let data: { groups?: unknown; demo?: unknown; calibration?: { at?: unknown; every_s?: unknown } }
   try {
-    data = JSON.parse(text) as { groups?: unknown; demo?: unknown }
+    data = JSON.parse(text) as typeof data
   } catch {
     return { status: 'unreadable', path }
   }
@@ -70,7 +72,10 @@ export const factsFrom = (text: string, path: string, model: string, role = 'mai
     ?? groups.find(x => want.startsWith(canonical(String(x.model))) && x.role === role)
   if (!g) return { status: 'no-group', path }
   const group = 'default_threshold' in g ? (g as unknown as LensGroup) : fromResultGroup(g)
-  return group ? { status: 'ok', path, group, isDemo: Boolean(data.demo) } : { status: 'unreadable', path }
+  const c = data.calibration
+  const calibration: LensCalibration | null = c && typeof c.at === 'number'
+    ? { at: c.at, every_s: typeof c.every_s === 'number' ? c.every_s : null } : null
+  return group ? { status: 'ok', path, group, isDemo: Boolean(data.demo), calibration } : { status: 'unreadable', path }
 }
 
 type Imp = { usd: Per; minutes: Per; wait_minutes: Per; turn_gain_minutes: Per; compactions: Per; ref_compactions: Per }
@@ -156,3 +161,8 @@ export const curveSvg = (curve: readonly number[], max: number, def: number, pro
     + (pts ? `<polyline points="${pts}" fill="none" stroke="${acc}" stroke-width="1.6" stroke-linejoin="round"/>` : '')
     + `</svg>`
 }
+
+/** Age of a calibration as `3h`, `2.5d`; and whether it is stale (older than twice the interval, or a day). */
+export const age = (seconds: number): string =>
+  seconds < 3600 ? `${Math.max(0, Math.round(seconds / 60))}m` : seconds < 86400 ? `${(seconds / 3600).toFixed(seconds < 36000 ? 1 : 0)}h` : `${(seconds / 86400).toFixed(seconds < 864000 ? 1 : 0)}d`
+export const isStale = (at: number, every: number | null, now: number): boolean => now - at > 2 * (every ?? 86400)

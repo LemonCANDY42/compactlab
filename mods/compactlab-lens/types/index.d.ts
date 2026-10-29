@@ -33,9 +33,12 @@ export type LensGroup = {
   profiles: Record<LensProfileName, LensProfile>
 }
 
+/** When the service (or `compactlab recalibrate`) last calibrated, and its interval in seconds (null: manual). */
+export type LensCalibration = { at: number; every_s: number | null }
+
 /** What the lens file said for this session's model: a group, or why there is none. */
 export type LensFacts =
-  | { status: 'ok'; path: string; group: LensGroup; isDemo: boolean }
+  | { status: 'ok'; path: string; group: LensGroup; isDemo: boolean; calibration: LensCalibration | null }
   | { status: 'missing' | 'no-group' | 'unreadable'; path: string }
 
 /** What the engine reports for this session, refreshed after each turn. */

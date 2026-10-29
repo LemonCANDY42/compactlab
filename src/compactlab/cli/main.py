@@ -749,12 +749,26 @@ def cmd_retune(a: argparse.Namespace) -> int:
     return 2 if res is None else _do_apply(a, res, retune=True)
 
 
+def _forget_applied(state: Path, manifest_id: str) -> None:
+    """A reverted auto-apply is no longer what compactlab last wrote: drop it so the next run does not read the
+    restored value as a manual edit."""
+    from ..service.policy import journal, load_applied
+
+    p = state / "service" / "applied.json"
+    applied = load_applied(p)
+    keep = {k: v for k, v in applied.items() if v.get("manifest") != manifest_id}
+    if keep != applied:
+        p.write_text(json.dumps(keep, indent=2))
+        journal(state / "service" / "journal.jsonl", {"reverted": manifest_id})
+
+
 def cmd_revert(a: argparse.Namespace) -> int:
     sd = Path(a.state_dir).expanduser()
     try:
         m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
         for line in ap.revert(m, a.force):
             print(line)
+        _forget_applied(sd, m.stem)
     except (ap.ApplyError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -915,6 +929,192 @@ def cmd_recommend(a: argparse.Namespace) -> int:
     return 0
 
 
+# ---------- service: serve / recalibrate / schedule / consent ----------
+
+
+def _service_args(p: argparse.ArgumentParser) -> None:
+    g = p.add_argument_group("calibration")
+    g.add_argument("--every", default="1d", help="recalibrate interval: 30m, 6h, 1d, 2w ... or off (default 1d)")
+    g.add_argument("--state-dir", default=STATE, help="service state, logs, backups (default ~/.compactlab)")
+    g.add_argument("--lens-out", default=f"{STATE}/lens.json", help="summary for the compactlab-lens mod ('' to skip)")
+    g.add_argument(
+        "--auto-apply", action="store_true", help="apply the consented profile after each run (needs consent)"
+    )
+    g.add_argument("--dry-run", action="store_true", help="with --auto-apply: decide and show the diff, write nothing")
+    g.add_argument("--min-days", type=float, default=7.0, help="auto-apply: minimum history days (default 7)")
+    g.add_argument("--min-turns", type=int, default=500, help="auto-apply: minimum turns (default 500)")
+    g.add_argument("--max-step", type=_k, default=100_000, help="auto-apply: largest move per run (default 100k)")
+    g.add_argument("--cooldown", default="7d", help="auto-apply: minimum time between changes (default 7d)")
+
+
+def _calibrator(a: argparse.Namespace):
+    from ..service.core import Calibrator
+    from ..service.policy import Rules, load_consent
+    from ..service.schedule import parse_every
+
+    try:
+        every = parse_every(a.every)
+        cooldown = parse_every(a.cooldown) or 0.0
+    except ValueError as e:
+        raise CLIError(str(e)) from e
+    a.mode = "lite"  # the service never runs deep mode
+    state = Path(a.state_dir).expanduser()
+    consent = None
+    if a.auto_apply:
+        try:
+            consent = load_consent(state / "consent.json")
+        except ap.ApplyError as e:
+            raise CLIError(f"--auto-apply: {e}") from e
+
+    def analyze() -> dict[str, Any]:
+        res = run_analysis(a)
+        if res is None:
+            raise RuntimeError("analysis returned nothing")
+        return res
+
+    rules = Rules(min_days=a.min_days, min_turns=a.min_turns, max_step=a.max_step, cooldown_s=cooldown)
+    lens = Path(a.lens_out).expanduser() if a.lens_out else None
+    return Calibrator(analyze, state, every, lens_out=lens, consent=consent, rules=rules, dry_run=a.dry_run)
+
+
+def _service_logging(state: Path) -> None:
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    (state / "service").mkdir(parents=True, exist_ok=True)
+    lg = logging.getLogger("compactlab.service")
+    lg.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    for h in (RotatingFileHandler(state / "service" / "service.log", maxBytes=1_000_000, backupCount=3),
+              logging.StreamHandler(sys.stderr)):  # fmt: skip
+        h.setFormatter(fmt)
+        lg.addHandler(h)
+
+
+def cmd_serve(a: argparse.Namespace) -> int:
+    import threading
+
+    from ..service.http import load_token, make_server
+
+    cal = _calibrator(a)
+    state = Path(a.state_dir).expanduser()
+    _service_logging(state)
+    if a.nice and hasattr(os, "nice"):
+        os.nice(a.nice)
+    token = load_token(state / "service" / "token")
+    try:
+        srv = make_server(cal, a.host, a.port, token, unsafe_bind=a.unsafe_bind)
+    except PermissionError as e:
+        raise CLIError(str(e)) from e
+    host, port = str(srv.server_address[0]), int(srv.server_address[1])
+    print(f"compactlab serving http://{host}:{port}/  (token in {state / 'service' / 'token'}; Ctrl-C stops)",
+          file=sys.stderr)  # fmt: skip
+    stop = threading.Event()
+    threading.Thread(target=cal.loop, args=(stop,), daemon=True).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop.set()
+        srv.server_close()
+    return 0
+
+
+def cmd_recalibrate(a: argparse.Namespace) -> int:
+    """One calibration (what a scheduler runs), with the same auto-apply rules as the service."""
+    cal = _calibrator(a)
+    _service_logging(Path(a.state_dir).expanduser())
+    out = cal.recalibrate("cli")
+    text = [f"recalibration: {out['status']}" + (f" ({out.get('error')})" if out.get("error") else "")]
+    for d in (out.get("auto_apply") or {}).get("decisions", []):
+        text.append(f"  {d['model']}: {d['action']}: {d['reason']}")
+    aa = out.get("auto_apply") or {}
+    if aa.get("diff"):
+        text.append(aa["diff"])
+    if aa.get("manifest"):
+        text.append(f"applied; undo with: compactlab revert --state-dir {a.state_dir}")
+    elif aa.get("dry_run") and aa.get("diff"):
+        text.append("dry-run: nothing written")
+    _out(a, out, "\n".join(text))
+    return 0 if out["status"] == "ok" else 1
+
+
+def cmd_schedule(a: argparse.Namespace) -> int:
+    from ..service import schedule as sc
+
+    home = Path.home()
+    plat = a.platform if a.platform != "auto" else ("launchd" if platform.system() == "Darwin" else "systemd")
+    if a.action == "status":
+        found = sc.installed(plat, home)
+        print("\n".join(f"installed: {p}" for p in found) or f"not installed ({plat})")
+        return 0
+    if a.action == "uninstall":
+        if not a.yes:
+            print("refused: uninstall needs --yes", file=sys.stderr)
+            return 2
+        gone = sc.uninstall(plat, home)
+        print("\n".join(f"removed: {p}" for p in gone) or "nothing to remove")
+        if gone:
+            print("unload it yourself if it is loaded (launchctl bootout / systemctl --user disable --now)")
+        return 0
+    try:
+        every = sc.parse_every(a.every)
+        units = sc.units(plat, a.mode, every, ["--state-dir", a.state_dir] + (["--auto-apply"] if a.auto_apply else []),
+                         home)  # fmt: skip
+    except ValueError as e:
+        raise CLIError(str(e)) from e
+    if a.action == "print":
+        for u in units:
+            print(f"# {u.path}\n{u.text}")
+        return 0
+    print(sc.diff(units))
+    if not a.yes and (not sys.stdin.isatty() or input("write these files? [y/N] ").strip().lower() != "y"):
+        print("not installed", file=sys.stderr)
+        return 2
+    try:
+        for p in sc.install(units):
+            print(f"wrote {p}")
+    except PermissionError as e:
+        raise CLIError(str(e)) from e
+    print(sc.activation_hint(plat))
+    return 0
+
+
+def cmd_consent(a: argparse.Namespace) -> int:
+    from dataclasses import asdict
+
+    from ..service.policy import Consent, load_consent, save_consent
+
+    path = Path(a.state_dir).expanduser() / "consent.json"
+    if a.action == "show":
+        try:
+            print(json.dumps(asdict(load_consent(path)), indent=2))
+        except ap.ApplyError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        return 0
+    if a.action == "clear":
+        if path.exists():
+            path.unlink()
+        print("consent removed; auto-apply is off")
+        return 0
+    if not (a.file and a.models):
+        raise CLIError("consent set needs --file and --models")
+    c = Consent(a.harness, a.file, list(a.models), a.profile, expires=a.expires)
+    print(json.dumps(asdict(c), indent=2))
+    if not a.yes and (not sys.stdin.isatty() or input("allow compactlab to change these keys unattended? [y/N] ")
+                      .strip().lower() != "y"):  # fmt: skip
+        print("no consent stored", file=sys.stderr)
+        return 2
+    try:
+        save_consent(path, c)
+    except ap.ApplyError as e:
+        raise CLIError(str(e)) from e
+    print(f"stored {path}")
+    return 0
+
+
 def cmd_demo(a: argparse.Namespace) -> int:
     from ..lens import summarize
 
@@ -1022,6 +1222,41 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--check", action="store_true", help="flag snippets whose config keys are unverified or stale")
     s.add_argument("--max-age-days", type=int, default=90, help="with --check: max age of a key's verification")
     s.set_defaults(f=cmd_recommend)
+
+    s = sub.add_parser("serve", help="localhost service: live report + JSON API, recalibrates on a schedule (lite)")
+    _sim(s)
+    _service_args(s)
+    s.add_argument("--host", default="127.0.0.1", help="bind address (loopback only unless --unsafe-bind)")
+    s.add_argument("--port", type=int, default=0, help="port (default: a free one)")
+    s.add_argument("--unsafe-bind", action="store_true", help="allow a non-loopback bind (not recommended)")
+    s.add_argument("--nice", type=int, default=10, help="lower the process priority by this much (default 10)")
+    s.set_defaults(f=cmd_serve)
+
+    s = sub.add_parser("recalibrate", help="one lite recalibration (what a scheduler runs), optional auto-apply")
+    _sim(s)
+    _service_args(s)
+    s.set_defaults(f=cmd_recalibrate)
+
+    s = sub.add_parser("schedule", help="print / install a launchd or systemd user schedule (never auto-loaded)")
+    s.add_argument("action", choices=["print", "install", "status", "uninstall"])
+    s.add_argument("--platform", choices=["auto", "launchd", "systemd"], default="auto")
+    s.add_argument("--mode", choices=["serve", "recalibrate"], default="recalibrate")
+    s.add_argument("--every", default="1d")
+    s.add_argument("--state-dir", default=STATE)
+    s.add_argument("--auto-apply", action="store_true", help="scheduled runs auto-apply (needs consent)")
+    s.add_argument("--yes", action="store_true", help="install/uninstall without the prompt (the diff still prints)")
+    s.set_defaults(f=cmd_schedule)
+
+    s = sub.add_parser("consent", help="store, show or clear the auto-apply consent (scope: file, models, profile)")
+    s.add_argument("action", choices=["set", "show", "clear"])
+    s.add_argument("--harness", choices=["claude-code", "codex"], default="claude-code")
+    s.add_argument("--file", help="the one settings file auto-apply may change")
+    s.add_argument("--models", nargs="*", help="models whose key may change")
+    s.add_argument("--profile", choices=PROFILE_NAMES, default=DEFAULT_PROFILE)
+    s.add_argument("--expires", help="YYYY-MM-DD after which the consent lapses")
+    s.add_argument("--state-dir", default=STATE)
+    s.add_argument("--yes", action="store_true")
+    s.set_defaults(f=cmd_consent)
 
     s = sub.add_parser("revert", help="undo an apply using its manifest")
     s.add_argument("--state-dir", default=STATE)
