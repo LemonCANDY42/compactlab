@@ -46,7 +46,8 @@ def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2, dark
             [browser, "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu",
              "--no-first-run", "--allow-file-access-from-files", f"--user-data-dir={prof}",
              f"--blink-settings=preferredColorScheme={0 if dark else 1}",
-             "--hide-scrollbars", f"--force-device-scale-factor={scale}", f"--window-size={w},{h}",
+             "--hide-scrollbars", "--virtual-time-budget=3000", f"--force-device-scale-factor={scale}",
+             f"--window-size={w},{h}",
              f"--screenshot={out}", url],
             check=True, capture_output=True, timeout=120,
         )  # fmt: skip
@@ -97,9 +98,44 @@ def showcase(tmp: Path) -> dict:
     _extra_project(root, "f", ("claude-sonnet-5",), 0, 4, 41)
     synth.write_codex(tmp / "codex", n=6)
     ss = list(get_adapter("claude-code")(root).sessions()) + list(get_adapter("codex")(tmp / "codex").sessions())
-    res = analyze(ss, PricingTable.load(offline=True), current={("claude-code", "claude-opus-5-5"): (600_000, "t")})
+    # synthetic "current" settings on two models, so the current-setting path is shown
+    cur = {("claude-code", "claude-opus-5-5"): (525_000, "t"), ("claude-code", "claude-sonnet-5-5"): (625_000, "t")}
+    res = analyze(ss, PricingTable.load(offline=True), current=cur)
     res["demo"] = True
     return res
+
+
+CROWD = {
+    "claude-code": [
+        f"claude-{f}-{v}" for f in ("opus", "sonnet", "haiku") for v in ("5-5", "5", "4-7", "4-5", "4-1", "4")
+    ]
+    + ["claude-fable-5-1", "claude-fable-5"],
+    "codex": [f"gpt-{v}" for v in ("5-codex", "5.3-codex", "5.5", "5.5-mini", "5.3", "5", "5-mini", "4.1", "o4", "o3")],
+    "example-cli": ["qwen-3-coder", "kimi-k2", "glm-4.6", "deepseek-v3.2", "mistral-dev-2"],
+}
+
+
+def crowd(res: dict) -> dict:
+    """35 models over three harnesses for the sidebar at scale: copies of the showcase groups under other names
+    (a UI fixture only; the numbers are the copied groups' own)."""
+    import copy
+
+    out = copy.deepcopy(res)
+    src = res["groups"]
+    out["groups"], out["sessions"] = [], []
+    k = 0
+    for h, models in CROWD.items():
+        for m in models:
+            base = src[k % len(src)]
+            for g in [x for x in src if x["model"] == base["model"] and x["harness"] == base["harness"]]:
+                ng = copy.deepcopy(g)
+                ng["harness"], ng["model"] = h, m
+                out["groups"].append(ng)
+                for s_ in res["sessions"]:
+                    if s_["model"] == g["model"] and s_["role"] == g["role"]:
+                        out["sessions"].append({**s_, "id": f"{m}-{s_['id']}", "model": m, "harness": h})
+            k += 1
+    return out
 
 
 def terminal_svg(text: str) -> str:
@@ -181,6 +217,16 @@ def main() -> None:
         shot(b, page + "#overview", ASSETS / "report-overview.png", 1440, 1240)
         key = urllib.parse.quote("|".join([noop["harness"], noop["model"], noop["role"]]))
         shot(b, page + "#g=" + key, ASSETS / "report-noop.png", 1440, 760)
+        # the sidebar at 35 models: harnesses folded, then a search
+        (tmp / "crowd.html").write_text(render_html(crowd(res)))
+        fold = "d.querySelectorAll('.har>.fold[aria-expanded=true]').forEach(b=>b.click())"
+        find = "const q=d.getElementById('tq');q.value='opus';q.dispatchEvent(new Event('input'))"
+        for name, js in (("report-tree.png", fold), ("report-tree-search.png", find)):
+            h = tmp / f"{name}.html"
+            h.write_text(f'<!doctype html><body style="margin:0"><iframe id="f" src="{(tmp / "crowd.html").as_uri()}" '
+                         'style="width:1440px;height:1000px;border:0;display:block"></iframe><script>f.onload=()=>'
+                         f'setTimeout(()=>{{const d=f.contentDocument;{js}}},300)</script>')  # fmt: skip
+            shot(b, h.as_uri(), ASSETS / name, 1440, 1000)
         # headless Chrome will not go below ~500px wide, so the phone view is an iframe in a host page
         host = tmp / "mobile.html"
         host.write_text(f'<!doctype html><body style="margin:0"><iframe src="{page}" '

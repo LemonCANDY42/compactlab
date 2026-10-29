@@ -6,12 +6,16 @@ either named or hidden from assistive tech, with longer explanations in `(i)` to
 
 Screenshots (synthetic showcase data from `scripts/make_assets.py`, never real history):
 `docs/assets/report.png` (1440, light), `report-dark.png`, `report-overview.png`, `report-noop.png`,
-`report-mobile.png` and `report-mobile-dark.png` (390).
+`report-mobile.png` and `report-mobile-dark.png` (390), plus the sidebar at 35 models over three harnesses
+(`report-tree.png` folded, `report-tree-search.png` with a search; a UI-only fixture of copied groups). The
+showcase has synthetic "current" settings on Opus 5.5 (525k) and Sonnet 5.5 (625k) so the current-setting path
+shows.
 
 ## Landing state
 
 - The report opens on the group (harness, model, role) with the largest absolute per-day money impact for the
-  summary profile (`balanced` unless changed on the Overview), ties broken by turns. A group with
+  summary profile (`balanced` unless changed on the Overview), preferring groups whose action is "set", ties
+  broken by turns. A group with
   `no_action_needed` is never the landing page. If every group needs no change, the Overview opens instead.
 - The URL hash keeps the view: `#overview` or `#g=<harness>|<model>|<role>`; a link opens that view directly.
 
@@ -30,16 +34,25 @@ Screenshots (synthetic showcase data from `scripts/make_assets.py`, never real h
 
 1. Header: harness and family (eyebrow), display name and role (title; the full model id is the tooltip), one
    meta row (history range, source, mode, sample size, calibration).
-2. Sticky bar: profile switch (cost / balanced / time / custom, ★ = recommended), the threshold under the cursor
-   with live $/day and min/day chips, status icons.
+2. Sticky bar: profile switch (cost / balanced / time / custom, ★ = recommended) and the price of time
+   (`time @ $250/h`); then one answer line for the cursor position, `450k  saves $44.9 + 14.7 min per day vs
+   default 967k`, each part coloured by its own sign, followed by `vs current 525k …` or `no current setting
+   found · compared with the default`; a Copy button with this model's setting at that threshold (disabled when
+   the action is "keep default"); status icons. On a phone the bar scrolls with the page.
 3. Main chart, with the slider directly under its plot.
-4. Per-day impact: three profile cards (vs default and vs current; per day / per active day / per month).
-5. KPIs for the cursor position.
+4. Per-day impact: three profile cards with a labelled threshold (vs default and vs current; per day / per
+   active day / per month; the active-day basis only when it differs from per day).
+5. Two KPIs the cards do not show: compactions per day and recall (proxy).
 6. Comparison table, copy panel, then details (trade-off, time breakdown, history, lite vs deep, sessions).
+
+Sign convention for impact figures: ▼ saves (green, no minus sign), ▲ adds (amber, with +). Axis ticks use the
+same arrows. Tables of whole-history deltas keep signed numbers. Dollar figures carry an `est.` tag nearby and the
+header carries a one-line "independent tool, list-price estimates" note.
 
 Status icons: a warning triangle only for the selected profile's guardrail flags (red when a guardrail is broken,
 amber for a guardrail warning such as below a quarter of the window). A guardrail that only moved the pick and all
-data-confidence notes (thin data, prior timing, short history) are info icons. A no-change group has no bar and no
+data-confidence notes use their own glyphs (clock: prior timing, database: thin data, calendar: short history,
+refresh: penalty prior, sliders: grid edge, shield: guardrail moved the pick), each with a tooltip. A no-change group has no bar and no
 status icons.
 
 ## Main chart spec
@@ -49,16 +62,22 @@ status icons.
 - Top panel: money per day against the harness default (0 line = default). Bottom panel: wall-clock minutes per
   day against the default. Both are computed from the stored per-threshold totals with the same arithmetic as
   `compactlab.sim.select.impact`; negative saves.
-- Background: histogram of where this group's sessions peak (bins of two grid steps), faint, across both panels,
-  labelled "session peaks"; the hover tooltip gives the count for the bin.
-- Recall floor: thresholds whose recall proxy is below the floor are a hatched zone, labelled `recall < floor`.
+- Background: histogram of where this group's sessions peak (bins of two grid steps), faint, across both panels;
+  the key gives the tallest bar's count and the hover tooltip the count for the bin.
+- Recall floor: thresholds whose recall proxy is below the floor are a hatched zone, labelled `recall < floor
+  (proxy)`; the key says recall is a lite-mode proxy (the zone can cover the default).
+- Key above the plot: session peaks, recall zone, default, current (or "no current setting"), ▼ saves / ▲ adds.
+- Layout from the top: threshold pill, profile icons (pushed apart when closer than 15 px), panel title at the
+  left edge, panel. Each axis keeps at least four ticks.
 - Marks: default (dashed), current setting (dotted), the three profiles (thin lines with coin, scale and clock
   icons on top). The same marks are clickable buttons under the slider.
-- Cursor: a vertical line with a threshold pill, dots on both curves and direct value labels (▼ saves, ▲ adds).
+- Cursor: a vertical line with a threshold pill, dots on both curves and direct value labels (▼ saves, ▲ adds)
+  with a halo, placed on the side of the dot away from the curve.
   Drag anywhere on the plot (pointer capture; vertical touch still scrolls the page) or use the slider, which is
   aligned to the plot's x range and is the keyboard control. Hover shows a crosshair and a tooltip.
-- No legends: every series and mark is labelled in place. The chart is drawn at its box width (rebuilt on resize)
-  so text stays at its real size on a phone.
+- Series and marks are labelled in place; the key covers the background layers. The chart is drawn at its box
+  width and rebuilt when that changes (a ResizeObserver, so a pane that was hidden or narrow at load is caught)
+  so text stays at its real size on a phone. Narrow slider tracks show the profile marks as icons only.
 - The chart is built once per group and language; dragging only moves the cursor (`moveCursor`), so the node under
   the pointer is never replaced.
 
@@ -70,10 +89,11 @@ status icons.
   dated and an undated id would share a name, the date stays visible.
 - One row per model; its roles (main / subagent) are small chips on the row, not separate entries. Clicking the
   name opens the role with the larger impact.
-- Every node has a badge: estimated money per day vs the default (summary profile) and the number of sessions.
-  Nodes are sorted by summed absolute impact, then turns.
+- Every node has a badge: estimated money per day vs the default (summary profile) counting only groups whose
+  action is "set", and the number of sessions (flag icon). A model that would only "keep default" shows its figure
+  greyed. Nodes are sorted by that impact, then turns.
 - Models whose every role needs no change go to a collapsed "No change needed" bucket at the bottom, each with a
-  one-line reason (`peak 506k < 967k`).
+  one-line reason per role (`peak main 416k · sub 506k < 967k`), matching the page it opens.
 - Folds are remembered in `localStorage` (`compactlab.fold`); without a stored choice only the path to the
   selected model is open. Search filters by name, id, family and harness and opens every match.
 - "Overview" sits at the top with the total badge.
@@ -82,14 +102,22 @@ status icons.
 ## Overview
 
 - Profile switch for the summary profile (also used for the sidebar badges and sorting).
-- KPIs: total money per day and minutes per day across models, models to change, groups needing no change.
-- Horizontal bars per model: money saved per day, stacked main / subagent (adds in amber, to the left of zero),
-  minutes per day as the direct label. Rows open the model.
-- Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers.
+- KPIs: money per day and minutes per day if the "set" models are applied (keep-default groups are not counted),
+  then models to change, models that keep the default and models needing no change (all in models).
+- Horizontal bars per model: money saved per day to the right of zero (adds in amber to the left), stacked main /
+  subagent; minutes per day next to it, each figure in its own colour. Keep-default models are grey and say so.
+  Rows open the model.
+- Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers
+  (greyed unless the action is "set").
+
+## Sessions table
+
+On a model page it lists that group's sessions ("Sessions · Haiku 5.5 · main"); on the Overview, all sessions.
 
 ## Tests
 
 `tests/test_report_dom.py` runs the page in headless Chrome and checks the landing rule, label normalisation,
 section order, slider and chart drag (same nodes, synced cursor), profile and mark clicks, warning-icon rules,
-accessible names, one language at a time, theme, sticky bar, the tree (folds, search), the Overview and the
-no-change view; plus no horizontal scroll at 375, 768 and 1440 px.
+accessible names, one language at a time, theme, sticky bar, the answer line and Copy state, current-setting
+note and mark, the tree (folds, search), the Overview total (set-only) and keep-default rows, the no-change view
+(no cards, filtered sessions, per-role reason); plus no horizontal scroll at 375, 768 and 1440 px.

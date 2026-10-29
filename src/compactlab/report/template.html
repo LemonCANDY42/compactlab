@@ -9,14 +9,14 @@
  --serif:ui-serif,"New York","Iowan Old Style","Charter","Palatino Linotype",Georgia,"Songti SC","Noto Serif CJK SC",serif;
  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB",sans-serif;
  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
- --r:14px;--rs:10px
+ --r:14px;--rs:10px;--pk:.07;--ht:.32;--mp:.45
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
  --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
- --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c}}
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8}}
 :root[data-theme=dark]{
  --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
- --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c}
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -46,7 +46,7 @@ svg.ic{display:inline-block;width:16px;height:16px;flex:none;vertical-align:-3px
 .mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:4px;border-radius:9px;padding:0 6px 4px 0;margin:1px 0 1px 4px}
 .mrow.cur{background:var(--card);box-shadow:inset 2px 0 0 var(--acc),0 0 0 1px var(--line)}
 .mn{color:var(--ink);font-weight:500;flex-direction:column;align-items:flex-start;gap:0;padding-bottom:0}
-.mn .why{font-size:11px;color:var(--ink3);font-weight:400;white-space:nowrap}
+.mn .why{font-size:11px;color:var(--ink3);font-weight:400;white-space:normal;line-height:1.35}
 .roles{grid-column:1/-1;display:flex;gap:3px;padding-left:8px}
 .rc,.rt{font:11px/1 var(--sans);border:1px solid var(--line);background:transparent;color:var(--ink3);border-radius:6px;padding:4px 7px;min-height:22px;display:inline-flex;align-items:center;gap:3px}
 .rc{cursor:pointer}.rc:hover{color:var(--ink)}.rc[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -132,7 +132,7 @@ input[type=range]{width:100%;height:28px;margin:0;accent-color:var(--acc);cursor
 svg{width:100%;height:auto;display:block}
 text{fill:var(--ink3);font-size:10.5px;font-family:var(--sans)}
 .ax{stroke:var(--line2)}.grid{stroke:var(--line);stroke-dasharray:1 3}
-.dl{font-size:10.5px;paint-order:stroke;stroke:var(--card);stroke-width:3px;stroke-linejoin:round}
+.dl{font-size:10.5px;paint-order:stroke;stroke:var(--card);stroke-width:3.5px;stroke-linejoin:round}
 .hov{cursor:crosshair}
 #tip{position:fixed;z-index:20;pointer-events:none;background:var(--card);color:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12px;line-height:1.5;box-shadow:0 8px 28px #00000014;min-width:150px;max-width:min(340px,calc(100vw - 16px))}
 #tip b{font:600 13px var(--mono)}#tip .r{display:flex;justify-content:space-between;gap:16px}#tip .r span:first-child{color:var(--ink2)}#tip .r span:last-child{font-family:var(--mono)}
@@ -140,18 +140,33 @@ text{fill:var(--ink3);font-size:10.5px;font-family:var(--sans)}
 #fMain{padding:14px 18px 6px}
 #fMain .mh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
 svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
-.peaks rect{fill:var(--ink);opacity:.07}
-.unsafe{fill:url(#hatch)}.hatch{stroke:var(--bad);stroke-width:1.2;opacity:.32}
+.peaks rect{fill:var(--ink);opacity:var(--pk)}
+.unsafe{fill:url(#hatch)}.hatch{stroke:var(--bad);stroke-width:1.2;opacity:var(--ht)}
 .dl.uz{fill:var(--bad)}
 .zero{stroke:var(--ink3);stroke-width:.9}
 .mdef{stroke:var(--ink2);stroke-dasharray:4 3;stroke-width:1}.mcur{stroke:var(--ink2);stroke-dasharray:1 3;stroke-width:1.5}
-.mprof{stroke:var(--acc);opacity:.4;stroke-width:1}
+.mprof{stroke:var(--acc);opacity:var(--mp);stroke-width:1}
 .pico{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--ink2)}
 .cursor .cl{stroke:var(--acc);stroke-width:1.6}.cursor circle{fill:var(--acc);stroke:var(--card);stroke-width:2}
 .cursor .ch{fill:var(--acc)}.cursor .chl{fill:var(--card);font:600 11px var(--mono)}
 .dl.good{fill:var(--good)}.dl.warn{fill:var(--amber)}.dl.b{font-weight:600;font-size:11.5px}
 .drag{cursor:ew-resize}
 #fMain .track{margin-top:2px}
+.dl.b{stroke-width:5px}.ptl{fill:var(--ink2);font-size:11px}.pic{color:var(--acc)}.tk.good{fill:var(--good)}.tk.warn{fill:var(--amber)}
+.key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--ink2);margin:0 0 4px}
+.ky{display:inline-flex;align-items:center;gap:5px}.ky b{font-weight:600}.sw{display:inline-block;width:12px;height:10px;border-radius:2px}
+.swp{background:var(--ink);opacity:calc(var(--pk) * 2.5)}.swh{background:repeating-linear-gradient(45deg,var(--bad) 0 1.3px,transparent 1.3px 4px);opacity:.8}
+.swd{width:0;height:12px;border-left:1.5px dashed var(--ink2);border-radius:0}.swc{width:0;height:12px;border-left:2px dotted var(--ink2);border-radius:0}
+.est{display:inline-block;font:500 10.5px/1.5 var(--sans);color:var(--ink3);border:1px solid var(--line2);border-radius:5px;padding:0 5px;margin-left:6px;letter-spacing:0;text-transform:none;vertical-align:1px}
+.ansrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:8px}
+.ans{font-size:14px;font-weight:500}.ans2{font-size:12.5px;font-weight:400}.ans2::before{content:'·';margin:0 8px;color:var(--ink3)}
+.btn.sm{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 12px;min-height:30px}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn svg.ic{width:14px;height:14px}
+.mute,td.mute{color:var(--ink3)!important}tspan.mute{fill:var(--ink3)}tspan.good{fill:var(--good)}tspan.warn{fill:var(--amber)}
+.smk{fill:var(--line2)}.ovrow.keep .ovname{fill:var(--ink3)}
+.bdg i{display:inline-flex;align-items:center;gap:2px}.bdg i svg.ic{width:10px;height:10px;vertical-align:0}.bdg.mute{opacity:.85}
+.indep{font-size:11px;color:var(--ink3);margin-bottom:8px}
+#marks.compact .mk.r1 .tx{display:none}
 .live{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.live .tval{min-width:0;font-size:18px}
 /* no-change view */
 .nohead{display:flex;gap:12px;align-items:flex-start;margin-top:18px}.nohead>svg.ic{width:22px;height:22px;color:var(--good);margin-top:2px}
@@ -204,12 +219,14 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
  .grid2{grid-template-columns:1fr}
  h1{font-size:26px}
 }
-@media (max-width:768px),(pointer:coarse){.seg button,.btn{min-height:44px}.seg.sm button{min-height:40px}.ib{width:44px;height:44px}.mk{min-height:24px}input[type=range]{height:44px}.mk.r1{top:38px}.mk.r2{top:64px}.track{padding-bottom:62px}.slider label,.tval{line-height:44px;height:44px}}
+@media (max-width:768px),(pointer:coarse){.seg button,.btn{min-height:44px}.rc{min-height:32px}.seg.sm button{min-height:40px}.ib{width:44px;height:44px}.mk{min-height:24px}input[type=range]{height:44px}.mk.r1{top:38px}.mk.r2{top:64px}.track{padding-bottom:62px}.slider label,.tval{line-height:44px;height:44px}}
 @media (max-width:640px){.pcs{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.kpi .v{font-size:21px}}
 @media (max-width:520px){
- .bar .vot{display:none}#flags{margin-left:auto}
+ .mi.opt{display:none}#flags{margin-left:auto}.ans{font-size:13.5px}
+ /* on a phone the bar is tall: let it scroll away instead of covering the chart */
+ .bar{position:static}
  #gears{display:grid;grid-template-columns:repeat(4,1fr);flex:1 1 100%}
- #gears button{padding:4px;justify-content:center;font-size:12.5px}#gears .gt{display:none}
+ #gears button{padding:4px 2px;justify-content:center;font-size:11.5px;gap:3px}#gears button svg.ic{width:13px;height:13px}
  .slider{grid-template-columns:1fr auto;width:100%}.slider label{grid-row:1}.tval{grid-row:1;grid-column:2}.track{grid-column:1/-1}
  .card{padding:14px}
 }
@@ -233,6 +250,7 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 20.5V4M6 4.5h11l-2 4 2 4H6"/></symbol>
  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></symbol>
  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 19.5h16M6.5 16V11M11 16V6M15.5 16v-3.5M20 16V8.5"/></symbol>
@@ -253,6 +271,7 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
 </aside>
 <main id="main">
  <header>
+  <div class="indep" id="indep"></div>
   <div class="eyebrow" id="eyebrow"></div>
   <h1 id="title">compactlab</h1>
   <div class="meta" id="meta"></div>
@@ -288,7 +307,7 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
 <script>
 const D=JSON.parse(document.getElementById('data').textContent);
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
-const fk=v=>v==null?'–':v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k';
+const fk=v=>v==null?'–':v===0?'0':v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k';
 const MINUS='−';
 const fd=v=>(v<0?MINUS:'')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString('en-US'):Math.abs(v).toFixed(2));
 const fds=v=>(v>=0?'+':MINUS)+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString('en-US'):Math.abs(v).toFixed(2));
@@ -300,6 +319,10 @@ const fha=s=>s>=3600?(s/3600).toFixed(1)+'h':Math.round(s/60)+'m';
 const fm=s=>{const a=Math.abs(s)/60;return (s>=0?'+':MINUS)+(a>=10?Math.round(a):a.toFixed(1))+'m'};
 // minutes on a basis; months switch to hours
 const fmin=(v,basis)=>{if(v==null)return '–';if(Math.abs(v)<.05)return '0 min';const sg=v<0?MINUS:'+',a=Math.abs(v);
+  if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
+// sign convention for impact figures: ▼ saves (green, no minus sign), ▲ adds (amber, with +); the arrow carries it
+const fsv=v=>v==null?'–':Math.abs(v)<.05?'$0':(v<0?'▼ ':'▲ +')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
+const fmv=(v,basis)=>{if(v==null)return '–';const a=Math.abs(v);if(a<.05)return '0 min';const sg=v<0?'▼ ':'▲ +';
   if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
 const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
 const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
@@ -347,8 +370,8 @@ const I={
  uB_per_day:['day','天'], uB_per_active_day:['active day','活跃天'], uB_per_month:['month','月'],
  iMoney:['money','费用'], iTime:['wall-clock','耗时'], iComp:['compactions','压缩次数'],
  iFrac:[(p,w)=>p+'% of '+w,(p,w)=>w+' 的 '+p+'%'],
- iCap:[(d,a)=>'−$ / −min = saves · '+d+' d, '+a+' active',(d,a)=>'−$ / −分钟 = 节省 · '+d+' 天,'+a+' 活跃'],
- iCapNo:[d=>'−$ / −min = saves · '+d+' d',d=>'−$ / −分钟 = 节省 · '+d+' 天'],
+ iCap:[(d,a)=>'▼ saves · ▲ adds · '+d+' d, '+a+' active',(d,a)=>'▼ 节省 · ▲ 增加 · '+d+' 天,'+a+' 活跃'],
+ iCapNo:[d=>'▼ saves · ▲ adds · '+d+' d',d=>'▼ 节省 · ▲ 增加 · '+d+' 天'],
  iHelp:['For each profile vs the harness default and vs your current setting. Per day = total ÷ calendar days in the history; per active day = total ÷ days with at least one turn (closer to a heavy day of use); per month = per day × 30. Green saves, amber adds; red marks a broken guardrail. Time splits into compaction wait and faster turns from a smaller context. List-price estimates; recall is a lite-mode proxy.',
         '每个方案分别对比 harness 默认值和你当前的设置。每天 = 总量 ÷ 历史覆盖的自然日;每活跃天 = 总量 ÷ 至少有一轮的天数(更接近重度使用的一天);每月 = 每天 × 30。绿色节省,琥珀色增加,红色表示护栏被突破。耗时拆成压缩等待和上下文变小带来的每轮提速。按公开标价估算;召回率是 lite 模式代理值。'],
  iNoActive:['Active days are missing from this result; re-run compactlab simulate.','这份结果没有活跃天数;重新运行 compactlab simulate。'],
@@ -403,21 +426,32 @@ const I={
  overview:['Overview','概览'], allModels:['All models','全部模型'], models:['Models','模型'], search:['Search models','搜索模型'],
  rMain:['main','主'], rSub:['subagent','子 agent'], rMainS:['main','主'], rSubS:['sub','子'],
  noChange:['No change needed','无需调整'], ncWhy:[(p,d)=>'peak '+p+' < '+d,(p,d)=>'峰值 '+p+' < '+d],
- bTip:[(u,n)=>u+' per day vs default (est.) · '+n+' sessions',(u,n)=>'每天 '+u+'(对默认,估算)· '+n+' 个会话'],
+ bTip:[u=>u+' per day vs default if the “set” groups are applied (est.)',u=>'应用“设置”分组后每天 '+u+'(对默认,估算)'],
  mTitle:['Cost and time by auto-compact threshold','各自动压缩阈值下的成本和时间'],
- mHelp:['Top: money per day against the harness default; bottom: wall-clock minutes per day against the default. Both share the threshold axis. The grey bars behind are where your sessions actually peak; the hatched zone is below the recall floor. Drag the chart or the slider; ▼ saves, ▲ adds.','上:每天费用相对 harness 默认值的变化;下:每天耗时(分钟)相对默认值的变化,两者共用阈值轴。背后的灰色柱是你的会话实际达到的峰值;斜线区域低于召回下限。拖动图表或滑块;▼ 节省,▲ 增加。'],
- dUsd:['$ / day vs default','美元 / 天(对默认)'], dMin:['min / day vs default','分钟 / 天(对默认)'],
+ mHelp:['Top: money per day against the harness default; bottom: wall-clock minutes per day against the default. Both share the threshold axis. The grey bars behind are where your sessions actually peak; the hatched zone is below the recall floor (recall is a lite-mode proxy). Drag the chart or the slider (or focus the slider and use the arrow keys); ▼ saves, ▲ adds. List-price estimates.','上:每天费用相对 harness 默认值的变化;下:每天耗时(分钟)相对默认值的变化,两者共用阈值轴。背后的灰色柱是你的会话实际达到的峰值;斜线区域低于召回下限。拖动图表或滑块;▼ 节省,▲ 增加。'],
+ dUsd:['$ / day vs default','美元 / 天(对默认)'], dMin:['minutes / day vs default','分钟 / 天(对默认)'],
  peaksL:['session peaks','会话峰值'], peaksTip:[(a,b,n)=>n+' sessions peak at '+a+'–'+b,(a,b,n)=>n+' 个会话峰值在 '+a+'–'+b],
- unsafeL:[f=>'recall < '+f,f=>'召回 < '+f],
+ unsafeL:[f=>'recall < '+f+' (proxy)',f=>'召回 < '+f+'(代理)'],
  noopT:['Never reaches the threshold: nothing to tune.','从未达到压缩阈值:没有可调的。'],
  noopSub:['Every session peaks below the default auto-compact threshold, so no threshold in range changes cost or time.','每个会话的峰值都低于默认自动压缩阈值,范围内的任何阈值都不会改变成本或时间。'],
  mPeak:['peak','峰值'], zoneL:['auto-compacts here','此区间会自动压缩'],
- kTotUsd:['Money / day, all models','费用 / 天(全部模型)'], kTotMin:['Wall-clock / day, all models','耗时 / 天(全部模型)'], kToSet:['Models to change','需要调整的模型'], kNoCh:['No change needed','无需调整'],
- ovChart:['Per-day impact by model','各模型每日影响'], ovHelp:['Estimated money per day against the harness default for the chosen profile, split into main and subagent runs; right of each bar the minutes per day. Click a row to open the model.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
+ kTotUsd:['Money / day','费用 / 天'], kTotMin:['Wall-clock / day','耗时 / 天'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
+ ovChart:['Per-day impact by model','各模型每日影响'], ovHelp:['Estimated money per day against the harness default for the chosen profile if the “set” groups are applied, split into main and subagent runs; right of each bar the minutes per day. Grey rows would keep the default (not counted in the totals). Click a row to open the model.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
  ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['$ / day','美元 / 天'], cMin:['min / day','分钟 / 天'],
+ votS:[v=>'time @ $'+v+'/h',v=>'时间 @ $'+v+'/小时'], est:['est.','估算'],
+ indepL:['Independent open-source tool · not affiliated with any model vendor · list-price estimates','独立开源工具 · 与任何模型厂商无关 · 按公开标价估算'],
+ bKeep:[u=>'keep default: '+u+' per day if set anyway (est.)',u=>'保持默认:若仍设置,每天 '+u+'(估算)'], bSess:[n=>n+' sessions',n=>n+' 个会话'],
+ vsDefL:[d=>'per day vs default '+d,d=>'每天,对默认 '+d], vsCurL:[c=>'vs current '+c,c=>'对当前 '+c], noDiff:['no difference','没有差别'],
+ noCur:['no current setting found · compared with the default','没有找到当前设置 · 与默认值比较'], noCurS:['no current setting','无当前设置'],
+ cpKeep:['keep default: nothing to set here','保持默认:这里无需设置'], cpOneTip:[x=>'Copy: '+x,x=>'复制:'+x],
+ cmpS:['/d','/天'], compAtDef:[n=>n+' compactions at default',n=>'默认下压缩 '+n+' 次'],
+ peaksK:[n=>'session peaks (tallest '+n+')',n=>'会话峰值(最高 '+n+')'], unsafeK:[f=>'recall < '+f+' (lite proxy)',f=>'召回 < '+f+'(lite 代理值)'],
+ kTotSub:[n=>'if the '+n+' “set” models are applied',n=>'应用 '+n+' 个“设置”模型时'], kKeep:['Keep default','保持默认'], mUnit:['models','个模型'],
+ hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
 const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{}};
+let sortK='peak',asc=false;
 const PROF=['cost','balanced','time'],PICON={cost:'coin',balanced:'scale',time:'clock',custom:'sliders'};
 // a broken guardrail is red, a warning amber (cost below a quarter of the window, more wait than the cap),
 // and a plain note (a guardrail moved the pick, deep lowered it) an info icon, not a warning
@@ -460,10 +494,13 @@ function label(m){const b=baseId(m);let x=/^claude-[a-z]+-(\d+(?:-\d+)*)$/.exec(
 const roleS=r=>r==='main'?t('rMainS'):r==='subagent'?t('rSubS'):r,roleL=r=>r==='main'?t('rMain'):r==='subagent'?t('rSub'):r;
 const roleIc=r=>r==='subagent'?'bot':'user';
 // compact signed money for badges: '−$12.9', '−$140'
-const fus=v=>Math.abs(v)<.05?'$0':(v<0?MINUS:'+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):Math.abs(v).toFixed(1));
+const fus=v=>Math.abs(v)<.05?'':(v<0?'▼':'▲+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):Math.abs(v).toFixed(1));
+// totals count only groups whose action is "set": a "keep default" group would not be changed
+const isSet=(g,k=S.op)=>!g.no_action_needed&&action(g,g.profiles[k].threshold,g.profiles[k].value_of_time)==='aSet';
+const setUsd=(g,k=S.op)=>isSet(g,k)?usdOf(g,k):0,setMin=(g,k=S.op)=>isSet(g,k)?minOf(g,k):0;
 // the group with the largest per-day money impact, never one that needs no change; ties by turns
-function best(){let b=-1;D.groups.forEach((g,i)=>{if(g.no_action_needed)return;const a=Math.abs(usdOf(g)),o=b<0?-1:Math.abs(usdOf(D.groups[b]));
-  if(b<0||a>o+1e-9||(Math.abs(a-o)<=1e-9&&g.n_turns>D.groups[b].n_turns))b=i});return b}
+function best(){const key=g=>[isSet(g)?1:0,Math.abs(usdOf(g)),g.n_turns];let b=-1,bk=null;
+  D.groups.forEach((g,i)=>{if(g.no_action_needed)return;const k=key(g);if(!bk||k[0]>bk[0]||(k[0]===bk[0]&&(k[1]>bk[1]+1e-9||(Math.abs(k[1]-bk[1])<=1e-9&&k[2]>bk[2])))){b=i;bk=k}});return b}
 function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i);
   return (thr>=d.threshold||p.combined_cost+p.time_s/3600*vot>=d.combined_cost+d.time_s/3600*vot)?'aKeep':'aSet'}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}
@@ -499,7 +536,7 @@ function statics(){
   for(const k of ['hImpact','hCmp','hCopy','hTrade','hTime','hDeep','hHist','hSess'])$('#'+k).textContent=t(k);
   $('#hNotes').innerHTML=ic('info')+'<span>'+t('hNotes')+'</span>';
   $('#iImpact').innerHTML=ib(t('iHelp'));$('#iCmp').innerHTML=ib(t('sCmp'));$('#iCopy').innerHTML=ib(t('cpSub'));
-  $('#foot').innerHTML='<span>'+esc(t('disclaimer'))+'</span>'+ib(t('tag'));
+  $('#foot').innerHTML='<span>'+esc(t('disclaimer'))+'</span>'+ib(t('tag'));$('#indep').textContent=t('indepL');
   $('#q').placeholder=t('filter');$('#q').setAttribute('aria-label',t('filter'));
   $('#langs').innerHTML=[['en','EN','English'],['zh','中','中文']].map(([k,l,a])=>`<button data-l="${k}" aria-pressed="${S.lang===k}" aria-label="${a}">${l}</button>`).join('');
   document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}keep(()=>{statics();render();renderS()})});
@@ -513,7 +550,8 @@ function buildTree(){const H=new Map(),nc=[];
   D.groups.forEach((g,i)=>{const fam=family(g.model);if(!H.has(g.harness))H.set(g.harness,{key:'h:'+g.harness,name:g.harness,fams:new Map()});
     const h=H.get(g.harness);if(!h.fams.has(fam))h.fams.set(fam,{key:'f:'+g.harness+'/'+fam,name:fam,models:new Map()});
     const f=h.fams.get(fam);if(!f.models.has(g.model))f.models.set(g.model,{id:g.model,harness:g.harness,name:label(g.model),gs:[]});f.models.get(g.model).gs.push(i)});
-  const agg=(o,gs)=>{const G_=gs.map(i=>D.groups[i]);o.usd=G_.reduce((a,g)=>a+usdOf(g),0);o.w=G_.reduce((a,g)=>a+Math.abs(usdOf(g)),0);
+  const agg=(o,gs)=>{const G_=gs.map(i=>D.groups[i]);o.usd=G_.reduce((a,g)=>a+setUsd(g),0);o.keep=G_.reduce((a,g)=>a+(isSet(g)?0:usdOf(g)),0);
+    o.w=G_.reduce((a,g)=>a+Math.abs(setUsd(g)),0)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g)),0);
     o.n=G_.reduce((a,g)=>a+g.n_sessions,0);o.turns=G_.reduce((a,g)=>a+g.n_turns,0);return o};
   const byW=(a,b)=>b.w-a.w||b.turns-a.turns,hs=[];
   for(const h of H.values()){const fams=[];
@@ -525,22 +563,26 @@ function buildTree(){const H=new Map(),nc=[];
       f.models=ms.filter(m=>!m.noop).sort(byW);if(f.models.length)fams.push(agg(f,f.models.flatMap(m=>m.gs)))}
     h.fams=fams.sort(byW);if(fams.length)hs.push(agg(h,fams.flatMap(f=>f.models.flatMap(m=>m.gs))))}
   return {hs:hs.sort(byW),nc:nc.sort((a,b)=>b.turns-a.turns)}}
-function ncWhy(m){const gs=m.gs.map(i=>D.groups[i]);return t('ncWhy',fk(Math.max(...gs.map(g=>g.peak_max||0))),fk(gs[0].default.threshold))}
-function badge(usd,n){const tip=t('bTip',fusd(usd),n);return `<span class="bdg ${tone(usd)}" data-tip="${esc(tip)}">${Math.abs(usd)<.05?'':fus(usd)}<i>${n}</i></span>`}
+// per role, so the reason matches the page it opens: 'peak main 416k · sub 506k < 967k'
+function ncWhy(m){const gs=m.gs.map(i=>D.groups[i]);return t('ncWhy',gs.map(g=>(gs.length>1?roleS(g.role)+' ':'')+fk(g.peak_max||0)).join(' · '),fk(gs[0].default.threshold))}
+// money per day of the groups that would be set (muted: only "keep default" figures), and the session count
+function badge(usd,n,keep=0){const muted=Math.abs(usd)<.05&&Math.abs(keep)>=.05,v=muted?keep:usd;
+  const tip=(muted?t('bKeep',fsv(keep)):t('bTip',fsv(usd)))+' · '+t('bSess',n);
+  return `<span class="bdg ${muted?'mute':tone(v)}" data-tip="${esc(tip)}">${fus(v)}<i>${ic('flag')}${n}</i></span>`}
 function tree(){const T=S.tree||(S.tree=buildTree()),q=$('#tq').value.trim().toLowerCase(),box=$('#tree'),sel=S.view==='overview'?null:G();
   const hit=m=>!q||(m.id+' '+m.name+' '+m.harness+' '+m.fam).toLowerCase().includes(q);
   const isSel=m=>sel&&m.id===sel.model&&m.harness===sel.harness;
   const open=(key,inside)=>q?true:key in S.fold?S.fold[key]:inside;
   const fold=(key,cls,head,inner,inside)=>{const o=open(key,inside);return `<div class="node ${cls}"><button type="button" class="fold" data-fold="${esc(key)}" aria-expanded="${o}">${ic('chev')}${head}</button><div class="kids"${o?'':' hidden'}>${inner}</div></div>`};
   const mrow=(m,why)=>{const cur=isSel(m),g0=D.groups[m.gs[0]];
-    const roles=m.gs.length>1?m.gs.map(i=>{const g=D.groups[i];return `<button type="button" class="rc" data-tab="${i}" aria-pressed="${cur&&i===S.gi}" aria-label="${esc(m.name+' · '+roleL(g.role))}" data-tip="${esc(roleL(g.role)+' · '+(g.no_action_needed?t('noChange'):fusd(usdOf(g))+t('uDay'))+' · '+g.n_sessions)}">${ic(roleIc(g.role))}${esc(roleS(g.role))}</button>`}).join('')
+    const roles=m.gs.length>1?m.gs.map(i=>{const g=D.groups[i];return `<button type="button" class="rc" data-tab="${i}" aria-pressed="${cur&&i===S.gi}" aria-label="${esc(m.name+' · '+roleL(g.role))}" data-tip="${esc(roleL(g.role)+' · '+(g.no_action_needed?t('noChange'):fsv(usdOf(g))+t('uDay')+(isSet(g)?'':' · '+t('aKeep')))+' · '+g.n_sessions)}">${ic(roleIc(g.role))}${esc(roleS(g.role))}</button>`}).join('')
       :`<span class="rt">${ic(roleIc(g0.role))}${esc(roleS(g0.role))}</span>`;
-    return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m.usd,m.n)}<span class="roles">${roles}</span></div>`};
+    return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m.usd,m.n,m.keep)}<span class="roles">${roles}</span></div>`};
   const all=T.hs.flatMap(h=>h.fams.flatMap(f=>f.models.flatMap(m=>m.gs)));
-  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge(all.reduce((a,i)=>a+usdOf(D.groups[i]),0),D.groups.reduce((a,g)=>a+g.n_sessions,0))}</button>`;
+  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge(all.reduce((a,i)=>a+setUsd(D.groups[i]),0),D.groups.reduce((a,g)=>a+g.n_sessions,0))}</button>`;
   for(const H_ of T.hs){const inner=H_.fams.map(f=>{const ms=f.models.filter(hit);if(!ms.length)return '';
-      return fold(f.key,'fam',`<span class="nm">${esc(f.name)}</span>${badge(f.usd,f.n)}`,ms.map(m=>mrow(m)).join(''),ms.some(isSel))}).join('');
-    if(inner)h+=fold(H_.key,'har',`<span class="nm">${esc(H_.name)}</span>${badge(H_.usd,H_.n)}`,inner,H_.fams.some(f=>f.models.some(isSel)))}
+      return fold(f.key,'fam',`<span class="nm">${esc(f.name)}</span>${badge(f.usd,f.n,f.keep)}`,ms.map(m=>mrow(m)).join(''),ms.some(isSel))}).join('');
+    if(inner)h+=fold(H_.key,'har',`<span class="nm">${esc(H_.name)}</span>${badge(H_.usd,H_.n,H_.keep)}`,inner,H_.fams.some(f=>f.models.some(isSel)))}
   const nc=T.nc.filter(hit);
   if(nc.length)h+=fold('nc','nc',ic('check')+`<span class="nm">${t('noChange')}</span><span class="bdg"><i>${nc.length}</i></span>`,nc.map(m=>mrow(m,m.harness+' · '+ncWhy(m))).join(''),nc.some(isSel));
   box.innerHTML=h;
@@ -558,7 +600,7 @@ function header(){const g=G(),d=fdays(Math.max(g.days,1)),ad=g.active_days!=null
   const src=D.demo?'<span class="badge">'+t('synthetic')+'</span>':esc(t('srcLocal',g.harness));
   $('#meta').innerHTML=mi('cal','mRange',esc(range))+mi('db','mSource',src)+mi('layers','mMode',t(D.mode==='deep'?'modeDeep':'modeLite')+(D.generated?' · '+esc(D.generated.replace('data through ','≤ ')):''))+
     mi('flag','mSize',esc(t('sizeTxt',g.n_sessions,g.n_turns.toLocaleString('en-US'))))+calMeta(g)+ib(t('caveat'))}
-const mi=(icon,lab,v)=>`<span class="mi">${ic(icon,t(lab))}${v}</span>`;
+const mi=(icon,lab,v)=>`<span class="mi${lab==='mSource'||lab==='mMode'?' opt':''}">${ic(icon,t(lab))}${v}</span>`;
 // calibration age, next run, drift since the last auto-apply, and (when served) a recalibrate button
 function calMeta(g){const sv=D.service,c=D.calibration||{},at=sv?sv.last_calibrated:c.at;if(!at&&!sv)return '';
   const now=Date.now()/1000,every=sv?sv.every_s:c.every_s,stale=!at||now-at>2*(every||86400);
@@ -578,13 +620,31 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#re
 // per group/language and then only updated in place, so dragging never replaces the node under the pointer.
 function buildBar(){const g=G();
   $('#bar').innerHTML=`<div class="gearrow"><div class="seg" id="gears" role="group" aria-label="${t('gear')}">${[...PROF,'custom'].map(k=>`<button data-gear="${k}" aria-pressed="false" aria-label="${t(k)}${k===g.profile?' ★':''}">${ic(PICON[k])}<span class="gt">${t(k)}${k===g.profile?'&nbsp;★':''}</span></button>`).join('')}</div>
-  <span class="vot" id="vot"></span><span class="live" id="live"><b class="tval" id="tval" aria-live="polite"></b><span id="liveC"></span></span><span id="flags"></span></div>`;
-  document.querySelectorAll('#gears button').forEach(b=>b.onclick=()=>setGear(b.dataset.gear))}
+  <span class="vot" id="vot"></span></div>
+  <div class="ansrow"><b class="tval" id="tval" aria-live="polite"></b><span class="ans" id="ans"></span><button type="button" class="btn sm" id="cpOne">${ic('copy')}<span>${t('cpCopy')}</span></button><span id="flags"></span></div>`;
+  document.querySelectorAll('#gears button').forEach(b=>b.onclick=()=>setGear(b.dataset.gear));
+  $('#cpOne').onclick=async()=>{const b=$('#cpOne'),ok=await copyStr(snippet(G(),S.T));b.querySelector('span').textContent=ok?t('cpCopied'):t('cpFail');
+    clearTimeout(b.tm);b.tm=setTimeout(()=>{b.querySelector('span').textContent=t('cpCopy')},2200)}}
+// one answer line: 'saves $44.9 + 14.7 min per day vs default 967k', each part coloured by its own sign
+function answer(u,m,vs){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05,vb=v=>v<0?t('saves'):t('adds');
+  const $u='$'+Math.abs(u).toFixed(1),$m=(Math.abs(m)>=100?Math.round(Math.abs(m)):Math.abs(m).toFixed(1))+' min';
+  let h;if(zu&&zm)h=`<span>${t('noDiff')}</span>`;
+  else if(zm)h=`<span class="${tone(u)}">${vb(u)} ${$u}</span>`;else if(zu)h=`<span class="${tone(m)}">${vb(m)} ${$m}</span>`;
+  else if((u<0)===(m<0))h=`<span class="${tone(u)}">${vb(u)} ${$u} + ${$m}</span>`;
+  else h=`<span class="${tone(u)}">${vb(u)} ${$u}</span>, <span class="${tone(m)}">${vb(m)} ${$m}</span>`;
+  return h+` <span class="cap">${esc(vs)}</span>`}
+// the setting for this one model at threshold T, in the harness's own config syntax
+function snippet(g,T){return g.harness==='codex'?`model_auto_compact_token_limit = ${T}`:JSON.stringify({modelSettings:{[g.model]:{autoCompactWindow:T}}})}
+async function copyStr(txt){try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(txt);return true}}catch(e){}
+  try{const ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.append(ta);ta.select();const ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
+// "nice" round ticks covering [lo, hi]; ticksN keeps at least `min` of them
+function ticksN(lo,hi,min){let n=min,o=nice(lo,hi,n);while(o.length<min&&n<12)o=nice(lo,hi,++n);return o}
 // "nice" round ticks covering [lo, hi]
 function nice(lo,hi,n=4){const st0=(hi-lo||1)/n,mag=10**Math.floor(Math.log10(st0)),f=st0/mag,st=(f<1.5?1:f<3?2:f<7?5:10)*mag,out=[];
   for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-6;v+=st)out.push(Math.abs(v)<st*1e-6?0:+v.toPrecision(12));return out}
-const fusdT=v=>v===0?'0':(v<0?MINUS:'+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1));
-const fminT=v=>v===0?'0':(v<0?MINUS:'+')+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1))+'m';
+// axis ticks: ▼ below the default line saves, ▲ above adds
+const fusdT=v=>v===0?'0':(v<0?'▼':'▲')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1));
+const fminT=v=>v===0?'0':(v<0?'▼':'▲')+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1))+'m';
 // charts drawn at the box's own width keep their text at its real size on a phone
 const boxW=(box,pad=36)=>{const w=box.clientWidth;return w>0?Math.max(300,Math.round(w-pad)):940};
 function peaksOf(g){return D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)).map(s=>s.peak)}
@@ -593,42 +653,45 @@ function peaksOf(g){return D.sessions.filter(s=>s.model===g.model&&s.role===g.ro
 // Vertical marks: default (dashed), current (dotted), profiles (thin, icon on top). The cursor follows S.T.
 function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.default,im=xs.map((_,i)=>impJS(pt(g,i),d,g));
   const u=im.map(x=>x.usd.per_day),m=im.map(x=>x.minutes.per_day);
-  const W=boxW(box),L=W<600?46:60,R=W<600?10:18,top={y1:28,y0:178},bot={y1:206,y0:330},H=bot.y0+26,x0=L,x1=W-R;
+  // rows from the top: threshold pill (cursor), profile icons, panel title, panel; then the time panel the same way
+  const W=boxW(box),L=W<600?50:62,R=W<600?10:18,top={y1:58,y0:198},bot={y1:240,y0:364},H=bot.y0+24,x0=L,x1=W-R;
   const X=v=>x0+(v-xs[0])/((xs[n-1]-xs[0])||1)*(x1-x0);
   const scale=(p,v)=>{let lo=Math.min(0,...v),hi=Math.max(0,...v);const pad=(hi-lo||1)*.14;lo-=pad;hi+=pad;return {lo,hi,Y:y=>p.y0-(y-lo)/(hi-lo)*(p.y0-p.y1)}};
   const su=scale(top,u),sm=scale(bot,m);
   const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t('mTitle')+': '+t('threshold')+' '+fk(xs[0])+'–'+fk(xs[n-1])});svg.classList.add('mainc');
   const defs=el('defs');const pat=el('pattern',{id:'hatch',width:6,height:6,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});pat.append(el('line',{x1:0,y1:0,x2:0,y2:6,class:'hatch'}));defs.append(pat);svg.append(defs);
-  // where sessions peak (bins of two grid steps), faint, across both panels
+  // where sessions peak (bins of two grid steps), faint, across both panels; counts in the tooltip and the key
   const step=2*((xs[1]-xs[0])||25000),nb=Math.max(1,Math.ceil((xs[n-1]-xs[0])/step)),cnt=new Array(nb).fill(0);
   peaksOf(g).forEach(p=>{cnt[Math.min(nb-1,Math.max(0,Math.floor((p-xs[0])/step)))]++});
-  const cm=Math.max(...cnt,1),bg=el('g',{class:'peaks'});let tb=0;
-  cnt.forEach((c,b)=>{if(c>cnt[tb])tb=b;if(!c)return;const a=X(xs[0]+b*step),z=X(Math.min(xs[0]+(b+1)*step,xs[n-1])),hh=(bot.y0-top.y1)*.92*c/cm;
+  const cm=Math.max(...cnt,1),bg=el('g',{class:'peaks'});
+  cnt.forEach((c,b)=>{if(!c)return;const a=X(xs[0]+b*step),z=X(Math.min(xs[0]+(b+1)*step,xs[n-1])),hh=(bot.y0-top.y1)*.92*c/cm;
     bg.append(el('rect',{x:a+1,y:bot.y0-hh,width:Math.max(z-a-2,1),height:hh,rx:2}))});
   svg.append(bg);
   // recall below the floor: hatched, labelled at the top of the zone
   const fl=g.recommendation.recall_floor,mid=i=>i<=0?x0:i>=n?x1:(X(xs[i-1])+X(xs[i]))/2;
   for(let i=0;i<n;){if(!(g.recall[i]<fl)){i++;continue}let j=i;while(j<n&&g.recall[j]<fl)j++;const a=mid(i),z=mid(j);
     svg.append(el('rect',{x:a,y:top.y1,width:z-a,height:bot.y0-top.y1,class:'unsafe'}));
-    if(z-a>60)svg.append(el('text',{x:(a+z)/2,y:top.y1+12,'text-anchor':'middle',class:'dl uz'},t('unsafeL',fl)));i=j}
-  // panels: ticks, zero line (= default), direct label with icon
+    if(z-a>70)svg.append(el('text',{x:z-6,y:top.y1+13,'text-anchor':'end',class:'dl uz'},t('unsafeL',fl)));i=j}
+  // panels: ticks (at least four), zero line (= default), title above the panel starting at the left edge
   for(const [p,s,v,f,lab,icn] of [[top,su,u,fusdT,'dUsd','coin'],[bot,sm,m,fminT,'dMin','clock']]){
-    for(const y of nice(s.lo,s.hi,3)){svg.append(el('line',{x1:x0,x2:x1,y1:s.Y(y),y2:s.Y(y),class:'grid'}));svg.append(el('text',{x:x0-7,y:s.Y(y)+3.5,'text-anchor':'end'},f(y)))}
+    for(const y of ticksN(s.lo,s.hi,3)){svg.append(el('line',{x1:x0,x2:x1,y1:s.Y(y),y2:s.Y(y),class:'grid'}));svg.append(el('text',{x:x0-7,y:s.Y(y)+3.5,'text-anchor':'end',class:y<0?'tk good':y>0?'tk warn':'tk'},f(y)))}
     svg.append(el('line',{x1:x0,x2:x1,y1:s.Y(0),y2:s.Y(0),class:'zero'}));
-    svg.append(el('use',{href:'#i-'+icn,x:x0+4,y:p.y1-1,width:13,height:13,class:'pico'}));svg.append(el('text',{x:x0+21,y:p.y1+10,class:'dl',style:'fill:var(--ink2)'},t(lab)));
+    svg.append(el('use',{href:'#i-'+icn,x:4,y:p.y1-17,width:13,height:13,class:'pico'}));svg.append(el('text',{x:21,y:p.y1-7,class:'dl ptl'},t(lab)));
     svg.append(el('polyline',{points:xs.map((x,i)=>X(x)+','+s.Y(v[i])).join(' '),fill:'none',stroke:p===top?'var(--acc)':'var(--ink2)','stroke-width':p===top?2.2:1.8,'stroke-linejoin':'round','stroke-linecap':'round'}))}
-  for(const x of nice(xs[0],xs[n-1],Math.max(3,Math.floor((x1-x0)/95))))if(x>=xs[0]&&x<=xs[n-1])svg.append(el('text',{x:X(x),y:bot.y0+16,'text-anchor':'middle'},fk(x)));
+  for(const x of ticksN(xs[0],xs[n-1],4))if(x>=xs[0]&&x<=xs[n-1])svg.append(el('text',{x:X(x),y:bot.y0+16,'text-anchor':'middle'},fk(x)));
   svg.append(el('line',{x1:x0,x2:x1,y1:bot.y0,y2:bot.y0,class:'ax'}));
-  if(cnt[tb])svg.append(el('text',{x:Math.min(Math.max(X(xs[0]+(tb+.5)*step),x0+40),x1-40),y:bot.y0-5,'text-anchor':'middle',class:'dl'},t('peaksL')));
-  // reference marks
+  // reference marks; profile icons pushed apart when they would touch
   const vl=(v,cls)=>svg.append(el('line',{x1:X(v),x2:X(v),y1:top.y1,y2:bot.y0,class:cls}));
   vl(d.threshold,'mdef');if(g.current)vl(g.current.threshold,'mcur');
-  const seen={};PROF.forEach(k=>{const v=g.profiles[k].threshold;vl(v,'mprof');const o=seen[v]=(seen[v]||0)+1;svg.append(el('use',{href:'#i-'+PICON[k],x:X(v)-6+(o-1)*13,y:top.y1-27,width:12,height:12,class:'pico',style:'color:var(--acc)'}))});
+  const icons=PROF.map(k=>({k,x:X(g.profiles[k].threshold)})).sort((a,b)=>a.x-b.x);
+  icons.forEach((o,j)=>{if(j&&o.x-icons[j-1].x<15)o.x=icons[j-1].x+15});const over=Math.max(0,icons[icons.length-1].x-(x1-2));icons.forEach(o=>o.x-=over);
+  PROF.forEach(k=>vl(g.profiles[k].threshold,'mprof'));
+  icons.forEach(o=>svg.append(el('use',{href:'#i-'+PICON[o.k],x:o.x-6.5,y:top.y1-38,width:13,height:13,class:'pico pic'})));
   // cursor (moved by moveCursor) and hover crosshair
   const guide=el('line',{y1:top.y1,y2:bot.y0,stroke:'var(--ink3)','stroke-width':.8,'stroke-dasharray':'2 2',visibility:'hidden','pointer-events':'none'});
   const cur=el('g',{class:'cursor','pointer-events':'none'});
-  cur.append(el('line',{y1:top.y1-8,y2:bot.y0,class:'cl'}),el('circle',{r:4.5}),el('circle',{r:4.5}),el('text',{class:'dl b'}),el('text',{class:'dl b'}),el('rect',{class:'ch',rx:4,height:16,y:top.y1-11}),el('text',{class:'chl','text-anchor':'middle',y:top.y1+1}));
-  const ov=el('rect',{x:x0-8,y:top.y1-14,width:x1-x0+16,height:bot.y0-top.y1+14,fill:'transparent',class:'hov drag'});
+  cur.append(el('line',{y1:top.y1-40,y2:bot.y0,class:'cl'}),el('circle',{r:4.5}),el('circle',{r:4.5}),el('text',{class:'dl b'}),el('text',{class:'dl b'}),el('rect',{class:'ch',rx:4,height:17,y:2}),el('text',{class:'chl','text-anchor':'middle',y:14.5}));
+  const ov=el('rect',{x:x0-8,y:top.y1-40,width:x1-x0+16,height:bot.y0-top.y1+40,fill:'transparent',class:'hov drag'});
   svg.append(guide,cur,ov);
   const loc=e=>{const mm=svg.getScreenCTM();if(!mm)return -1;const q=new DOMPoint(e.clientX,e.clientY).matrixTransform(mm.inverse());if(q.x<x0-10||q.x>x1+10)return -1;
     let b=0;xs.forEach((v,i)=>{if(Math.abs(X(v)-q.x)<Math.abs(X(xs[b])-q.x))b=i});return b};
@@ -641,54 +704,62 @@ function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.defau
   const end=e=>{if(drag!=null){try{ov.releasePointerCapture(drag)}catch(_){}}drag=null};
   ov.addEventListener('pointerup',end);ov.addEventListener('pointercancel',end);
   ov.addEventListener('pointerleave',()=>{if(drag==null){hideTip();guide.setAttribute('visibility','hidden')}});
-  S.mc={X,su,sm,u,m,top,cur,x1};
+  S.mc={X,su,sm,u,m,top,bot,cur,x0,x1};
   // slider directly under the plot: its thumb centre lines up with the chart's x (the thumb is inset 8px)
   const pos=v=>Math.min(Math.max((v-xs[0])/((xs[n-1]-xs[0])||1),0),1),at=v=>`left:calc(8px + (100% - 16px) * ${pos(v).toFixed(4)})`;
   const byT={};PROF.forEach(k=>{(byT[g.profiles[k].threshold]=byT[g.profiles[k].threshold]||[]).push(k)});
-  const marks=Object.entries(byT).map(([T,ks])=>`<button class="mk r1" data-mk="${T}" data-g="${ks[0]}" style="${at(+T)}" aria-label="${t('threshold')} ${fk(+T)}: ${ks.map(k=>t(k)).join(', ')}">${ks.map(k=>ic(PICON[k])).join('')}${ks.map(k=>t(k)).join(' · ')}</button>`);
+  const marks=Object.entries(byT).map(([T,ks])=>`<button class="mk r1" data-mk="${T}" data-g="${ks[0]}" style="${at(+T)}" aria-label="${t('threshold')} ${fk(+T)}: ${ks.map(k=>t(k)).join(', ')}">${ks.map(k=>ic(PICON[k])).join('')}<span class="tx">${ks.map(k=>t(k)).join(' · ')}</span></button>`);
   const refs=[[d.threshold,'rDefault']].concat(g.current?[[g.current.threshold,'rCurrent']]:[]);
   refs.forEach(([T,k])=>marks.push(`<button class="mk r2" data-mk="${T}" data-ref="${k}" style="${at(T)}" aria-label="${t(k)} ${fk(T)}">${t(k)} ${fk(T)}</button>`));
-  box.innerHTML=`<h3 class="mh">${t('mTitle')}${ib(t('mHelp'))}</h3>`;box.append(svg);
+  // on-chart key: what the background, hatching and marks mean, and the sign convention
+  const key=[`<span class="ky"><i class="sw swp"></i>${esc(t('peaksK',Math.max(...cnt)))}</span>`,`<span class="ky"><i class="sw swh"></i>${esc(t('unsafeK',fl))}</span>`,
+    `<span class="ky"><i class="sw swd"></i>${esc(t('rDefault')+' '+fk(d.threshold))}</span>`,
+    g.current?`<span class="ky"><i class="sw swc"></i>${esc(t('rCurrent')+' '+fk(g.current.configured??g.current.threshold))}</span>`:`<span class="ky cap">${esc(t('noCurS'))}</span>`,
+    `<span class="ky"><b class="good">▼</b>${t('saves')} <b class="warn">▲</b>${t('adds')}</span>`];
+  box.innerHTML=`<h3 class="mh">${t('mTitle')}${ib(t('mHelp'))}<span class="est">${t('est')}</span></h3><div class="key">${key.join('')}</div>`;box.append(svg);
   const tr=document.createElement('div');tr.className='track';tr.style.margin=`0 calc(${(R/W*100).toFixed(3)}% - 8px) 0 calc(${(L/W*100).toFixed(3)}% - 8px)`;
   tr.innerHTML=`<input type="range" min="0" max="${n-1}" step="1" id="rng" aria-label="${t('threshold')}"><div id="marks">${marks.join('')}</div>`;box.append(tr);
   document.querySelectorAll('#marks .mk').forEach(b=>b.onclick=()=>{if(b.dataset.g)setGear(b.dataset.g);else setT(g.grid[nearest(g,+b.dataset.mk)])});
   $('#rng').addEventListener('input',e=>{S.gear='custom';S.T=g.grid[+e.target.value];update()});
   requestAnimationFrame(spreadMarks)}
-function moveCursor(){const c=S.mc,g=G();if(!c)return;const i=g.grid.indexOf(S.T),x=c.X(S.T),[ln,d1,d2,t1,t2,hd,hl]=c.cur.children;
-  ln.setAttribute('x1',x);ln.setAttribute('x2',x);const y1=c.su.Y(c.u[i]),y2=c.sm.Y(c.m[i]),right=x<c.x1-110;
-  d1.setAttribute('cx',x);d1.setAttribute('cy',y1);d2.setAttribute('cx',x);d2.setAttribute('cy',y2);
-  for(const [n_,y,v,f] of [[t1,y1,c.u[i],v=>fusd(v)+t('uDay')],[t2,y2,c.m[i],v=>fmin(v)+t('uDay')]]){n_.setAttribute('x',x+(right?9:-9));n_.setAttribute('y',y-8);
-    n_.setAttribute('text-anchor',right?'start':'end');n_.setAttribute('class','dl b '+tone(v));n_.textContent=arrow(v)+f(v)}
-  hl.textContent=fk(S.T);hl.setAttribute('x',x);const w=8*fk(S.T).length+10;hd.setAttribute('width',w);hd.setAttribute('x',x-w/2)}
+// value labels sit on the side of the dot away from the curve: below it where the curve rises to the right
+function moveCursor(){const c=S.mc,g=G();if(!c)return;const i=g.grid.indexOf(S.T),n=g.grid.length,x=c.X(S.T),[ln,d1,d2,t1,t2,hd,hl]=c.cur.children;
+  ln.setAttribute('x1',x);ln.setAttribute('x2',x);const right=x<c.x1-130;
+  for(const [dot,lab,s,v,f,p] of [[d1,t1,c.su,c.u,fsv,c.top],[d2,t2,c.sm,c.m,v=>fmv(v),c.bot]]){const y=s.Y(v[i]);dot.setAttribute('cx',x);dot.setAttribute('cy',y);
+    const j=Math.min(n-1,Math.max(0,i+(right?2:-2))),ny=s.Y(v[j]),below=right?ny<y:ny>y;
+    let ly=below?y+17:y-9;ly=Math.min(Math.max(ly,p.y1+11),p.y0-4);
+    lab.setAttribute('x',x+(right?9:-9));lab.setAttribute('y',ly);lab.setAttribute('text-anchor',right?'start':'end');lab.setAttribute('class','dl b '+tone(v[i]));lab.textContent=f(v[i])+t('uDay')}
+  hl.textContent=fk(S.T);hl.setAttribute('x',x);const w=8*fk(S.T).length+12;hd.setAttribute('width',w);hd.setAttribute('x',Math.min(Math.max(x-w/2,0),c.x1+16-w))}
 // push mark labels down a line when they would overlap a neighbour in the same row
 function spreadMarks(){const tb=document.querySelector('.track');if(!tb)return;const T=tb.getBoundingClientRect();
+  // a narrow track shows the profile marks as icons only (their names are on the profile switch)
+  const mk=document.getElementById('marks');if(mk)mk.classList.toggle('compact',T.width<520);
   document.querySelectorAll('#marks .mk').forEach(m=>{m.classList.remove('er','el');const r=m.getBoundingClientRect();if(r.right>T.right+4)m.classList.add('er');else if(r.left<T.left-4)m.classList.add('el')});
   for(const row of ['r1','r2']){const ms=[...document.querySelectorAll('#marks .mk.'+row)];ms.forEach(m=>m.classList.remove('l1','l2'));
   ms.sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);const ends=[-1e9,-1e9,-1e9];
   for(const m of ms){const r=m.getBoundingClientRect();let lv=ends.findIndex(e=>r.left>e+4);if(lv<0)lv=2;if(lv)m.classList.add('l'+lv);ends[lv]=r.right}}
   const tr=document.querySelector('.track');if(tr){const extra=[...document.querySelectorAll('#marks .mk')].reduce((a,m)=>Math.max(a,m.classList.contains('l2')?28:m.classList.contains('l1')?14:0),0);tr.style.paddingBottom='';tr.style.paddingBottom=(parseFloat(getComputedStyle(tr).paddingBottom)+extra)+'px'}}
-// charts follow the box width: rebuild them when it changes, keeping the slider position
-addEventListener('resize',()=>{clearTimeout(spreadMarks.tm);spreadMarks.tm=setTimeout(()=>{
-  const box=S.view==='group'?$('#fMain'):S.view==='noop'?$('#fNoop'):$('#fOv'),svg=box&&box.querySelector('svg'),w=box?boxW(box):0;
-  if(svg&&Math.abs(+svg.getAttribute('viewBox').split(' ')[2]-w)>24){if(S.view==='group'){buildMain();update()}else if(S.view==='noop')noopPanel();else renderOverview()}
-  spreadMarks()},120)});
+// charts follow their box width: rebuild them when it changes (a ResizeObserver also sees a pane that was hidden
+// or narrow at load, which a window resize event does not), keeping the slider position
+function refit(){clearTimeout(refit.tm);refit.tm=setTimeout(()=>{
+  const box=S.view==='group'?$('#fMain'):S.view==='noop'?$('#fNoop'):$('#fOv'),svg=box&&box.querySelector('svg.mainc,svg[viewBox]:not(.ic)'),w=box?boxW(box):0;
+  if(svg&&box.clientWidth>0&&Math.abs(+svg.getAttribute('viewBox').split(' ')[2]-w)>24){if(S.view==='group'){buildMain();update()}else if(S.view==='noop')keep(noopPanel);else keep(renderOverview)}
+  spreadMarks()},120)}
+addEventListener('resize',refit);
+if(window.ResizeObserver){const ro=new ResizeObserver(refit);['#fMain','#noop','#ovw'].forEach(q=>ro.observe($(q)))}
 function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,i),d=g.default,c=cmp(p,d),rng=$('#rng');
   if(+rng.value!==i)rng.value=i;rng.setAttribute('aria-valuetext',fk(S.T));$('#tval').textContent=fk(S.T);
   document.querySelectorAll('#gears button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.gear===S.gear));
   document.querySelectorAll('#marks .mk').forEach(b=>b.classList.toggle('on',+b.dataset.mk===S.T));
-  $('#vot').textContent=t('vot',S.vot);$('#vot').title=t('votL',S.vot);
-  $('#flags').innerHTML=flags(g).map(([k,h])=>ib(h,k==='note'?'info':'warn',k==='note'?'':k)).join('');
+  $('#vot').textContent=t('votS',S.vot);$('#vot').title=t('votL',S.vot);
+  $('#flags').innerHTML=flags(g).map(([k,h,icn])=>ib(h,k==='note'?icn||'info':'warn',k==='note'?'':k)).join('');
   const im=impJS(p,d),icur=g.current?impJS(p,g.current):null,def=fk(d.threshold);
   const cur=(v,f)=>icur?' · '+t('rCurrent')+' '+f(v):'';
   const fl=r.recall_floor,lo=Math.min(fl,p.recall,d.recall)-.02,gp=v=>((v-lo)/(1-lo)*100).toFixed(1)+'%';
   const dcp=im.compactions.per_day-im.ref_compactions.per_day;
-  $('#liveC').innerHTML=chip(arrow(im.usd.per_day)+fusd(im.usd.per_day)+t('uDay'),tone(im.usd.per_day),'coin',t('kMoney')+' '+fusd(im.usd.per_day)+' · '+t('cVsDef',def))+
-    chip(arrow(im.minutes.per_day)+fmin(im.minutes.per_day)+t('uDay'),tone(im.minutes.per_day),'clock',t('kTimeD')+' '+fmin(im.minutes.per_day)+' · '+t('cVsDef',def));
+  $('#ans').innerHTML=answer(im.usd.per_day,im.minutes.per_day,t('vsDefL',def))+(icur?'<span class="ans2">'+answer(icur.usd.per_day,icur.minutes.per_day,t('vsCurL',fk(g.current.configured??g.current.threshold)))+'</span>':'<span class="ans2 cap">'+esc(t('noCur'))+'</span>');
+  const cb=$('#cpOne'),keepIt=action(g,S.T,S.vot)!=='aSet';cb.disabled=keepIt;cb.dataset.tip=keepIt?t('cpKeep'):t('cpOneTip',snippet(g,S.T));cb.setAttribute('aria-label',t('cpCopy')+': '+(keepIt?t('cpKeep'):snippet(g,S.T)));
   $('#kpis').innerHTML=`
-   <div class="kpi"><div class="kh">${ic('coin')}<span>${t('kMoney')}</span></div><div class="v ${tone(im.usd.per_day)}">${fusd(im.usd.per_day)}</div>
-     <div class="kr">${chip(arrow(c.dcp)+pc(c.dcp),tone(c.dcp),'',t('pctTotal')+' '+pc(c.dcp))}<span class="cap">${esc(t('cVsDef',def)+cur(icur&&icur.usd.per_day,fusd))}</span></div></div>
-   <div class="kpi"><div class="kh">${ic('clock')}<span>${t('kTimeD')}</span></div><div class="v ${tone(im.minutes.per_day)}">${fmin(im.minutes.per_day)}</div>
-     <div class="kr">${chip(arrow(im.wait_minutes.per_day)+fmin(im.wait_minutes.per_day),tone(im.wait_minutes.per_day),'refresh',t('iSplitTip',fmin(im.wait_minutes.per_day),fmin(-im.turn_gain_minutes.per_day)))}<span class="cap">${esc(t('cVsDef',def)+cur(icur&&icur.minutes.per_day,fmin))}</span></div></div>
    <div class="kpi"><div class="kh">${ic('refresh')}<span>${t('kComp')}</span></div><div class="v">${im.compactions.per_day.toFixed(1)}</div>
      <div class="kr">${chip(arrow(dcp)+(dcp>=0?'+':MINUS)+Math.abs(dcp).toFixed(1),'')}<span class="cap">${esc(t('cCompSub',im.ref_compactions.per_day.toFixed(1),Math.round(im.compactions.per_month)))}</span></div></div>
    <div class="kpi"><div class="kh">${ic('shield')}<span>${t('kRecall')}</span></div><div class="v ${p.recall>=fl?'':'bad'}">${p.recall.toFixed(3)}</div>
@@ -697,12 +768,12 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
 // status icons in the control bar. A warning triangle only for the selected profile's guardrail flags (red when
 // broken, amber for a guardrail warning); data-confidence notes and guardrail moves are info icons.
 function flags(g){const out=[],tm=g.time_model||{},P=g.profiles[S.gear];
-  if(P)for(const f of P.flags)out.push([flagKind(f)||'note',flagText(f,P)]);
-  if(S.T===g.grid[0])out.push(['note',t('nEdge')]);
-  if((tm.turn_source||'prior')!=='own'||(tm.compact_source||'prior')!=='own')out.push(['note',t('lowTime',t('src_'+(tm.turn_source||'prior')),t('src_'+(tm.compact_source||'prior')))]);
-  if(g.n_sessions<5)out.push(['note',t('lowThin',g.n_sessions)]);
-  if(g.days<3)out.push(['note',t('lowDays',fdays(g.days))]);
-  if(g.penalty_params.source==='prior')out.push(['note',t('lowPen',g.penalty_params.n_observed)]);
+  if(P)for(const f of P.flags)out.push([flagKind(f)||'note',flagText(f,P),'shield']);
+  if(S.T===g.grid[0])out.push(['note',t('nEdge'),'sliders']);
+  if((tm.turn_source||'prior')!=='own'||(tm.compact_source||'prior')!=='own')out.push(['note',t('lowTime',t('src_'+(tm.turn_source||'prior')),t('src_'+(tm.compact_source||'prior'))),'clock']);
+  if(g.n_sessions<5)out.push(['note',t('lowThin',g.n_sessions),'db']);
+  if(g.days<3)out.push(['note',t('lowDays',fdays(g.days)),'cal']);
+  if(g.penalty_params.source==='prior')out.push(['note',t('lowPen',g.penalty_params.n_observed),'refresh']);
   return out}
 function notes(g){const n=[],pp=g.penalty_params,d=g.default,cur=g.current;
   n.push(esc(t('caveat')));
@@ -713,23 +784,23 @@ function notes(g){const n=[],pp=g.penalty_params,d=g.default,cur=g.current;
 // ---------- per-day impact: every profile vs default and vs current ----------
 function impactPanel(){const g=G(),box=$('#fImpact');
   if(g.no_action_needed){box.innerHTML='<div class="card mi good">'+ic('check')+'<span>'+esc(t('noAction'))+'</span></div>';return}
-  const hasAct=g.active_days!=null;if(S.basis==='per_active_day'&&!hasAct)S.basis='per_day';const B=S.basis;
+  const hasAct=g.active_days!=null,difAct=hasAct&&Math.abs(g.active_days-Math.max(g.days,1))>=.05;if(S.basis==='per_active_day'&&!difAct)S.basis='per_day';const B=S.basis;
   const refs=[['vs_default','cVsDef',fk(g.default.threshold),'rDefault']].concat(g.current?[['vs_current','cVsCur',fk(g.current.configured??g.current.threshold),'rCurrent']]:[]);
-  const bases=[['per_day','bDay'],['per_active_day','bActive'],['per_month','bMonth']].filter(([k])=>k!=='per_active_day'||hasAct);
+  const bases=[['per_day','bDay'],['per_active_day','bActive'],['per_month','bMonth']].filter(([k])=>k!=='per_active_day'||difAct);
   const emax=g.effective_max||g.grid[g.grid.length-1],unit=' / '+t('uB_'+B);
   const cf=x=>B==='per_month'?String(Math.round(x)):x.toFixed(1);
   const cards=PROF.map(k=>{const P=g.profiles[k],act=action(g,P.threshold,P.value_of_time),frac=Math.min(P.threshold/emax,1);
     const rows=refs.map(([r,lab,thr,rk])=>{const im=impOf(g,k,r);if(!im)return '';const u=im.usd[B],m=im.minutes[B],w=im.wait_minutes[B],tg=-im.turn_gain_minutes[B],cc=im.compactions[B],rc=im.ref_compactions[B];
       return `<div class="irow" data-ref="${r}"><span class="cap">${esc(t(lab,thr))}</span><div class="chips">`+
-        chip(arrow(u)+fusd(u),tone(u),'coin',t('iMoney')+' '+fusd(u)+unit+' ('+(u<0?t('saves'):t('adds'))+')',` data-m="usd-${r}"`)+
-        chip(arrow(m)+fmin(m,B),tone(m),'clock',t('iTime')+' '+fmin(m,B)+unit+' · '+t('iSplitTip',fmin(w,B),fmin(tg,B)),` data-m="min-${r}"`)+
-        chip(cf(cc),'','refresh',t('iComp')+' '+cf(cc)+unit+' · '+t(rk)+' '+cf(rc))+
+        chip(fsv(u),tone(u),'coin',t('iMoney')+' '+fsv(u)+unit+' ('+(u<0?t('saves'):t('adds'))+', '+t('est')+')',` data-m="usd-${r}"`)+
+        chip(fmv(m,B),tone(m),'clock',t('iTime')+' '+fmv(m,B)+unit+' · '+t('iSplitTip',fmin(w,B),fmin(tg,B)),` data-m="min-${r}"`)+
+        chip(cf(cc)+' '+t('cmpS'),'','refresh',t('iComp')+' '+cf(cc)+unit+' · '+t(rk)+' '+cf(rc))+
         `</div><span class="cap">${esc(t('cSplit',fmin(w,B),fmin(tg,B)))}</span></div>`}).join('');
     return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header>${ic(PICON[k],t(k))}<span class="pn">${t(k)}${k===g.profile?'&nbsp;★':''}</span>${flagIcons(P)}<span class="act ${act==='aSet'?'set':''}">${t(act)}</span></header>
-     <div class="tb"><span class="gauge" role="img" aria-label="${esc(t('threshold')+' '+fk(P.threshold)+', '+t('iFrac',Math.round(frac*100),fk(emax)))}"><i style="width:${(frac*100).toFixed(1)}%"></i></span><span class="pt">${fk(P.threshold)}</span></div>
+     <div class="tb"><span class="cap">${t('threshold')}</span><span class="pt" title="${esc(t('iFrac',Math.round(frac*100),fk(emax)))}">${fk(P.threshold)}</span></div>
      ${rows}</article>`}).join('');
   const cap=hasAct?t('iCap',fdays(Math.max(g.days,1)),fdays(g.active_days)):t('iCapNo',fdays(Math.max(g.days,1)));
-  box.innerHTML=`<div class="ihead"><div class="seg sm" data-k="basis" role="group" aria-label="${t('bLabel')}">${bases.map(([k,l])=>`<button data-basis="${k}" aria-pressed="${B===k}">${t(l)}</button>`).join('')}</div><span class="cap">${esc(cap)}</span>${hasAct?'':ib(t('iNoActive'),'warn','low')}</div>
+  box.innerHTML=`<div class="ihead"><div class="seg sm" data-k="basis" role="group" aria-label="${t('bLabel')}">${bases.map(([k,l])=>`<button data-basis="${k}" aria-pressed="${B===k}">${t(l)}</button>`).join('')}</div><span class="cap">${esc(cap)}</span>${hasAct?'':ib(t('iNoActive'),'info')}<span class="est">${t('est')}</span></div>
    <div class="pcs">${cards}</div>`;
   box.querySelectorAll('[data-basis]').forEach(b=>b.onclick=()=>{S.basis=b.dataset.basis;keep(impactPanel)})}
 // ---------- chart tooltips ----------
@@ -873,7 +944,7 @@ async function copyText(txt){let ok=false;
 function noopPanel(){const g=G(),box=$('#noop'),dt=g.default.threshold,mx=Math.max(g.max_window||0,dt,g.peak_max||0),pk=peaksOf(g);
   box.innerHTML=`<div class="card nohead">${ic('check')}<div><div class="nt">${esc(t('noopT'))}${ib(t('noopSub'))}</div><div class="chips">`+
     chip(t('mPeak')+' '+fk(g.peak_max),'','flag')+chip('p50 '+fk(g.peak_p50),'','flag')+chip(t('rDefault')+' '+fk(dt),'','sliders')+
-    chip(String(g.default.compactions),'','refresh',t('iComp')+' · '+t('rDefault'))+`</div></div></div><div class="card fig" id="fNoop" style="margin-top:16px"></div>`;
+    chip(t('compAtDef',g.default.compactions),'','refresh')+`</div></div></div><div class="card fig" id="fNoop" style="margin-top:16px"></div>`;
   const nf=$('#fNoop'),W=boxW(nf),f=frame(W,230,{l:34,r:W<600?10:18,t:22,b:28}),nb=W<600?12:20,bw=mx/nb,cnt=new Array(nb).fill(0);pk.forEach(p=>cnt[Math.min(nb-1,Math.floor(p/bw))]++);
   const cmx=Math.max(...cnt,1),X=v=>f.x0+v/mx*(f.x1-f.x0),Y=v=>f.y0-v/cmx*(f.y0-f.y1);f.svg.setAttribute('aria-label',t('peaksL')+' · '+t('rDefault')+' '+fk(dt));
   f.svg.append(el('rect',{x:X(dt),y:f.y1,width:f.x1-X(dt),height:f.y0-f.y1,class:'nzone'}));
@@ -893,44 +964,51 @@ function overviewHeader(){const sp=D.groups.filter(g=>g.span),a=sp.length?Math.m
   $('#meta').innerHTML=(a?mi('cal','mRange',esc(t('ovRange',day(a),day(b),nm))):'')+mi('db','mSource',src)+mi('layers','mMode',t(D.mode==='deep'?'modeDeep':'modeLite')+(D.generated?' · '+esc(D.generated.replace('data through ','≤ ')):''))+
     mi('flag','mSize',esc(t('sizeTxt',ns,nt.toLocaleString('en-US'))))+calMeta(null)+ib(t('caveat'))}
 function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
-  const act=D.groups.map((g,i)=>[g,i]).filter(([g])=>!g.no_action_needed);
-  const tu=act.reduce((a,[g])=>a+usdOf(g,k),0),tm=act.reduce((a,[g])=>a+minOf(g,k),0);
-  const toSet=act.filter(([g])=>action(g,g.profiles[k].threshold,g.profiles[k].value_of_time)==='aSet').length;
-  const models=[];act.forEach(([g,i])=>{let m=models.find(x=>x.h===g.harness&&x.id===g.model);if(!m)models.push(m={h:g.harness,id:g.model,gs:[]});m.gs.push(i)});
-  models.forEach(m=>{m.usd=m.gs.reduce((a,i)=>a+usdOf(D.groups[i],k),0);m.min=m.gs.reduce((a,i)=>a+minOf(D.groups[i],k),0);m.w=m.gs.reduce((a,i)=>a+Math.abs(usdOf(D.groups[i],k)),0);
-    m.gs.sort((a,b)=>(D.groups[a].role==='main'?0:1)-(D.groups[b].role==='main'?0:1))});
-  models.sort((a,b)=>b.w-a.w);
-  const kpi=(icn,lab,v,cls)=>`<div class="kpi"><div class="kh">${ic(icn)}<span>${t(lab)}</span></div><div class="v ${cls||''}">${v}</div></div>`;
-  box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('vot',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
-   <div class="kpis">${kpi('coin','kTotUsd',fusd(tu)+'<span class="cap"> '+t('uDay')+'</span>',tone(tu))+kpi('clock','kTotMin',fmin(tm)+'<span class="cap"> '+t('uDay')+'</span>',tone(tm))+kpi('sliders','kToSet',String(toSet))+kpi('check','kNoCh',String(D.groups.length-act.length))}</div>
+  // per model (harness + id): its groups, what applying the "set" ones would change, and its status
+  const models=[];D.groups.forEach((g,i)=>{let m=models.find(x=>x.h===g.harness&&x.id===g.model);if(!m)models.push(m={h:g.harness,id:g.model,gs:[]});m.gs.push(i)});
+  models.forEach(m=>{const G_=m.gs.map(i=>D.groups[i]);m.usd=G_.reduce((a,g)=>a+setUsd(g,k),0);m.min=G_.reduce((a,g)=>a+setMin(g,k),0);
+    m.keep=G_.filter(g=>!g.no_action_needed&&!isSet(g,k));m.st=G_.some(g=>isSet(g,k))?'set':m.keep.length?'keep':'noop';
+    m.w=Math.abs(m.usd)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g,k)),0);m.gs.sort((a,b)=>(D.groups[a].role==='main'?0:1)-(D.groups[b].role==='main'?0:1))});
+  const tu=models.reduce((a,m)=>a+m.usd,0),tm=models.reduce((a,m)=>a+m.min,0),cnt=st=>models.filter(m=>m.st===st).length;
+  const kpi=(icn,lab,v,cls,sub)=>`<div class="kpi"><div class="kh">${ic(icn)}<span>${t(lab)}</span></div><div class="v ${cls||''}">${v}</div>${sub?`<div class="cap">${sub}</div>`:''}</div>`;
+  box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('votS',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
+   <div class="kpis">${kpi('coin','kTotUsd',fsv(tu)+'<span class="cap"> '+t('uDay')+'</span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>')+kpi('clock','kTotMin',fmv(tm)+'<span class="cap"> '+t('uDay')+'</span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
+     kpi('sliders','kToSet',String(cnt('set')),'',esc(t('mUnit')))+kpi('scale','kKeep',String(cnt('keep')),'',esc(t('mUnit')))+kpi('check','kNoCh',String(cnt('noop')),'',esc(t('mUnit')))}</div>
    <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv"></div>
    <h2>${t('ovTable')}</h2><div class="card scroll" id="ovT"></div>`;
   box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>{S.op=b.dataset.op;S.tree=null;keep(()=>{renderOverview();tree()})});
-  // horizontal bars: money saved per day (right) or added (left, amber), stacked main / subagent
-  const ob=$('#fOv'),W=boxW(ob),wide=W>=600,rowH=wide?34:50,L=wide?190:8,R=wide?170:8,H=Math.max(rowH*models.length+30,80),svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t('ovChart')});
-  const sv=models.map(m=>m.gs.map(i=>-usdOf(D.groups[i],k)));const pos=sv.map(v=>v.filter(x=>x>0).reduce((a,b)=>a+b,0)),neg=sv.map(v=>v.filter(x=>x<0).reduce((a,b)=>a+b,0));
+  // horizontal bars: money saved per day to the right of zero, added to the left (amber); "keep default" models grey
+  const rows=models.filter(m=>m.st!=='noop').sort((a,b)=>({set:0,keep:1}[a.st]-{set:0,keep:1}[b.st])||b.w-a.w);
+  const ob=$('#fOv'),W=boxW(ob),wide=W>=600,rowH=wide?34:50,L=wide?190:8,R=wide?190:8,H=Math.max(rowH*rows.length+30,80);
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t('ovChart')});
+  const val=(m,g)=>m.st==='set'?-usdOf(g,k)*(isSet(g,k)?1:0):-usdOf(g,k);
+  const sv=rows.map(m=>m.gs.map(i=>val(m,D.groups[i])));const pos=sv.map(v=>v.filter(x=>x>0).reduce((a,b)=>a+b,0)),neg=sv.map(v=>v.filter(x=>x<0).reduce((a,b)=>a+b,0));
   const lo=Math.min(0,...neg),hi=Math.max(0,...pos,1e-9),X=v=>L+(v-lo)/((hi-lo)||1)*(W-L-R);
   svg.append(el('line',{x1:X(0),x2:X(0),y1:6,y2:H-22,class:'zero'}));
-  for(const v of nice(lo,hi,4))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle'},fusdT(-v)));
-  models.forEach((m,r)=>{const y=10+r*rowH,gr=el('g',{class:'ovrow','data-tab':m.gs[0]});gr.append(el('rect',{x:0,y:y-4,width:W,height:rowH,rx:6,class:'ovbg'}));
-    const by=wide?y+2:y+22,val=arrow(m.usd)+fusd(m.usd)+t('uDay')+' · '+fmin(m.min);
-    gr.append(el('text',{x:8,y:y+11,class:'ovname'},label(m.id)));if(wide)gr.append(el('text',{x:8,y:y+24,class:'ovsub'},m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + ')));
+  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼$':'▲+$')+(+Math.abs(v).toFixed(1))));
+  rows.forEach((m,r)=>{const y=10+r*rowH,gr=el('g',{class:'ovrow'+(m.st==='keep'?' keep':''),'data-tab':m.gs[0]});gr.append(el('rect',{x:0,y:y-4,width:W,height:rowH,rx:6,class:'ovbg'}));
+    const by=wide?y+2:y+22;gr.append(el('text',{x:8,y:y+11,class:'ovname'},label(m.id)));if(wide)gr.append(el('text',{x:8,y:y+24,class:'ovsub'},m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + ')));
     let ap=0,an=0;m.gs.forEach((i,j)=>{const v=sv[r][j];if(Math.abs(v)<1e-9)return;const a=v>0?ap:an+v;if(v>0)ap+=v;else an+=v;
-      const x=X(a),w=Math.max(X(a+Math.abs(v))-x,1.5),role=D.groups[i].role;gr.append(el('rect',{x,y:by,width:w,height:18,rx:3,class:v<0?'sma':role==='main'?'sm1':'sm2'}));
+      const x=X(a),w=Math.max(X(a+Math.abs(v))-x,1.5),role=D.groups[i].role;gr.append(el('rect',{x,y:by,width:w,height:18,rx:3,class:m.st==='keep'?'smk':v<0?'sma':role==='main'?'sm1':'sm2'}));
       if(w>44)gr.append(el('text',{x:x+6,y:by+13,class:'seglab'},roleS(role)))});
-    gr.append(wide?el('text',{x:Math.max(X(ap),X(0))+8,y:y+15,class:'dl b '+tone(m.usd)},val):el('text',{x:W-8,y:y+11,'text-anchor':'end',class:'dl b '+tone(m.usd)},val));
-    gr.addEventListener('pointermove',e=>showTip('<b>'+esc(label(m.id))+'</b>'+m.gs.map(i=>{const g=D.groups[i];return tipRow(roleL(g.role),fusd(usdOf(g,k))+' · '+fmin(minOf(g,k)))}).join(''),e.clientX,e.clientY));
+    // the label: money and minutes each in their own colour; "keep default" rows say so, greyed
+    const tx=wide?el('text',{x:Math.max(X(ap),X(0))+8,y:y+15,class:'dl b'}):el('text',{x:W-8,y:y+11,'text-anchor':'end',class:'dl b'});
+    if(m.st==='keep'){const u=m.keep.reduce((a,g)=>a+usdOf(g,k),0);tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+fsv(u)+t('uDay')))}
+    else{tx.append(el('tspan',{class:tone(m.usd)},fsv(m.usd)+t('uDay')),el('tspan',{class:'mute'},' · '),el('tspan',{class:tone(m.min)},fmv(m.min)))}
+    gr.append(tx);
+    gr.addEventListener('pointermove',e=>showTip('<b>'+esc(label(m.id))+'</b>'+m.gs.map(i=>{const g=D.groups[i];return tipRow(roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+' · '+fmv(minOf(g,k))+(isSet(g,k)?'':' · '+t('aKeep')))}).join(''),e.clientX,e.clientY));
     gr.addEventListener('pointerleave',hideTip);gr.addEventListener('click',()=>pick(m.gs[0]));svg.append(gr)});
   ob.append(svg);
-  // roll-up table, every group (no-change ones last)
-  const rows=D.groups.map((g,i)=>[g,i]).sort((a,b)=>(a[0].no_action_needed-b[0].no_action_needed)||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
-  $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>'<th>'+t(c)+'</th>').join('')+'</tr>'+rows.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k);
-    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span></td><td class="${tone(u)}">${g.no_action_needed?'–':fusd(u)}</td><td class="${tone(mn)}">${g.no_action_needed?'–':fmin(mn)}</td></tr>`}).join('')+'</table>';
+  // roll-up table, every group: set first, then keep default, then no change
+  const rk=g=>g.no_action_needed?2:isSet(g,k)?0:1;
+  const tr=D.groups.map((g,i)=>[g,i]).sort((a,b)=>rk(a[0])-rk(b[0])||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
+  $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>'<th>'+t(c)+'</th>').join('')+'</tr>'+tr.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k),mu=a==='aSet'?'':' mute';
+    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span></td><td class="${tone(u)}${mu}">${g.no_action_needed?'–':fsv(u)}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':fmv(mn)}</td></tr>`}).join('')+'</table>';
   $('#ovT').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>pick(+b.dataset.tab));
-  copyPanel()}
+  copyPanel();renderS()}
 // update(): everything that depends on the selected threshold/profile; render(): full rebuild (group or language change)
 function update(){if(S.view!=='group')return;controls();impactPanel();comparison();pareto();costs();timeChart();hist();sessChart();moveCursor();hideTip()}
-function render(){keep(()=>{if(S.view==='overview'){renderOverview();return}header();
+function render(){keep(()=>{if(S.view==='overview'){renderOverview();return}header();renderS();
   if(S.view==='noop'){noopPanel();return}buildBar();buildMain();sessPick();update();copyPanel();deepPanel()})}
 function setView(v){S.view=v;document.body.dataset.view=v}
 function hashOf(){return S.view==='overview'?'#overview':'#g='+encodeURIComponent([G().harness,G().model,G().role].join('|'))}
@@ -943,10 +1021,12 @@ function fromHash(){const h=decodeURIComponent(location.hash||'');if(h==='#overv
 if(D.groups.length){const h=fromHash(),b=best();S.gi=Math.max(b,0);statics();if(h==='ov'||(h==null&&b<0))overview();else pick(h!=null?h:b)}
 else{statics();$('#ctl').textContent=t('none')}
 addEventListener('scroll',hideTip,{passive:true});
-let sortK='peak',asc=false;
 function spark(c){if(c.length<2)return'';const w=110,h=20,mx=Math.max(...c);return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline fill="none" stroke="var(--acc)" stroke-width="1.1" points="${c.map((v,i)=>(i/(c.length-1)*w).toFixed(1)+','+(h-1-v/mx*(h-2)).toFixed(1)).join(' ')}"/></svg>`}
-function renderS(){const q=$('#q').value.toLowerCase();const rows=D.sessions.filter(s=>(s.id+s.model+s.role+s.harness).toLowerCase().includes(q));
-  rows.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*(asc?1:-1));$('#cnt').textContent=t('of',rows.length,D.sessions.length);
+function renderS(){const q=$('#q').value.toLowerCase(),g=S.view==='overview'?null:G();
+  $('#hSess').textContent=g?t('hSessG',label(g.model)+' · '+roleS(g.role)):t('hSessAll');
+  const pool=g?D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)):D.sessions;
+  const rows=pool.filter(s=>(s.id+s.model+s.role+s.harness).toLowerCase().includes(q));
+  rows.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*(asc?1:-1));$('#cnt').textContent=t('of',rows.length,pool.length);
   const cols=[['id','colSession'],['harness','colHarness'],['role','colRole'],['model','colModel'],['turns','colTurns'],['peak','colPeak'],['compactions','colComp']];
   $('#st').innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${t(c[1])}</th>`).join('')+'<th>'+t('colCtx')+'</th></tr>'+rows.slice(0,500).map(s=>`<tr><td>${esc(s.id.slice(0,28))}</td><td>${s.harness}</td><td>${s.role}</td><td>${esc(s.model)}</td><td>${s.turns}</td><td>${fk(s.peak)}</td><td>${s.compactions}</td><td>${spark(s.curve)}</td></tr>`).join('');
   document.querySelectorAll('#st th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;asc=sortK===k?!asc:false;sortK=k;renderS()})}

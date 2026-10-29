@@ -63,6 +63,14 @@ CHECK = """
     if(def){def.click();ok(S.gear==='custom'&&document.getElementById('rng')===n0,'default mark did not snap')}
     const pm=document.querySelector('.mk[data-g=balanced]');ok(pm,'balanced mark missing');
     if(pm){pm.click();ok(S.gear==='balanced','balanced mark did not select the profile')}
+    // one answer line with a copy button; savings carry ▼ and no minus sign
+    {const im=impJS(pt(g,g.grid.indexOf(S.T)),g.default);const a=document.getElementById('ans').textContent;
+      ok(/per day vs default/.test(a)&&a.includes('$'+Math.abs(im.usd.per_day).toFixed(1)),'answer line: '+a);
+      ok(!/−\\$/.test(document.getElementById('fImpact').textContent),'minus-dollar figure in the profile cards');
+      ok(document.getElementById('cpOne').disabled===(action(g,S.T,S.vot)!=='aSet'),'copy button state');
+      ok(!!g.current===!document.querySelector('#ans .ans2.cap'),'current-setting note');
+      ok(!!g.current===!!document.querySelector('#fMain .mcur'),'current mark')}
+    ok(!document.querySelector('#kpis .kh .ic use[href="#i-coin"]'),'money KPI repeats the cards');
     // a warning triangle in the bar only for the selected profile's guardrail flags
     const want=g.profiles.balanced.flags.filter(f=>!NOTE(f)).length,warn=document.querySelectorAll('#flags .ib.low,#flags .ib.bad').length;
     ok(warn===want,'bar shows '+warn+' warnings for flags '+g.profiles.balanced.flags.join(','));
@@ -79,12 +87,13 @@ CHECK = """
     ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
     {const im=g.comparison.balanced.vs_default.impact;
       const money=()=>document.querySelector('#fImpact [data-pc=balanced] [data-m=usd-vs_default]').textContent;
-      ok(money()===arrow(im.usd.per_day)+fusd(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
+      ok(money()===fsv(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
       document.querySelector('#fImpact [data-basis=per_month]').click();
-      ok(money()===arrow(im.usd.per_month)+fusd(im.usd.per_month),'per-month money not shown');
-      {const bb=document.querySelector('#fImpact [data-basis=per_active_day]');bb.focus();bb.click()}
-      ok(money()===arrow(im.usd.per_active_day)+fusd(im.usd.per_active_day),'per-active-day money not shown');
-      ok(document.activeElement&&document.activeElement.dataset.basis==='per_active_day','basis lost focus');
+      ok(money()===fsv(im.usd.per_month),'per-month money not shown');
+      const bb=document.querySelector('#fImpact [data-basis=per_active_day]');
+      ok(!!bb===Math.abs(g.active_days-Math.max(g.days,1))>=.05,'per-active-day toggle shown although it equals per day');
+      if(bb){bb.focus();bb.click();ok(money()===fsv(im.usd.per_active_day),'per-active-day money not shown');
+        ok(document.activeElement&&document.activeElement.dataset.basis==='per_active_day','basis lost focus')}
       ok(document.getElementById('rng')===n0,'slider replaced by the impact panel');
     }
     // every icon is either hidden from assistive tech or named; every button has an accessible name
@@ -120,12 +129,21 @@ CHECK = """
     const nAct=new Set(D.groups.filter(x=>!x.no_action_needed).map(x=>x.harness+'|'+x.model)).size;
     ok(document.querySelectorAll('#fOv .ovrow').length===nAct,'overview bars '+document.querySelectorAll('#fOv .ovrow').length+' != '+nAct);
     ok(document.querySelectorAll('#ovT tr').length===D.groups.length+1,'roll-up rows');
+    // the headline total counts only groups whose action is "set"
+    {const want=D.groups.reduce((a,x)=>a+setUsd(x),0),v=document.querySelector('#ovw .kpi .v').textContent;
+      ok(v.startsWith(fsv(want)),'overview total '+v+' != '+fsv(want));
+      ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#fOv .ovrow.keep'):true,'keep-default rows not greyed')}
+    ok(/^All sessions/.test(document.getElementById('hSess').textContent),'overview sessions title');
     // a no-change group: a short state and the peaks chart, no empty cards, no warning triangles
     const ni=D.groups.findIndex(x=>x.no_action_needed);ok(ni>=0,'fixture has no no-change group');
     if(ni>=0){const nb=document.querySelector(`#tree [data-tab="${ni}"]`);if(nb)nb.click();else pick(ni);
       ok(S.view==='noop'&&vis(document.querySelector('#fNoop svg')),'no-change view not shown');
       ok(![...document.querySelectorAll('.pc,.kpi')].some(vis),'empty cards shown for a no-change group');
-      ok(![...document.querySelectorAll('#main .ib.low,#main .ib.bad')].some(vis),'warning icon on a no-change group')}
+      ok(![...document.querySelectorAll('#main .ib.low,#main .ib.bad')].some(vis),'warning icon on a no-change group');
+      const ng=D.groups[ni];ok(D.sessions.filter(x=>x.model===ng.model&&x.role===ng.role).length===document.querySelectorAll('#st tr').length-1,'sessions not filtered to the group');
+      // the sidebar reason uses this role's own peak
+      const row=[...document.querySelectorAll('#tree .why')].find(w=>w.closest('.mrow').querySelector(`[data-tab="${ni}"]`));
+      if(row)ok(row.textContent.includes(fk(ng.peak_max)),'no-change reason '+row.textContent+' lacks '+fk(ng.peak_max))}
   }catch(e){fail.push('error: '+e.message)}
   document.body.dataset.selftest=fail.length?'fail: '+fail.join(' | '):'ok';
 })();
