@@ -5,7 +5,7 @@
 **Your agent history says where to auto-compact.**<br>
 Measure cost vs. context-rot trade-offs per model and per role, then tune auto-compact safely.
 
-[![CI](https://github.com/OWNER/compactlab/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/compactlab/actions/workflows/ci.yml)
+[![CI](https://github.com/LemonCANDY42/compactlab/actions/workflows/ci.yml/badge.svg)](https://github.com/LemonCANDY42/compactlab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 
@@ -205,7 +205,7 @@ writes settings, calls a model or uses the network. Its "copy" button puts `/aut
 ```
 
 ```
-/plugin install compactlab-lens --marketplace <owner>/compactlab
+/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab
 ```
 
 See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, not affiliated with Anthropic.

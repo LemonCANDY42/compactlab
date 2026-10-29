@@ -100,7 +100,7 @@ uvx compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% �
 
 ## 会话内 lens(Claude Code mod)
 
-`mods/compactlab-lens` 是一个可选的 Claude Code mod。它在输入框上方加一行,在桌面端加一个侧边面板,显示本会话的上下文和默认阈值、compactlab 阈值的位置,`simulate` 估算的每日节省,以及当前生效窗口和方案不一致时的 ⚠。它只读取 `simulate` 写出的 `~/.compactlab/lens.json`,不写设置、不调用模型、不联网;“复制”按钮会把 `/autocompact <n>` 放到剪贴板。安装:`/plugin install compactlab-lens --marketplace <owner>/compactlab`。详见 [docs/MOD.md](docs/MOD.md)。这是独立开源项目,与 Anthropic 无关。
+`mods/compactlab-lens` 是一个可选的 Claude Code mod。它在输入框上方加一行,在桌面端加一个侧边面板,显示本会话的上下文和默认阈值、compactlab 阈值的位置,`simulate` 估算的每日节省,以及当前生效窗口和方案不一致时的 ⚠。它只读取 `simulate` 写出的 `~/.compactlab/lens.json`,不写设置、不调用模型、不联网;“复制”按钮会把 `/autocompact <n>` 放到剪贴板。安装:`/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`。详见 [docs/MOD.md](docs/MOD.md)。这是独立开源项目,与 Anthropic 无关。
 
 ## 两种模式
 

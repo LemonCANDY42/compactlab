@@ -98,7 +98,7 @@ line says so.
 At the prompt of a Claude Code terminal session (once the repository is published):
 
 ```
-/plugin install compactlab-lens --marketplace <owner>/compactlab
+/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab
 ```
 
 To try it from a checkout:

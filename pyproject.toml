@@ -31,9 +31,9 @@ dependencies = []
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3"]
 
 [project.urls]
-Documentation = "https://github.com/OWNER/compactlab#readme"
-Issues = "https://github.com/OWNER/compactlab/issues"
-Changelog = "https://github.com/OWNER/compactlab/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/LemonCANDY42/compactlab#readme"
+Issues = "https://github.com/LemonCANDY42/compactlab/issues"
+Changelog = "https://github.com/LemonCANDY42/compactlab/blob/main/CHANGELOG.md"
 
 [project.scripts]
 compactlab = "compactlab.cli:main"

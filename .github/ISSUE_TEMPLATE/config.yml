@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security issue
-    url: https://github.com/OWNER/compactlab/security/advisories/new
+    url: https://github.com/LemonCANDY42/compactlab/security/advisories/new
     about: Report privately; see SECURITY.md
