@@ -29,6 +29,14 @@ penalty:   next turn adds ρ·(c_before − B − S) + F tokens; plus k correcti
 Prices are chosen per request by size (long-context tiers). Penalty is reported as the difference between a run
 with and without it.
 
+`TTL` and `p_write` come from the logs per group (model × role). Claude Code records which tier each cache write
+was billed at (`usage.cache_creation.ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens`). When at least half
+of a group's written tokens are 1-hour, the replay uses a 1-hour TTL and the 1-hour write price (2× the input price
+on Anthropic's table, against 1.25× for 5 minutes); otherwise the pricing file's default (300 s). `--cache-ttl`
+overrides both. The group records `cache_ttl` and `cache_ttl_source`, and the measured "actual cost" prices every
+logged write at its own tier. Subscriptions usually show 1-hour writes for the main session and 5-minute writes
+for subagents.
+
 Recall proxy per turn: `rot(c) · (1 − (1 − r)·exp(−turns_since_compaction / H))` with retention `r = 0.9`,
 `H = 15`, and `rot` interpolated from `(0, 1.0) (100k, .98) (200k, .95) (400k, .90) (600k, .84) (1M, .75)`.
 

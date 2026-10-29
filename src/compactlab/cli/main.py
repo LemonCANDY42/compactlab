@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -159,6 +160,22 @@ def _config_args(g: Any) -> None:
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
     return {"claude-code": a.claude_root, "codex": a.codex_root, "dsh": a.dsh_root}
+
+
+def _ttl_note(g: dict[str, Any], lang: str) -> str:
+    """The cache TTL a group was replayed with and where it came from, in one language."""
+    sec, src = int(g["cache_ttl"]), str(g.get("cache_ttl_source", ""))
+    if lang == "zh":
+        dur = f"{sec // 3600} 小时" if sec >= 3600 else f"{sec // 60} 分钟"
+        m = re.match(r"logs: (\d+%)", src)
+        why = (
+            f"日志:{m.group(1)} 的缓存写入是 1 小时档"
+            if m
+            else ("--cache-ttl" if src == "--cache-ttl" else "价格文件默认值")
+        )
+        return f"缓存时长:{dur}({why}),缓存写入按该档计价"
+    dur = f"{sec // 3600} h" if sec >= 3600 else f"{sec // 60} min"
+    return f"cache: {dur} ({src}); cache writes priced at that tier"
 
 
 def _progress(msg: str) -> None:
@@ -493,6 +510,8 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                        "t": _k_(p["threshold"])}  # fmt: skip
                 for f in p["flags"]:
                     notes += [T[x]["flags"][f].format(p=T[x][n], **fmt) for x in langs if f in T[x]["flags"]]
+        if g.get("cache_ttl"):
+            notes += [_ttl_note(g, x) for x in langs]
         if "en" in langs:
             notes.append(f"default: {d['note']}" + (f"; current: {g['current_note']}" if g.get("current_note") else ""))
         if "zh" in langs:

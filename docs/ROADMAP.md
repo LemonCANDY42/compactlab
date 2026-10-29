@@ -21,6 +21,13 @@ from 2026-10-29 and change quickly.
 
 The tool's numbers are only as good as the replay. Before adding breadth, measure it.
 
+- **Price the cache the way it was billed — done.** The replay assumed a 5-minute cache and prices writes at the
+  5-minute tier. Claude Code on a subscription caches for 1 hour, and 1-hour writes cost 2× the input price instead
+  of 1.25×. The logs say which tier each request used (`usage.cache_creation.ephemeral_1h_input_tokens` /
+  `ephemeral_5m_input_tokens`; on the maintainer's last 30 sessions 99.99% of written tokens were 1-hour), so the
+  TTL and write price now come from the logs per group, with `--cache-ttl` as the override. It mattered: on the maintainer's history the balanced pick moves from 550k (−33%) to 625k (−22%) for Opus 5.5 and
+  from 575k (−24%) to 650k (−15%) for Sonnet 5.5 once replayed with the 1-hour cache it actually used.
+
 - `compactlab verify`: after a threshold change, compare the cost and wait the replay predicted with what the logs
   show for the days since (same model, same role, matched by active day). Report the error, not just the saving.
 - Run deep mode on a sample of real sessions to replace the lite recall proxy with measured recall, and publish
@@ -70,6 +77,33 @@ Not planned for now: Copilot CLI (no documented threshold knob), Cline and Aider
 Cursor (closed logs). Each adapter follows [ADDING_A_HARNESS.md](ADDING_A_HARNESS.md): one `Adapter`, fixtures,
 facts with sources in `data/harness_formats.json` and `data/config_knobs.json`, and "supported" only after a run on
 real logs.
+
+## Mods and the prompt cache (ideas from Cache Tax and Ribbon)
+
+[Cache Tax](https://github.com/karanb192/cache-tax) keeps the cache warm and guards cold sends;
+[Ribbon](https://github.com/robonuggets/ribbon) shows usage windows and cache state above the prompt. Both sit next
+to the question compactlab answers, so the lens mod should work with them instead of beside them.
+
+- **Compact on cold.** After the cache expires, the next send rewrites the whole context anyway. Compacting
+  then costs about one uncached read of that context plus the summary, and every later turn reads a small context
+  instead of the old one, so a cold return is a natural point to compact. The lens (or a hook) can show both prices
+  side by side from the same price rows, e.g. "cold: resend rewrites 480k · /compact first", and replay history to
+  say how often that would have paid off. When Cache Tax is installed, read its state (`$.cacheTax.status()`,
+  proposed in cache-tax PR #36) and offer compaction as one of its refusal's options instead of adding a second guard.
+- **Keepwarm in the replay.** Keepwarm pings read the whole context every 50 minutes of a break, so their cost grows
+  with context size. A profile that knows keepwarm is on (from Cache Tax's status, or a flag) should pick a lower
+  threshold; the report can show both.
+- **Share state the other way.** Expose `$.compactlab.status()` from the lens mod (threshold in force, profile pick,
+  tokens until compaction, estimated cost of the next compaction) so a band like Ribbon can show one line, e.g.
+  "compacts in 170k · pick 625k", without reading compactlab's files.
+- **Plan-limit view.** On a subscription the dollars are a yardstick, not the bill. Ribbon already reads the 5-hour
+  and 7-day windows; the lens can say what a threshold change means in those terms where the harness exposes them.
+- **Look and fit.** Follow Ribbon's lessons in the lens: no background of its own, inherit the app's text color,
+  SVG neutrals from CSS variables with a `prefers-color-scheme` palette, a layout that steps down by width
+  (one row, stacked, terminal text), cold or attention states open by default.
+- **Trust.** Keep the lens read-only (a mod that changed approvals conflicted with auto-approve), publish a
+  "what it can reach" block from `claude plugin validate` and a threat model the way Cache Tax does, and offer the
+  one-line agent install ("send this link to your agent").
 
 ## Later
 

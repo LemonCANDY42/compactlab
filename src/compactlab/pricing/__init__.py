@@ -7,7 +7,7 @@ refresh`, skipped with offline=True) -> user override file. Every `Price` record
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -27,8 +27,17 @@ class Price:
     long_output: float = 0.0
     long_cache_write: float = 0.0
     long_cache_read: float = 0.0
+    cache_write_1h: float | None = None  # 1-hour cache-write price, where the provider has that tier
+    long_cache_write_1h: float | None = None
     key: str = "fallback"
     source: str = "bundled"
+
+    def for_ttl(self, ttl: float) -> Price:
+        """This price with cache writes at the tier a cache of `ttl` seconds is billed at (unchanged without one)."""
+        if ttl < 3600 or self.cache_write_1h is None:
+            return self
+        long_w = self.long_cache_write_1h if self.long_cache_write_1h is not None else self.long_cache_write
+        return replace(self, cache_write=self.cache_write_1h, long_cache_write=long_w)
 
     def rates(self, ctx: int) -> tuple[float, float, float, float]:
         """(input, output, cache_write, cache_read) per token for a request of size ctx."""
@@ -69,7 +78,7 @@ class PricingTable:
             user = json.loads(path.read_text())
             for k, row in user.get("models", {}).items():
                 prev = base["models"].get(k, {})
-                row = {**{x: prev[x] for x in ("match", "long_context") if x in prev}, **row}
+                row = {**{x: prev[x] for x in ("match", "long_context", "cache_write_1h") if x in prev}, **row}
                 row.setdefault("source", f"{label}: {path.name} {user.get('retrieved', '')}".strip())
                 base["models"][k] = row
             for k in ("fallback", "default_ttl_seconds", "note"):
@@ -103,6 +112,8 @@ class PricingTable:
             long_output=lc.get("output", 0),
             long_cache_write=lc.get("cache_write", 0),
             long_cache_read=lc.get("cache_read", 0),
+            cache_write_1h=row.get("cache_write_1h"),
+            long_cache_write_1h=lc.get("cache_write_1h"),
             key=key,
             source=str(row.get("source", "fallback row" if key == "fallback" else "bundled")),
         )

@@ -290,7 +290,7 @@ def analyze(
 ) -> dict:
     """`current` maps (harness, model) -> (configured threshold or None, description), read from config."""
     opts = opts or SimOptions()
-    ttl = opts.ttl_seconds or pricing.default_ttl
+    default_ttl = pricing.default_ttl
     rot = rot_fn(opts.rot_table)
     opt_d = {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()}
     groups: dict[tuple[str, str], list[Session]] = defaultdict(list)
@@ -304,7 +304,9 @@ def analyze(
         if progress:
             progress(gi, len(groups), f"{model} · {role} ({len(ss)} sessions)")
         harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
-        price = pricing.lookup(model)
+        list_price = pricing.lookup(model)
+        ttl, ttl_source = group_ttl(ss, opts.ttl_seconds, default_ttl)
+        price = list_price.for_ttl(ttl)
         observed_window = max((s.context_window or 0) for s in ss)
         window = observed_window or price.max_window
         cap = effective_max(harness, window)
@@ -350,6 +352,8 @@ def analyze(
             "role": role,
             "price_key": price.key,
             "price_source": price.source,
+            "cache_ttl": ttl,
+            "cache_ttl_source": ttl_source,
             "n_sessions": len(ss),
             "n_turns": n_turns,
             "days": days,
@@ -368,7 +372,7 @@ def analyze(
             "grid": grid,
             **rows,
             "baseline_cost": run_all(traces, math.inf, c).cost,
-            "actual_cost": sum(_actual_cost(s, price) for s in ss),
+            "actual_cost": sum(_actual_cost(s, list_price) for s in ss),
             "default": default,
             "current": cur,
             "current_note": cur_desc,
@@ -424,11 +428,27 @@ def _bin_growth(g: list[int], n: int) -> list[int]:
     return [sum(g[int(i * size) : int((i + 1) * size)]) for i in range(n)]
 
 
+def group_ttl(ss: list[Session], override: int | None, default: int) -> tuple[int, str]:
+    """Cache TTL to replay a group with: the override, else the tier most cache-write tokens were billed at."""
+    if override:
+        return override, "--cache-ttl"
+    written = sum(t.cache_write for s in ss for t in s.turns)
+    hour = sum(t.cache_write_1h for s in ss for t in s.turns)
+    if not hour:
+        return default, "pricing default"
+    return (3600 if hour * 2 >= written else default), f"logs: {hour / written:.0%} of cache writes at the 1-hour tier"
+
+
 def _actual_cost(s: Session, price: Price) -> float:
+    """What the logged requests cost at list price, each cache write at the tier it was billed at."""
+    hour = price.for_ttl(3600)
     c = 0.0
     for t in s.turns:
         ri, ro, rw, rr = price.rates(t.ctx)
-        c += max(t.ctx - t.cache_read - t.cache_write, 0) * ri + t.cache_read * rr + t.cache_write * rw + t.output * ro
+        rw1 = hour.rates(t.ctx)[2]
+        w5 = t.cache_write - t.cache_write_1h
+        c += max(t.ctx - t.cache_read - t.cache_write, 0) * ri + t.cache_read * rr + w5 * rw + t.cache_write_1h * rw1
+        c += t.output * ro
     return c
 
 

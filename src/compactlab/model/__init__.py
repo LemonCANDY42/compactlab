@@ -13,6 +13,7 @@ class Turn:
     ctx: int  # total input tokens seen by the model (input+cache_read+cache_write)
     cache_read: int = 0
     cache_write: int = 0
+    cache_write_1h: int = 0  # part of cache_write billed at the 1-hour tier (Anthropic usage.cache_creation)
     output: int = 0
     model: str = "unknown"
     tool_keys: list[str] = field(default_factory=list)  # e.g. "Read:/a/b.py", normalized

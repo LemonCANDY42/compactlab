@@ -5,6 +5,16 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Cache TTL and write price from the logs.** The replay assumed a 5-minute prompt cache priced at the 5-minute
+  write tier, but Claude Code on a subscription caches the main session for 1 hour, billed at 2× the input price.
+  The Claude Code parser now keeps each request's 1-hour share (`usage.cache_creation.ephemeral_1h_input_tokens`,
+  `Turn.cache_write_1h`); a group whose written tokens are mostly 1-hour is replayed with a 1-hour TTL and the
+  1-hour write price (new `cache_write_1h` price rows for Claude models). Groups record `cache_ttl` and
+  `cache_ttl_source`, shown in the CLI notes and the report; the actual cost prices each write at its tier.
+  `--cache-ttl` still overrides. On the maintainer's history the balanced pick moved from 550k (−33%) to 625k
+  (−22%) for Opus 5.5 and from 575k (−24%) to 650k (−15%) for Sonnet 5.5. Parser version 4 re-parses cached files.
+
 ### Added
 - **DeepSeek Harness (`dsh`) adapter, experimental.** Reads `$DSH_HOME/sessions` (default `~/.dsh/sessions`): the
   newest `session[.vN].jsonl[.zstd]` per session, zstd via the standard library on Python 3.14+ or the `zstd`

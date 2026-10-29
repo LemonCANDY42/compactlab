@@ -31,7 +31,7 @@ def _tool_key(block: dict[str, Any]) -> str:
 
 
 class ClaudeParser(Parser):
-    version = 3
+    version = 4
 
     def __init__(self, path: str):
         role = "subagent" if "subagents" in Path(path).parts else "main"
@@ -104,6 +104,9 @@ class ClaudeParser(Parser):
         u = m.get("usage") or {}
         cr = int(u.get("cache_read_input_tokens") or 0)
         cw = int(u.get("cache_creation_input_tokens") or 0)
+        tiers = u.get("cache_creation")
+        tiers = tiers if isinstance(tiers, dict) else {}
+        cw_1h = min(int(tiers.get("ephemeral_1h_input_tokens") or 0), cw)
         ctx = int(u.get("input_tokens") or 0) + cr + cw
         if ctx == 0:
             return
@@ -112,6 +115,7 @@ class ClaudeParser(Parser):
             ctx=ctx,
             cache_read=cr,
             cache_write=cw,
+            cache_write_1h=cw_1h,
             output=int(u.get("output_tokens") or 0),
             start_ts=self.last_input_ts,
             model=str(m.get("model") or "unknown"),

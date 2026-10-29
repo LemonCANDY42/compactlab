@@ -244,7 +244,8 @@ flowchart LR
 ```
 
 Each session becomes the tokens added per turn. compactlab replays that growth for each threshold. It charges
-cache reads, cache writes (after a compaction, or after an idle gap longer than the cache TTL), output, a summarizer
+cache reads, cache writes (after a compaction, or after an idle gap longer than the cache TTL, which it reads from the
+logs: 1 hour or 5 minutes, at that tier's write price), output, a summarizer
 call per compaction, and the re-reads and corrections that tend to follow one. It also adds up wall-clock time
 from latency curves fitted to your own timestamps. Details and formulas:
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md). Background: [docs/WHY_THRESHOLDS.md](docs/WHY_THRESHOLDS.md).

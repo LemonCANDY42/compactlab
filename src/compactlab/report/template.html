@@ -448,6 +448,7 @@ const I={
  colSession:['session','会话'], colHarness:['harness','工具'], colRole:['role','角色'], colModel:['model','模型'], colTurns:['turns','轮次'], colPeak:['peak','峰值'], colComp:['compactions','压缩'], colCtx:['context','上下文'],
  nObs:[n=>'Penalty calibrated from '+n+' observed compactions.',n=>'惩罚参数由 '+n+' 次已观察到的压缩校准。'],
  nPrice:[(k,s)=>'Prices: row “'+k+'” from '+s+'.',(k,s)=>'价格:“'+k+'” 这一行,来源 '+s+'。'],
+ nTtl:[(m,s)=>'Prompt cache: '+m+' ('+s+'); cache writes priced at that tier.',(m,s)=>'提示缓存:'+m+'('+s+'),缓存写入按该档计价。'],
  nAssume:[(b,s,w)=>'Assumed base '+b+', summary '+s+', window '+w+'. Each profile = largest threshold within 2% of its lowest score, above the recall floor and inside its guardrails.',(b,s,w)=>'假设基础上下文 '+b+',摘要 '+s+',窗口 '+w+'。每个方案 = 在其最低评分 2% 以内、不低于召回下限且符合护栏的最大阈值。'],
  f_below_quarter_window:['below 25% of the max window: frequent lossy compactions','低于最大窗口 25%:会频繁有损压缩'],
  f_wait_over_cap:[c=>'adds more than '+c+' min/day of compaction wait',c=>'每天多等压缩超过 '+c+' 分钟'],
@@ -853,6 +854,7 @@ function notes(g){const n=[],pp=g.penalty_params,d=g.default,cur=g.current;
   n.push(esc(t('caveat')));
   if(pp.source!=='prior')n.push(t('nObs',pp.n_observed));
   n.push(esc(t('nPrice',g.price_key,g.price_source)));
+  if(g.cache_ttl)n.push(esc(t('nTtl',g.cache_ttl>=3600?(g.cache_ttl/3600)+' h':Math.round(g.cache_ttl/60)+' min',g.cache_ttl_source)));
   n.push(t('nAssume',fk(g.base_tokens),fk(g.summary_tokens),fk(g.max_window)));
   n.push(esc(S.lang==='zh'?I.cmpNote[1](d.note_zh||d.note,cur?cur.source:(g.current_note||'')):I.cmpNote[0](d.note,cur?cur.source:(g.current_note||''))));return n}
 // ---------- per-day impact: every profile vs default and vs current ----------
