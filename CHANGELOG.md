@@ -6,6 +6,9 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- `compactlab serve` is quiet: one in-place progress line only on a terminal (cut to its width at a space, so it
+  never wraps into extra rows), nothing otherwise; the log says `recalibrating (reason)` and `recalibrated in Ns:
+  N files, M cached, K parsed, X groups; next calibration: <time>`, and the next calibration at start.
 - **Report layout.** Opens on the model with the largest per-day impact (never one that needs no change). Each
   model page leads with one chart: $/day and min/day vs the default over the threshold axis, session peaks behind,
   the recall-floor zone hatched, marks for default, current and the three profiles, and a draggable cursor with the

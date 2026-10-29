@@ -356,3 +356,57 @@ def test_steps_from_an_out_of_guardrail_default_move_toward_the_floor(make_group
     d = decide(g, "balanced", None, None, None, now=0, rules=Rules())
     assert d.action == "apply" and recall[GRID.index(d.value)] < 0.90  # still below the floor, but better
     assert recall[GRID.index(d.value)] > recall[j]
+
+
+class _Tty:
+    def __init__(self, tty: bool):
+        self.tty, self.out = tty, ""
+
+    def isatty(self) -> bool:
+        return self.tty
+
+    def write(self, s: str) -> int:
+        self.out += s
+        return len(s)
+
+    def flush(self) -> None:
+        pass
+
+
+def test_progress_is_one_in_place_line_that_fits_and_silent_off_a_tty(monkeypatch):
+    import importlib
+    import os
+    import shutil
+
+    cli = importlib.import_module("compactlab.cli.main")
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=None: os.terminal_size((40, 24)))
+    tty = _Tty(True)
+    monkeypatch.setattr(cli.sys, "stderr", tty)
+    msgs = [f"scanning claude-code {i}/880 files · cached {i - 3} and some more words" for i in range(20, 900, 20)]
+    for m in msgs:
+        cli._progress(m)
+    assert "\n" not in tty.out
+    rows = [r.removeprefix("\033[K") for r in tty.out.split("\r") if r]
+    assert len(rows) == len(msgs) and all(len(r) <= 39 for r in rows)
+    assert all(m.startswith(r) and m[len(r)] == " " for m, r in zip(msgs, rows, strict=True))  # cut at a space
+    pipe = _Tty(False)
+    monkeypatch.setattr(cli.sys, "stderr", pipe)
+    cli._progress("scanning claude-code 20/880 files")
+    assert pipe.out == ""
+
+
+def test_service_logs_one_summary_line_with_scan_counts(tmp_path, caplog):
+    def analyze():
+        res = _result()
+        res["scan"] = {"files": 840, "cached": 830, "parsed": 10}
+        return res
+
+    cal = Calibrator(analyze, tmp_path, 3600.0)
+    with caplog.at_level("INFO", logger="compactlab.service"):
+        cal.recalibrate("schedule")
+    msgs = [r.getMessage() for r in caplog.records]
+    assert msgs[0] == "recalibrating (schedule)"
+    assert msgs[-1].startswith("recalibrated in ") and "840 files, 830 cached, 10 parsed, " in msgs[-1]
+    assert "next calibration: 2" in msgs[-1]  # a local date, an hour from now
+    assert "scan" not in json.loads((tmp_path / "service" / "result.json").read_text())
+    assert Calibrator(analyze, tmp_path / "m", None).next_text() == "manual only"

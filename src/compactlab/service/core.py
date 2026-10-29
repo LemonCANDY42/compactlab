@@ -64,6 +64,15 @@ class Calibrator:
     def next_due(self) -> float | None:
         return next_due(self.every, self.last_ok, self.last_attempt, self.failures, self.clock())
 
+    def next_text(self) -> str:
+        """The next scheduled calibration as local time, 'now', or 'manual only'."""
+        due = self.next_due()
+        if due is None:
+            return "manual only"
+        if due <= self.clock():
+            return "now"
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(due))
+
     def status(self) -> dict[str, Any]:
         return {
             "running": self.running,
@@ -100,6 +109,7 @@ class Calibrator:
             self._save_state()
             return {"status": "error", "error": self.last_error}
         now = self.clock()
+        scan = res.pop("scan", None) or {}
         res["calibration"] = {"at": now, "every_s": self.every, "reason": reason, "took_s": round(now - start, 1)}
         self.result = res
         self.last_ok, self.failures, self.last_error = now, 0, None
@@ -121,7 +131,9 @@ class Calibrator:
             self.last_apply = {"at": now, **applied}
             out["auto_apply"] = applied
         self._save_state()
-        log.info("recalibrated in %.1fs", res["calibration"]["took_s"])
+        log.info("recalibrated in %.1fs: %s files, %s cached, %s parsed, %d groups; next calibration: %s",
+                 res["calibration"]["took_s"], scan.get("files", "?"), scan.get("cached", "?"), scan.get("parsed", "?"),
+                 len(res.get("groups", [])), self.next_text())  # fmt: skip
         return out
 
     def _save_state(self) -> None:

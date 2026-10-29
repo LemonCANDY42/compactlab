@@ -157,9 +157,14 @@ def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
 
 
 def _progress(msg: str) -> None:
-    """One-line progress on stderr (only when it is a terminal)."""
-    if sys.stderr.isatty():
-        print(f"\r\033[K{msg}", end="", file=sys.stderr, flush=True)
+    """One in-place progress line on stderr, only when it is a terminal. The line is cut to the terminal width at a
+    space (never mid-field): a wrapped line would leave one stale row per update behind the carriage return."""
+    if not sys.stderr.isatty():
+        return
+    width = max(shutil.get_terminal_size((80, 24)).columns - 1, 10)
+    if len(msg) > width:
+        msg = msg[: msg.rfind(" ", 0, width) if " " in msg[:width] else width]
+    print(f"\r\033[K{msg}", end="", file=sys.stderr, flush=True)
 
 
 def load_sessions(a: argparse.Namespace) -> list[Session]:
@@ -168,13 +173,16 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
     cache = None if a.no_cache else ScanCache(a.cache_dir)
     out: list[Session] = []
     cut = _time.time() - a.since_days * 86400 if a.since_days else None
+    quiet, total = getattr(a, "service", False), 0
     try:
         for h in a.harness or adapter_names():
             ad = get_adapter(h)(_roots(a).get(h))
             files = list(ad.find_files())
+            total += len(files)
             for i, path in enumerate(files, 1):
                 if i % 20 == 0 or i == len(files):
-                    _progress(f"scanning {h}: {i}/{len(files)} files" + (f" (cache {cache.stats})" if cache else ""))
+                    stats = "" if quiet or not cache else f" · cached {cache.stats['hit'] + cache.stats['resumed']}"
+                    _progress(f"scanning {h} {i}/{len(files)} files{stats}")
                 try:
                     if cut and path.stat().st_mtime < cut:
                         continue
@@ -189,6 +197,8 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
         if cache:
             cache.save()
         _progress("")
+    st = cache.stats if cache else {"hit": 0, "resumed": 0, "parsed": total}
+    a.scan_stats = {"files": total, "cached": st["hit"] + st["resumed"], "parsed": st["parsed"]}
     return out
 
 
@@ -259,8 +269,12 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
             "or `compactlab demo` to see a report built from synthetic data."
         )
     pricing = _pricing(a)
-    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions),
-                  progress=lambda i, n, name: _progress(f"simulating {i}/{n}: {name}"))  # fmt: skip
+    quiet = getattr(a, "service", False)
+
+    def step(i: int, n: int, name: str) -> None:
+        _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
+
+    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions), progress=step)
     _progress("")
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
@@ -958,6 +972,7 @@ def _calibrator(a: argparse.Namespace):
     except ValueError as e:
         raise CLIError(str(e)) from e
     a.mode = "lite"  # the service never runs deep mode
+    a.service = True  # short progress line, scan counts for the summary log
     state = Path(a.state_dir).expanduser()
     consent = None
     if a.auto_apply:
@@ -970,6 +985,7 @@ def _calibrator(a: argparse.Namespace):
         res = run_analysis(a)
         if res is None:
             raise RuntimeError("analysis returned nothing")
+        res["scan"] = getattr(a, "scan_stats", None)  # popped by the calibrator for its log line
         return res
 
     rules = Rules(min_days=a.min_days, min_turns=a.min_turns, max_step=a.max_step, cooldown_s=cooldown)
@@ -985,13 +1001,23 @@ def _service_logging(state: Path) -> None:
     lg = logging.getLogger("compactlab.service")
     lg.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    class Console(logging.StreamHandler):
+        """Clears the in-place progress line before a log line, so the two never share a row."""
+
+        def emit(self, record: logging.LogRecord) -> None:
+            if self.stream.isatty():
+                self.stream.write("\r\033[K")
+            super().emit(record)
+
     for h in (RotatingFileHandler(state / "service" / "service.log", maxBytes=1_000_000, backupCount=3),
-              logging.StreamHandler(sys.stderr)):  # fmt: skip
+              Console(sys.stderr)):  # fmt: skip
         h.setFormatter(fmt)
         lg.addHandler(h)
 
 
 def cmd_serve(a: argparse.Namespace) -> int:
+    import logging
     import threading
 
     from ..service.http import load_token, make_server
@@ -1009,6 +1035,7 @@ def cmd_serve(a: argparse.Namespace) -> int:
     host, port = str(srv.server_address[0]), int(srv.server_address[1])
     print(f"compactlab serving http://{host}:{port}/  (token in {state / 'service' / 'token'}; Ctrl-C stops)",
           file=sys.stderr)  # fmt: skip
+    logging.getLogger("compactlab.service").info("next calibration: %s", cal.next_text())
     stop = threading.Event()
     threading.Thread(target=cal.loop, args=(stop,), daemon=True).start()
     try:
