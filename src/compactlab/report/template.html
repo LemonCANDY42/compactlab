@@ -167,7 +167,9 @@ svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .bdg i{display:inline-flex;align-items:center;gap:2px}.bdg i svg.ic{width:10px;height:10px;vertical-align:0}.bdg.mute{opacity:.85}
 .kw{font-size:11.5px;line-height:1.35;color:var(--ink2);background:var(--bg2);border-radius:6px;padding:3px 7px;margin-top:4px;white-space:normal;text-align:left;max-width:340px;margin-left:auto}
 .pc .kw{margin:0;max-width:none}.ans2.kw{margin:0;padding:1px 7px}.ans2.kw::before{content:none}
-.kpi .v .nw{white-space:nowrap}#ovw .kpi .v{font-size:23px}
+.kpi .v .nw{white-space:nowrap}.kpi .v .sc{display:block;font:500 12.5px/1.4 var(--mono);margin:2px 0 0;opacity:.85}#ovw .kpi .v{font-size:23px}
+.hrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.hrow .indep{margin:0 auto 0 0}
+.ld{font-weight:600}.sc{font-size:.85em;opacity:.8;margin-left:5px;font-weight:400}.chip .sc{margin-left:4px}tspan.sc2{font-weight:400;font-size:10px;opacity:.85}
 .indep{font-size:11px;color:var(--ink3);margin-bottom:8px}
 #marks.compact .mk.r1 .tx{display:none}
 .live{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.live .tval{min-width:0;font-size:18px}
@@ -184,6 +186,7 @@ svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ovname{fill:var(--ink);font-size:12px}.ovsub{fill:var(--ink3);font-size:10.5px}
 #ovT td button{font:inherit;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left;min-height:28px}
 #ovT td button:hover{color:var(--acc)}
+#ovT th .srt{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;min-height:24px}#ovT th .srt:hover{color:var(--ink)}
 /* tables */
 select,input[type=search]{font:inherit;font-size:13px;background:var(--card);color:var(--ink);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;min-height:34px;max-width:100%}
 input[type=search]{width:260px}
@@ -274,7 +277,7 @@ ul.n{margin:6px 0 0;padding-left:18px}ul.n li{margin:3px 0}
 </aside>
 <main id="main">
  <header>
-  <div class="indep" id="indep"></div>
+  <div class="hrow"><div class="indep" id="indep"></div><div class="seg sm" role="group" id="units"></div><span id="unitI"></span></div>
   <div class="eyebrow" id="eyebrow"></div>
   <h1 id="title">compactlab</h1>
   <div class="meta" id="meta"></div>
@@ -328,6 +331,20 @@ const fmin=(v,basis)=>{if(v==null)return '–';if(Math.abs(v)<.05)return '0 min'
 const fsv=v=>v==null?'–':Math.abs(v)<.05?'$0':(v<0?'▼ −':'▲ +')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
 const fmv=(v,basis)=>{if(v==null)return '–';const a=Math.abs(v);if(a<.05)return '0 min';const sg=v<0?'▼ −':'▲ +';
   if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
+// percent of the reference: cost vs its window cost, time vs its total wall-clock (the engine's d_cost_pct and
+// d_time_pct); null when the reference is zero, and callers then lead with the amount
+const pabs=v=>{const a=Math.abs(v*100);return a<10?a.toFixed(1):String(Math.round(a))};
+const fpct=v=>v==null?'–':Math.abs(v*100)<.05?'0%':(v<0?'▼ −':'▲ +')+pabs(v)+'%';
+const fpn=v=>v==null?'':Math.abs(v*100)<.05?'0%':(v<0?'−':'+')+pabs(v)+'%';
+const fsn=v=>Math.abs(v)<.05?'$0':(v<0?'−':'+')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
+const fmn=(v,basis)=>{const a=Math.abs(v);if(a<.05)return '0 min';const sg=v<0?'−':'+';if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
+const ratio=(num,den)=>den>0?num/den:null;
+function pctAt(g,thr,ref){const i=g.grid.indexOf(thr);if(i<0||!ref)return {c:null,t:null};
+  return {c:ratio(g.combined_cost[i]-ref.combined_cost,ref.combined_cost),t:ratio(g.time_s[i]-ref.time_s,ref.time_s)}}
+// a delta led by the chosen unit with the other one small: '▼ −61%  −$429.3' or '▼ −$429.3  −61%'
+function dual(pv,lead,sec){const p=S.unit==='pct'&&pv!=null;return `<b class="ld">${p?fpct(pv):lead}</b><small class="sc">${p?sec:fpn(pv)}</small>`}
+// per-day amounts of the default, the denominators for aggregated percents (summed amounts, never averaged percents)
+const defUsd=g=>g.default.combined_cost/Math.max(g.days||1,1),defMin=g=>g.default.time_s/60/Math.max(g.days||1,1);
 const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
 const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
 const dur=s=>{s=Math.max(0,s);return s<3600?Math.round(s/60)+'m':s<86400?(s/3600).toFixed(s<36000?1:0)+'h':(s/86400).toFixed(s<864000?1:0)+'d'};
@@ -430,7 +447,7 @@ const I={
  overview:['Overview','概览'], allModels:['All models','全部模型'], models:['Models','模型'], search:['Search models','搜索模型'],
  rMain:['main','主'], rSub:['subagent','子 agent'], rMainS:['main','主'], rSubS:['sub','子'],
  noChange:['No change needed','无需调整'], ncWhy:[(p,d)=>'peak '+p+' < '+d,(p,d)=>'峰值 '+p+' < '+d],
- bTip:[u=>u+' per day vs default if the “set” groups are applied (est.)',u=>'应用“设置”分组后每天 '+u+'(对默认,估算)'],
+ bTip:[u=>u+' per day vs default if the “set” groups are applied (est.; % of the default\'s cost)',u=>'应用“设置”分组后每天 '+u+'(对默认,估算;% 为占默认费用的比例)'],
  mTitle:['Cost and time by auto-compact threshold','各自动压缩阈值下的成本和时间'],
  mHelp:['Top: money per day against the harness default; bottom: wall-clock minutes per day against the default. Both share the threshold axis. The grey bars behind are where your sessions actually peak; the hatched zone is below the recall floor (recall is a lite-mode proxy). Drag the chart or the slider (or focus the slider and use the arrow keys); ▼ saves, ▲ adds. List-price estimates.','上:每天费用相对 harness 默认值的变化;下:每天耗时(分钟)相对默认值的变化,两者共用阈值轴。背后的灰色柱是你的会话实际达到的峰值;斜线区域低于召回下限。拖动图表或滑块;▼ 节省,▲ 增加。'],
  dUsd:['$ / day vs default','美元 / 天(对默认)'], dMin:['minutes / day vs default','分钟 / 天(对默认)'],
@@ -439,10 +456,15 @@ const I={
  noopT:['Never reaches the threshold: nothing to tune.','从未达到压缩阈值:没有可调的。'],
  noopSub:['Every session peaks below the default auto-compact threshold, so no threshold in range changes cost or time.','每个会话的峰值都低于默认自动压缩阈值,范围内的任何阈值都不会改变成本或时间。'],
  mPeak:['peak','峰值'], zoneL:['auto-compacts here','此区间会自动压缩'],
- kTotUsd:['Δ cost / day vs default','较默认每日费用'], kTotMin:['Δ time / day vs default','较默认每日耗时'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
+ kTotUsd:['Δ cost vs default','较默认费用'], kTotMin:['Δ time vs default','较默认耗时'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
  ovChart:['Per-day impact by model','各模型每日影响'], ovHelp:['Estimated money per day against the harness default for the chosen profile if the “set” groups are applied, split into main and subagent runs; right of each bar the minutes per day. Grey rows would keep the default (not counted in the totals). Click a row to open the model.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
- ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['$ / day','美元 / 天'], cMin:['min / day','分钟 / 天'],
- tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost / day vs default','较默认每日费用'], tDMin:['Δ time / day vs default','较默认每日耗时'], tComp:['Compactions / day','每日压缩次数'],
+ ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['Δ $ / day','Δ 美元 / 天'], cMin:['Δ min / day','Δ 分钟 / 天'], cUsdP:['Δ cost %','Δ 费用 %'], cMinP:['Δ time %','Δ 耗时 %'], sortBy:['Sort by','排序:'],
+ kTotPct:['% of the whole: the summed change of the “set” groups divided by the summed default cost (or wall-clock) per day of all groups in this history; group percents are never averaged.','占全部的百分比:“设置”分组的变化之和,除以本段历史中所有分组默认每日费用(或耗时)之和;不对分组百分比取平均。'],
+ tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost vs default','较默认费用'], tDMin:['Δ time vs default','较默认耗时'],
+ unitL:['Show changes as','变化显示为'], unit_pct:['percent of the default','占默认值的百分比'], unit_usd:['amount per day','每日金额'],
+ unitHelp:['% = change against the harness default for the same history: cost as a share of the default\'s window cost (list price) for that group, time as a share of the default\'s total wall-clock. Totals divide summed amounts by summed defaults, never average percents. $ = the change per calendar day. Toggle % | $ to lead with either; the other is shown small.','% = 同一段历史下相对 harness 默认值的变化:费用占该分组默认窗口成本(按公开标价)的比例,时间占默认总耗时的比例。汇总值是加总金额除以加总默认值,不对百分比取平均。$ = 每个自然日的变化。用 % | $ 切换主显示,另一个以小字显示。'],
+ wCost:['cost','费用'], wTime:['time','耗时'], perDayS:['per day','每天'], pcCost:['of the default\'s cost','占默认费用'], pcTime:['of the default\'s wall-clock','占默认耗时'],
+ dPct:['cost vs default (%)','费用(对默认,%)'], dPctT:['wall-clock vs default (%)','耗时(对默认,%)'], tComp:['Compactions / day','每日压缩次数'],
  votS:[v=>'time @ $'+v+'/h',v=>'时间 @ $'+v+'/小时'], est:['est.','估算'],
  indepL:['Independent open-source tool · not affiliated with any model vendor · list-price estimates','独立开源工具 · 与任何模型厂商无关 · 按公开标价估算'],
  bKeep:[u=>'keep default: '+u+' per day if set anyway (est.)',u=>'保持默认:若仍设置,每天 '+u+'(估算)'], bSess:[n=>n+' sessions',n=>n+' 个会话'],
@@ -457,7 +479,7 @@ const I={
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
-const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{}};
+const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{},unit:'pct',ovSort:null};
 let sortK='peak',asc=false;
 const PROF=['cost','balanced','time'],PICON={cost:'coin',balanced:'scale',time:'clock',custom:'sliders'};
 // a broken guardrail is red, a warning amber (cost below a quarter of the window, more wait than the cap),
@@ -467,6 +489,7 @@ const NOTE=f=>['guardrail_applied','deep_recall_below_floor'].includes(f);
 const flagKind=f=>VIOL(f)?'bad':NOTE(f)?'':'low';
 S.lang=/^zh/i.test(navigator.language||'')?'zh':'en';
 try{const l=localStorage.getItem('compactlab.lang');if(l==='en'||l==='zh')S.lang=l;const th=localStorage.getItem('compactlab.theme');if(th)S.theme=th;
+  const un=localStorage.getItem('compactlab.unit');if(un==='pct'||un==='usd')S.unit=un;
   const fo=JSON.parse(localStorage.getItem('compactlab.fold')||'{}');if(fo&&typeof fo==='object')S.fold=fo}catch(e){}
 function applyTheme(){if(S.theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.theme}
 applyTheme();
@@ -550,6 +573,10 @@ function statics(){
   $('#foot').innerHTML='<span>'+esc(t('disclaimer'))+'</span>'+ib(t('tag'));$('#indep').textContent=t('indepL');
   $('#q').placeholder=t('filter');$('#q').setAttribute('aria-label',t('filter'));
   $('#langs').innerHTML=[['en','EN','English'],['zh','中','中文']].map(([k,l,a])=>`<button data-l="${k}" aria-pressed="${S.lang===k}" aria-label="${a}">${l}</button>`).join('');
+  $('#units').setAttribute('aria-label',t('unitL'));
+  $('#units').innerHTML=[['pct','%'],['usd','$']].map(([k,l])=>`<button data-unit="${k}" aria-pressed="${S.unit===k}" aria-label="${t('unit_'+k)}">${l}</button>`).join('');
+  $('#unitI').innerHTML=ib(t('unitHelp'));
+  document.querySelectorAll('#units button').forEach(b=>b.onclick=()=>{S.unit=b.dataset.unit;try{localStorage.setItem('compactlab.unit',S.unit)}catch(e){}S.tree=null;keep(()=>{statics();render()})});
   document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}keep(()=>{statics();render();renderS()})});
   $('#themes').innerHTML=[['auto','auto','thAuto'],['light','sun','thLight'],['dark','moon','thDark']].map(([k,i,l])=>`<button data-th="${k}" aria-pressed="${S.theme===k}" aria-label="${t(l)}" title="${t(l)}">${ic(i)}</button>`).join('');
   document.querySelectorAll('#themes button').forEach(b=>b.onclick=()=>{S.theme=b.dataset.th;try{localStorage.setItem('compactlab.theme',S.theme)}catch(e){}applyTheme();keep(statics)});
@@ -563,7 +590,7 @@ function buildTree(){const H=new Map(),nc=[];
     const f=h.fams.get(fam);if(!f.models.has(g.model))f.models.set(g.model,{id:g.model,harness:g.harness,name:label(g.model),gs:[]});f.models.get(g.model).gs.push(i)});
   const agg=(o,gs)=>{const G_=gs.map(i=>D.groups[i]);o.usd=G_.reduce((a,g)=>a+setUsd(g),0);o.keep=G_.reduce((a,g)=>a+(isSet(g)?0:usdOf(g)),0);
     o.w=G_.reduce((a,g)=>a+Math.abs(setUsd(g)),0)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g)),0);
-    o.n=G_.reduce((a,g)=>a+g.n_sessions,0);o.turns=G_.reduce((a,g)=>a+g.n_turns,0);return o};
+    o.den=G_.reduce((a,g)=>a+defUsd(g),0);o.n=G_.reduce((a,g)=>a+g.n_sessions,0);o.turns=G_.reduce((a,g)=>a+g.n_turns,0);return o};
   const byW=(a,b)=>b.w-a.w||b.turns-a.turns,hs=[];
   for(const h of H.values()){const fams=[];
     for(const f of h.fams.values()){const ms=[...f.models.values()];
@@ -577,9 +604,10 @@ function buildTree(){const H=new Map(),nc=[];
 // per role, so the reason matches the page it opens: 'peak main 416k · sub 506k < 967k'
 function ncWhy(m){const gs=m.gs.map(i=>D.groups[i]);return t('ncWhy',gs.map(g=>(gs.length>1?roleS(g.role)+' ':'')+fk(g.peak_max||0)).join(' · '),fk(gs[0].default.threshold))}
 // money per day of the groups that would be set (muted: only "keep default" figures), and the session count
-function badge(usd,n,keep=0){const muted=Math.abs(usd)<.05&&Math.abs(keep)>=.05,v=muted?keep:usd;
-  const tip=(muted?t('bKeep',fsv(keep)):t('bTip',fsv(usd)))+' · '+t('bSess',n);
-  return `<span class="bdg ${muted?'mute':tone(v)}" data-tip="${esc(tip)}">${fus(v)}<i>${ic('flag')}${n}</i></span>`}
+function badge(o){const muted=Math.abs(o.usd)<.05&&Math.abs(o.keep||0)>=.05,v=muted?o.keep:o.usd,pv=ratio(v,o.den);
+  const both=fsv(v)+(pv!=null?' ('+fpn(pv)+')':''),tip=(muted?t('bKeep',both):t('bTip',both))+' · '+t('bSess',o.n);
+  const txt=S.unit==='pct'&&pv!=null?(Math.abs(pv*100)<.05?'':(v<0?'▼−':'▲+')+pabs(pv)+'%'):fus(v);
+  return `<span class="bdg ${muted?'mute':tone(v)}" data-tip="${esc(tip)}">${txt}<i>${ic('flag')}${o.n}</i></span>`}
 function tree(){const T=S.tree||(S.tree=buildTree()),q=$('#tq').value.trim().toLowerCase(),box=$('#tree'),sel=S.view==='overview'?null:G();
   const hit=m=>!q||(m.id+' '+m.name+' '+m.harness+' '+m.fam).toLowerCase().includes(q);
   const isSel=m=>sel&&m.id===sel.model&&m.harness===sel.harness;
@@ -588,12 +616,12 @@ function tree(){const T=S.tree||(S.tree=buildTree()),q=$('#tq').value.trim().toL
   const mrow=(m,why)=>{const cur=isSel(m),g0=D.groups[m.gs[0]];
     const roles=m.gs.length>1?m.gs.map(i=>{const g=D.groups[i];return `<button type="button" class="rc" data-tab="${i}" aria-pressed="${cur&&i===S.gi}" aria-label="${esc(m.name+' · '+roleL(g.role))}" data-tip="${esc(roleL(g.role)+' · '+(g.no_action_needed?t('noChange'):fsv(usdOf(g))+t('uDay')+(isSet(g)?'':' · '+t('aKeep')))+' · '+g.n_sessions)}">${ic(roleIc(g.role))}${esc(roleS(g.role))}</button>`}).join('')
       :`<span class="rt">${ic(roleIc(g0.role))}${esc(roleS(g0.role))}</span>`;
-    return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m.usd,m.n,m.keep)}<span class="roles">${roles}</span></div>`};
+    return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m)}<span class="roles">${roles}</span></div>`};
   const all=T.hs.flatMap(h=>h.fams.flatMap(f=>f.models.flatMap(m=>m.gs)));
-  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge(all.reduce((a,i)=>a+setUsd(D.groups[i]),0),D.groups.reduce((a,g)=>a+g.n_sessions,0))}</button>`;
+  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge({usd:all.reduce((a,i)=>a+setUsd(D.groups[i]),0),den:D.groups.reduce((a,g)=>a+defUsd(g),0),n:D.groups.reduce((a,g)=>a+g.n_sessions,0)})}</button>`;
   for(const H_ of T.hs){const inner=H_.fams.map(f=>{const ms=f.models.filter(hit);if(!ms.length)return '';
-      return fold(f.key,'fam',`<span class="nm">${esc(f.name)}</span>${badge(f.usd,f.n,f.keep)}`,ms.map(m=>mrow(m)).join(''),ms.some(isSel))}).join('');
-    if(inner)h+=fold(H_.key,'har',`<span class="nm">${esc(H_.name)}</span>${badge(H_.usd,H_.n,H_.keep)}`,inner,H_.fams.some(f=>f.models.some(isSel)))}
+      return fold(f.key,'fam',`<span class="nm">${esc(f.name)}</span>${badge(f)}`,ms.map(m=>mrow(m)).join(''),ms.some(isSel))}).join('');
+    if(inner)h+=fold(H_.key,'har',`<span class="nm">${esc(H_.name)}</span>${badge(H_)}`,inner,H_.fams.some(f=>f.models.some(isSel)))}
   const nc=T.nc.filter(hit);
   if(nc.length)h+=fold('nc','nc',ic('check')+`<span class="nm">${t('noChange')}</span><span class="bdg"><i>${nc.length}</i></span>`,nc.map(m=>mrow(m,m.harness+' · '+ncWhy(m))).join(''),nc.some(isSel));
   box.innerHTML=h;
@@ -637,9 +665,12 @@ function buildBar(){const g=G();
   $('#cpOne').onclick=async()=>{const b=$('#cpOne'),ok=await copyStr(snippet(G(),S.T));b.querySelector('span').textContent=ok?t('cpCopied'):t('cpFail');
     clearTimeout(b.tm);b.tm=setTimeout(()=>{b.querySelector('span').textContent=t('cpCopy')},2200)}}
 // one answer line: 'saves $44.9 + 14.7 min per day vs default 967k', each part coloured by its own sign
-function answer(u,m,vs){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05;
-  const h=zu&&zm?`<span>${t('noDiff')}</span>`:[zu?'':`<span class="${tone(u)}">${fsv(u)}</span>`,zm?'':`<span class="${tone(m)}">${fmv(m)}</span>`].filter(Boolean).join(' · ');
-  return h+` <span class="cap">${esc(vs)}</span>`}
+function answer(u,m,vs,pc,pt){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05;if(zu&&zm)return `<span>${t('noDiff')}</span> <span class="cap">${esc(vs)}</span>`;
+  const p=S.unit==='pct'&&pc!=null&&pt!=null;
+  const a=p?[zu?'':`<span class="${tone(u)}">${fpct(pc)} ${t('wCost')}</span>`,zm?'':`<span class="${tone(m)}">${fpct(pt)} ${t('wTime')}</span>`]
+    :[zu?'':`<span class="${tone(u)}">${fsv(u)}</span>`,zm?'':`<span class="${tone(m)}">${fmv(m)}</span>`];
+  const sec=p?[zu?'':fsn(u),zm?'':fmn(m)].filter(Boolean).join(' · '):[zu?'':fpn(pc)+' '+t('wCost'),zm?'':fpn(pt)+' '+t('wTime')].filter(Boolean).join(' · ');
+  return a.filter(Boolean).join(' · ')+` <small class="sc">${esc(sec)}</small> <span class="cap">${esc(vs)}</span>`}
 // the setting for this one model at threshold T, in the harness's own config syntax
 function snippet(g,T){return g.harness==='codex'?`model_auto_compact_token_limit = ${T}`:JSON.stringify({modelSettings:{[g.model]:{autoCompactWindow:T}}})}
 async function copyStr(txt){try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(txt);return true}}catch(e){}
@@ -650,6 +681,7 @@ function ticksN(lo,hi,min){let n=min,o=nice(lo,hi,n);while(o.length<min&&n<12)o=
 function nice(lo,hi,n=4){const st0=(hi-lo||1)/n,mag=10**Math.floor(Math.log10(st0)),f=st0/mag,st=(f<1.5?1:f<3?2:f<7?5:10)*mag,out=[];
   for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-6;v+=st)out.push(Math.abs(v)<st*1e-6?0:+v.toPrecision(12));return out}
 // axis ticks: ▼ below the default line saves, ▲ above adds
+const fpctT=v=>v===0?'0':(v<0?'▼−':'▲+')+(+Math.abs(v).toFixed(1))+'%';
 const fusdT=v=>v===0?'0':(v<0?'▼−':'▲+')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1));
 const fminT=v=>v===0?'0':(v<0?'▼−':'▲+')+(Math.abs(v)>=100?Math.round(Math.abs(v)):+Math.abs(v).toFixed(1))+'m';
 // charts drawn at the box's own width keep their text at its real size on a phone
@@ -659,7 +691,8 @@ function peaksOf(g){return D.sessions.filter(s=>s.model===g.model&&s.role===g.ro
 // default (0 = the default). Behind both: where this group's sessions peak. Hatched: recall below the floor.
 // Vertical marks: default (dashed), current (dotted), profiles (thin, icon on top). The cursor follows S.T.
 function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.default,im=xs.map((_,i)=>impJS(pt(g,i),d,g));
-  const u=im.map(x=>x.usd.per_day),m=im.map(x=>x.minutes.per_day);
+  const U=im.map(x=>x.usd.per_day),M=im.map(x=>x.minutes.per_day),PC=xs.map((_,i)=>ratio(g.combined_cost[i]-d.combined_cost,d.combined_cost)),PT=xs.map((_,i)=>ratio(g.time_s[i]-d.time_s,d.time_s));
+  const usePct=S.unit==='pct'&&PC.every(v=>v!=null)&&PT.every(v=>v!=null),u=usePct?PC.map(v=>v*100):U,m=usePct?PT.map(v=>v*100):M;
   // rows from the top: threshold pill (cursor), profile icons, panel title, panel; then the time panel the same way
   const W=boxW(box),L=W<600?50:62,R=W<600?10:18,top={y1:58,y0:198},bot={y1:240,y0:364},H=bot.y0+24,x0=L,x1=W-R;
   const X=v=>x0+(v-xs[0])/((xs[n-1]-xs[0])||1)*(x1-x0);
@@ -680,7 +713,7 @@ function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.defau
     svg.append(el('rect',{x:a,y:top.y1,width:z-a,height:bot.y0-top.y1,class:'unsafe'}));
     if(z-a>70)svg.append(el('text',{x:z-6,y:top.y1+13,'text-anchor':'end',class:'dl uz'},t('unsafeL',fl)));i=j}
   // panels: ticks (at least four), zero line (= default), title above the panel starting at the left edge
-  for(const [p,s,v,f,lab,icn] of [[top,su,u,fusdT,'dUsd','coin'],[bot,sm,m,fminT,'dMin','clock']]){
+  for(const [p,s,v,f,lab,icn] of [[top,su,u,usePct?fpctT:fusdT,usePct?'dPct':'dUsd','coin'],[bot,sm,m,usePct?fpctT:fminT,usePct?'dPctT':'dMin','clock']]){
     for(const y of ticksN(s.lo,s.hi,3)){svg.append(el('line',{x1:x0,x2:x1,y1:s.Y(y),y2:s.Y(y),class:'grid'}));svg.append(el('text',{x:x0-7,y:s.Y(y)+3.5,'text-anchor':'end',class:y<0?'tk good':y>0?'tk warn':'tk'},f(y)))}
     svg.append(el('line',{x1:x0,x2:x1,y1:s.Y(0),y2:s.Y(0),class:'zero'}));
     svg.append(el('use',{href:'#i-'+icn,x:4,y:p.y1-17,width:13,height:13,class:'pico'}));svg.append(el('text',{x:21,y:p.y1-7,class:'dl ptl'},t(lab)));
@@ -711,7 +744,7 @@ function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.defau
   const end=e=>{if(drag!=null){try{ov.releasePointerCapture(drag)}catch(_){}}drag=null};
   ov.addEventListener('pointerup',end);ov.addEventListener('pointercancel',end);
   ov.addEventListener('pointerleave',()=>{if(drag==null){hideTip();guide.setAttribute('visibility','hidden')}});
-  S.mc={X,su,sm,u,m,top,bot,cur,x0,x1};
+  S.mc={X,su,sm,u,m,U,M,PC,PT,usePct,top,bot,cur,x0,x1};
   // slider directly under the plot: its thumb centre lines up with the chart's x (the thumb is inset 8px)
   const pos=v=>Math.min(Math.max((v-xs[0])/((xs[n-1]-xs[0])||1),0),1),at=v=>`left:calc(8px + (100% - 16px) * ${pos(v).toFixed(4)})`;
   const byT={};PROF.forEach(k=>{(byT[g.profiles[k].threshold]=byT[g.profiles[k].threshold]||[]).push(k)});
@@ -732,10 +765,11 @@ function buildMain(){const g=G(),box=$('#fMain'),xs=g.grid,n=xs.length,d=g.defau
 // value labels sit on the side of the dot away from the curve: below it where the curve rises to the right
 function moveCursor(){const c=S.mc,g=G();if(!c)return;const i=g.grid.indexOf(S.T),n=g.grid.length,x=c.X(S.T),[ln,d1,d2,t1,t2,hd,hl]=c.cur.children;
   ln.setAttribute('x1',x);ln.setAttribute('x2',x);const right=x<c.x1-130;
-  for(const [dot,lab,s,v,f,p] of [[d1,t1,c.su,c.u,fsv,c.top],[d2,t2,c.sm,c.m,v=>fmv(v),c.bot]]){const y=s.Y(v[i]);dot.setAttribute('cx',x);dot.setAttribute('cy',y);
+  const L1=c.usePct?[fpct(c.PC[i]),fsn(c.U[i])+t('uDay')]:[fsv(c.U[i])+t('uDay'),fpn(c.PC[i])],L2=c.usePct?[fpct(c.PT[i]),fmn(c.M[i])+t('uDay')]:[fmv(c.M[i])+t('uDay'),fpn(c.PT[i])];
+  for(const [dot,lab,s,v,L,p] of [[d1,t1,c.su,c.u,L1,c.top],[d2,t2,c.sm,c.m,L2,c.bot]]){const y=s.Y(v[i]);dot.setAttribute('cx',x);dot.setAttribute('cy',y);
     const j=Math.min(n-1,Math.max(0,i+(right?2:-2))),ny=s.Y(v[j]),below=right?ny<y:ny>y;
     let ly=below?y+17:y-9;ly=Math.min(Math.max(ly,p.y1+11),p.y0-4);
-    lab.setAttribute('x',x+(right?9:-9));lab.setAttribute('y',ly);lab.setAttribute('text-anchor',right?'start':'end');lab.setAttribute('class','dl b '+tone(v[i]));lab.textContent=f(v[i])+t('uDay')}
+    lab.setAttribute('x',x+(right?9:-9));lab.setAttribute('y',ly);lab.setAttribute('text-anchor',right?'start':'end');lab.setAttribute('class','dl b '+tone(v[i]));lab.textContent=L[0];if(L[1])lab.append(el('tspan',{class:'sc2',dx:5},L[1]))}
   hl.textContent=fk(S.T);hl.setAttribute('x',x);const w=8*fk(S.T).length+12;hd.setAttribute('width',w);hd.setAttribute('x',Math.min(Math.max(x-w/2,0),c.x1+16-w))}
 // push mark labels down a line when they would overlap a neighbour in the same row
 function spreadMarks(){const tb=document.querySelector('.track');if(!tb)return;const T=tb.getBoundingClientRect();
@@ -764,7 +798,8 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
   const cur=(v,f)=>icur?' · '+t('rCurrent')+' '+f(v):'';
   const fl=r.recall_floor,lo=Math.min(fl,p.recall,d.recall)-.02,gp=v=>((v-lo)/(1-lo)*100).toFixed(1)+'%';
   const dcp=im.compactions.per_day-im.ref_compactions.per_day;
-  $('#ans').innerHTML=answer(im.usd.per_day,im.minutes.per_day,t('vsDefL',def))+(icur?'<span class="ans2">'+answer(icur.usd.per_day,icur.minutes.per_day,t('vsCurL',fk(g.current.configured??g.current.threshold)))+'</span>':'<span class="ans2 cap">'+esc(t('noCur'))+'</span>');
+  const pd=pctAt(g,S.T,d),pcu=g.current?pctAt(g,S.T,g.current):null;
+  $('#ans').innerHTML=answer(im.usd.per_day,im.minutes.per_day,t('vsDefL',def),pd.c,pd.t)+(icur?'<span class="ans2">'+answer(icur.usd.per_day,icur.minutes.per_day,t('vsCurL',fk(g.current.configured??g.current.threshold)),pcu.c,pcu.t)+'</span>':'<span class="ans2 cap">'+esc(t('noCur'))+'</span>');
   const cb=$('#cpOne'),keepIt=action(g,S.T,S.vot)!=='aSet';if(keepIt)$('#ans').insertAdjacentHTML('beforeend','<span class="ans2 kw">'+esc(keepWhy(g,S.T,S.vot))+'</span>');cb.disabled=keepIt;cb.dataset.tip=keepIt?t('cpKeep'):t('cpOneTip',snippet(g,S.T));cb.setAttribute('aria-label',t('cpCopy')+': '+(keepIt?t('cpKeep'):snippet(g,S.T)));
   $('#kpis').innerHTML=`
    <div class="kpi"><div class="kh">${ic('refresh')}<span>${t('kComp')}</span></div><div class="v">${im.compactions.per_day.toFixed(1)}</div>
@@ -797,10 +832,10 @@ function impactPanel(){const g=G(),box=$('#fImpact');
   const emax=g.effective_max||g.grid[g.grid.length-1],unit=' / '+t('uB_'+B);
   const cf=x=>B==='per_month'?String(Math.round(x)):x.toFixed(1);
   const cards=PROF.map(k=>{const P=g.profiles[k],act=action(g,P.threshold,P.value_of_time),frac=Math.min(P.threshold/emax,1);
-    const rows=refs.map(([r,lab,thr,rk])=>{const im=impOf(g,k,r);if(!im)return '';const u=im.usd[B],m=im.minutes[B],w=im.wait_minutes[B],tg=-im.turn_gain_minutes[B],cc=im.compactions[B],rc=im.ref_compactions[B];
+    const rows=refs.map(([r,lab,thr,rk])=>{const im=impOf(g,k,r);if(!im)return '';const pr=pctAt(g,P.threshold,r==='vs_default'?g.default:g.current);const u=im.usd[B],m=im.minutes[B],w=im.wait_minutes[B],tg=-im.turn_gain_minutes[B],cc=im.compactions[B],rc=im.ref_compactions[B];
       return `<div class="irow" data-ref="${r}"><span class="cap">${esc(t(lab,thr))}</span><div class="chips">`+
-        chip(fsv(u),tone(u),'coin',t('iMoney')+' '+fsv(u)+unit+' ('+(u<0?t('saves'):t('adds'))+', '+t('est')+')',` data-m="usd-${r}"`)+
-        chip(fmv(m,B),tone(m),'clock',t('iTime')+' '+fmv(m,B)+unit+' · '+t('iSplitTip',fmv(w,B),fmv(tg,B)),` data-m="min-${r}"`)+
+        chip(dual(pr.c,fsv(u),fsn(u)),tone(u),'coin',t('iMoney')+' '+fsv(u)+unit+(pr.c!=null?' · '+fpn(pr.c)+' '+t('pcCost'):'')+' ('+(u<0?t('saves'):t('adds'))+', '+t('est')+')',` data-m="usd-${r}"`)+
+        chip(dual(pr.t,fmv(m,B),fmn(m,B)),tone(m),'clock',t('iTime')+' '+fmv(m,B)+unit+(pr.t!=null?' · '+fpn(pr.t)+' '+t('pcTime'):'')+' · '+t('iSplitTip',fmv(w,B),fmv(tg,B)),` data-m="min-${r}"`)+
         chip(cf(cc)+' '+t('cmpS'),'','refresh',t('iComp')+' '+cf(cc)+unit+' · '+t(rk)+' '+cf(rc))+
         `</div><span class="cap">${esc(t('cSplit',fmv(w,B),fmv(tg,B)))}</span></div>`}).join('');
     return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header>${ic(PICON[k],t(k))}<span class="pn">${t(k)}${k===g.profile?'&nbsp;★':''}</span>${flagIcons(P)}<span class="act ${act==='aSet'?'set':''}">${t(act)}</span></header>
@@ -813,7 +848,8 @@ function impactPanel(){const g=G(),box=$('#fImpact');
 // ---------- chart tooltips ----------
 function tipRow(k,v){return `<div class="r"><span>${k}</span><span>${v}</span></div>`}
 function tipHTML(g,i){const p=pt(g,i),d=g.default,c=cmp(p,d),im=impJS(p,d);return `<b>${fk(p.threshold)}</b>`+tipRow(t('tWin'),fd(p.combined_cost))+
-  tipRow(t('tDUsd'),fsv(im.usd.per_day)+' ('+arrow(c.dcp)+pc(c.dcp)+')')+tipRow(t('tDMin'),fmv(im.minutes.per_day))+tipRow(t('tComp'),c.cpd.toFixed(1))+tipRow(t('kRecall'),p.recall.toFixed(3))}
+  tipRow(t('tDUsd'),S.unit==='pct'?fpct(ratio(c.dc,d.combined_cost))+' · '+fsn(im.usd.per_day)+t('uDay'):fsv(im.usd.per_day)+t('uDay')+' · '+fpn(ratio(c.dc,d.combined_cost)))+
+  tipRow(t('tDMin'),S.unit==='pct'?fpct(ratio(c.dt,d.time_s))+' · '+fmn(im.minutes.per_day)+t('uDay'):fmv(im.minutes.per_day)+t('uDay')+' · '+fpn(ratio(c.dt,d.time_s)))+tipRow(t('tComp'),c.cpd.toFixed(1))+tipRow(t('kRecall'),p.recall.toFixed(3))}
 function showTip(html,x,y,below){const tp_=$('#tip');tp_.innerHTML=html;tp_.hidden=false;const w=tp_.offsetWidth,h=tp_.offsetHeight;
   tp_.style.left=Math.max(8,Math.min(x+(below?0:14),innerWidth-w-8))+'px';
   tp_.style.top=(below?(y+h>innerHeight-8?Math.max(8,y-h-34):y):Math.max(8,(y-h-12<8?y+16:y-h-12)))+'px'}
@@ -975,24 +1011,28 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const models=[];D.groups.forEach((g,i)=>{let m=models.find(x=>x.h===g.harness&&x.id===g.model);if(!m)models.push(m={h:g.harness,id:g.model,gs:[]});m.gs.push(i)});
   models.forEach(m=>{const G_=m.gs.map(i=>D.groups[i]);m.usd=G_.reduce((a,g)=>a+setUsd(g,k),0);m.min=G_.reduce((a,g)=>a+setMin(g,k),0);
     m.keep=G_.filter(g=>!g.no_action_needed&&!isSet(g,k));m.st=G_.some(g=>isSet(g,k))?'set':m.keep.length?'keep':'noop';
+    m.den=G_.reduce((a,g)=>a+defUsd(g),0);m.mden=G_.reduce((a,g)=>a+defMin(g),0);
     m.w=Math.abs(m.usd)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g,k)),0);m.gs.sort((a,b)=>(D.groups[a].role==='main'?0:1)-(D.groups[b].role==='main'?0:1))});
   const tu=models.reduce((a,m)=>a+m.usd,0),tm=models.reduce((a,m)=>a+m.min,0),cnt=st=>models.filter(m=>m.st===st).length;
+  // percents of the whole: summed changes over summed defaults (all groups), never an average of group percents
+  const tpu=ratio(tu,D.groups.reduce((a,g)=>a+defUsd(g),0)),tpm=ratio(tm,D.groups.reduce((a,g)=>a+defMin(g),0));
   const kpi=(icn,lab,v,cls,sub)=>`<div class="kpi"><div class="kh">${ic(icn)}<span>${t(lab)}</span></div><div class="v ${cls||''}">${v}</div>${sub?`<div class="cap">${sub}</div>`:''}</div>`;
   box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('votS',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
-   <div class="kpis">${kpi('coin','kTotUsd','<span class="nw">'+fsv(tu)+'<span class="cap"> '+t('uDay')+'</span></span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>')+kpi('clock','kTotMin','<span class="nw">'+fmv(tm)+'<span class="cap"> '+t('uDay')+'</span></span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
+   <div class="kpis">${kpi('coin','kTotUsd','<span class="nw">'+dual(tpu,fsv(tu)+t('uDay'),fsn(tu)+t('uDay'))+'</span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>'+ib(t('kTotPct')))+kpi('clock','kTotMin','<span class="nw">'+dual(tpm,fmv(tm)+t('uDay'),fmn(tm)+t('uDay'))+'</span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
      kpi('sliders','kToSet',String(cnt('set')),'',esc(t('mUnit')))+kpi('scale','kKeep',String(cnt('keep')),'',esc(t('mUnit')))+kpi('check','kNoCh',String(cnt('noop')),'',esc(t('mUnit')))}</div>
    <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv"></div>
    <h2>${t('ovTable')}</h2><div class="card scroll" id="ovT"></div>`;
   box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>{S.op=b.dataset.op;S.tree=null;keep(()=>{renderOverview();tree()})});
   // horizontal bars: money saved per day to the right of zero, added to the left (amber); "keep default" models grey
   const rows=models.filter(m=>m.st!=='noop').sort((a,b)=>({set:0,keep:1}[a.st]-{set:0,keep:1}[b.st])||b.w-a.w);
-  const ob=$('#fOv'),W=boxW(ob),wide=W>=600,rowH=wide?34:50,L=wide?190:8,R=wide?190:8,H=Math.max(rowH*rows.length+30,80);
+  const ob=$('#fOv'),W=boxW(ob),wide=W>=600,rowH=wide?34:50,L=wide?190:8,R=wide?270:8,H=Math.max(rowH*rows.length+30,80);
   const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t('ovChart')});
-  const val=(m,g)=>m.st==='set'?-usdOf(g,k)*(isSet(g,k)?1:0):-usdOf(g,k);
+  const byPct=S.unit==='pct'&&rows.every(m=>m.den>0);
+  const val=(m,g)=>(m.st==='set'?-usdOf(g,k)*(isSet(g,k)?1:0):-usdOf(g,k))/(byPct?m.den/100:1);
   const sv=rows.map(m=>m.gs.map(i=>val(m,D.groups[i])));const pos=sv.map(v=>v.filter(x=>x>0).reduce((a,b)=>a+b,0)),neg=sv.map(v=>v.filter(x=>x<0).reduce((a,b)=>a+b,0));
   const lo=Math.min(0,...neg),hi=Math.max(0,...pos,1e-9),X=v=>L+(v-lo)/((hi-lo)||1)*(W-L-R);
   svg.append(el('line',{x1:X(0),x2:X(0),y1:6,y2:H-22,class:'zero'}));
-  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼−$':'▲+$')+(+Math.abs(v).toFixed(1))));
+  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼−':'▲+')+(byPct?(+Math.abs(v).toFixed(1))+'%':'$'+(+Math.abs(v).toFixed(1)))));
   rows.forEach((m,r)=>{const y=10+r*rowH,gr=el('g',{class:'ovrow'+(m.st==='keep'?' keep':''),'data-tab':m.gs[0]});gr.append(el('rect',{x:0,y:y-4,width:W,height:rowH,rx:6,class:'ovbg'}));
     const by=wide?y+2:y+22;gr.append(el('text',{x:8,y:y+11,class:'ovname'},label(m.id)));if(wide)gr.append(el('text',{x:8,y:y+24,class:'ovsub'},m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + ')));
     let ap=0,an=0;m.gs.forEach((i,j)=>{const v=sv[r][j];if(Math.abs(v)<1e-9)return;const a=v>0?ap:an+v;if(v>0)ap+=v;else an+=v;
@@ -1000,18 +1040,23 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
       if(w>44)gr.append(el('text',{x:x+6,y:by+13,class:'seglab'},roleS(role)))});
     // the label: money and minutes each in their own colour; "keep default" rows say so, greyed
     const tx=wide?el('text',{x:Math.max(X(ap),X(0))+8,y:y+15,class:'dl b'}):el('text',{x:W-8,y:y+11,'text-anchor':'end',class:'dl b'});
-    if(m.st==='keep'){const u=m.keep.reduce((a,g)=>a+usdOf(g,k),0);tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+fsv(u)+t('uDay')))}
-    else{tx.append(el('tspan',{class:tone(m.usd)},fsv(m.usd)+t('uDay')),el('tspan',{class:'mute'},' · '),el('tspan',{class:tone(m.min)},fmv(m.min)))}
+    const pu=ratio(m.usd,m.den),pm=ratio(m.min,m.mden),lead=(pv,a,b)=>byPct&&pv!=null?[fpct(pv),a]:[b,fpn(pv)];
+    if(m.st==='keep'){const u=m.keep.reduce((a,g)=>a+usdOf(g,k),0),[l1,s1]=lead(ratio(u,m.den),fsn(u)+t('uDay'),fsv(u)+t('uDay'));tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+l1+' '),el('tspan',{class:'mute sc2'},s1))}
+    else{const [l1,s1]=lead(pu,fsn(m.usd)+t('uDay'),fsv(m.usd)+t('uDay')),[l2,s2]=lead(pm,fmn(m.min),fmv(m.min));
+      tx.append(el('tspan',{class:tone(m.usd)},l1+' '),el('tspan',{class:tone(m.usd)+' sc2'},s1),el('tspan',{class:'mute'},' · '),el('tspan',{class:tone(m.min)},l2+' '),el('tspan',{class:tone(m.min)+' sc2'},s2))}
     gr.append(tx);
     gr.addEventListener('pointermove',e=>showTip('<b>'+esc(label(m.id))+'</b>'+m.gs.map(i=>{const g=D.groups[i];return tipRow(roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+' · '+fmv(minOf(g,k))+(isSet(g,k)?'':' · '+t('aKeep')))}).join(''),e.clientX,e.clientY));
     gr.addEventListener('pointerleave',hideTip);gr.addEventListener('click',()=>pick(m.gs[0]));svg.append(gr)});
   ob.append(svg);
   // roll-up table, every group: set first, then keep default, then no change
   const rk=g=>g.no_action_needed?2:isSet(g,k)?0:1;
-  const tr=D.groups.map((g,i)=>[g,i]).sort((a,b)=>rk(a[0])-rk(b[0])||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
-  $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>'<th>'+t(c)+'</th>').join('')+'</tr>'+tr.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k),mu=a==='aSet'?'':' mute';
-    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span>${a==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}</td><td class="${tone(u)}${mu}">${g.no_action_needed?'–':fsv(u)}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':fmv(mn)}</td></tr>`}).join('')+'</table>';
+  const pcOf=g=>g.no_action_needed?{c:null,t:null}:pctAt(g,g.profiles[k].threshold,g.default);
+  const key={cModel:g=>label(g.model),cUsd:g=>S.unit==='pct'&&pcOf(g).c!=null?pcOf(g).c:usdOf(g,k),cMin:g=>S.unit==='pct'&&pcOf(g).t!=null?pcOf(g).t:minOf(g,k)};
+  const so=S.ovSort,tr=D.groups.map((g,i)=>[g,i]).sort((a,b)=>so?(so.k==='cModel'?key.cModel(a[0]).localeCompare(key.cModel(b[0])):key[so.k](a[0])-key[so.k](b[0]))*(so.asc?1:-1):rk(a[0])-rk(b[0])||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
+  $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>key[c]?`<th><button type="button" class="srt" data-sort="${c}" aria-label="${t('sortBy')} ${t(c)}">${t(c==='cUsd'?(S.unit==='pct'?'cUsdP':'cUsd'):c==='cMin'?(S.unit==='pct'?'cMinP':'cMin'):c)}${so&&so.k===c?(so.asc?' ↑':' ↓'):''}</button></th>`:'<th>'+t(c)+'</th>').join('')+'</tr>'+tr.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k),mu=a==='aSet'?'':' mute',pr=pcOf(g);
+    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span>${a==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}</td><td class="${tone(u)}${mu}" data-v="usd">${g.no_action_needed?'–':dual(pr.c,fsv(u),fsn(u))}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':dual(pr.t,fmv(mn),fmn(mn))}</td></tr>`}).join('')+'</table>';
   $('#ovT').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>pick(+b.dataset.tab));
+  $('#ovT').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{const c=b.dataset.sort;S.ovSort=S.ovSort&&S.ovSort.k===c?{k:c,asc:!S.ovSort.asc}:{k:c,asc:true};keep(renderOverview)});  // first click: A→Z, or the biggest saving first
   copyPanel();renderS()}
 // update(): everything that depends on the selected threshold/profile; render(): full rebuild (group or language change)
 function update(){if(S.view!=='group')return;controls();impactPanel();comparison();pareto();costs();timeChart();hist();sessChart();moveCursor();hideTip()}

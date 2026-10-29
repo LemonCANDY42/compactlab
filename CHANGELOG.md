@@ -9,6 +9,10 @@ versioning: [SemVer](https://semver.org/).
 - `compactlab serve` is quiet: one in-place progress line only on a terminal (cut to its width at a space, so it
   never wraps into extra rows), nothing otherwise; the log says `recalibrating (reason)` and `recalibrated in Ns:
   N files, M cached, K parsed, X groups; next calibration: <time>`, and the next calibration at start.
+- **Percent first.** Changes lead with their percent of the harness default (cost vs the default's window cost,
+  time vs its total wall-clock: the engine's `d_cost_pct` / `d_time_pct`) with the per-day amount secondary, in the
+  report (header toggle `% | $`, remembered) and the lens mod (`▼−61% (−$204.8/day)`). lens.json gains `cost_pct` /
+  `time_pct`. Totals divide summed amounts by summed defaults; zero references fall back to amounts.
 - **Signed deltas everywhere.** Every change against the default or current setting shows arrow and sign
   (`▼ −$429.3/day`, `▲ +5.8 min`) in the report and the lens mod; absolute figures show neither. Chart tooltip rows
   name their basis (window total vs per-day delta), in English and Chinese.

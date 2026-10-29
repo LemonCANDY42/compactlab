@@ -117,7 +117,8 @@ export const register: Register = (on, options) => {
     const cols = Math.max(20, e.props.bodyColumns)
     const rows = bandRows({
       cols, isOpen: open, tokens: l.tokens, window: l.window, def, prof: p?.threshold ?? null,
-      usd: p?.vs_default?.usd_per_day ?? null, min: p?.vs_default?.min_per_day ?? null, compactions: l.compactions,
+      usd: p?.vs_default?.usd_per_day ?? null, min: p?.vs_default?.min_per_day ?? null,
+      cpct: p?.vs_default?.cost_pct ?? null, tpct: p?.vs_default?.time_pct ?? null, compactions: l.compactions,
       calAge: c ? age(now - c.at) : null, calStale: stale, isOff, hasFacts: Boolean(g), w,
     })
     if (open) rows.push(...card(w, l, f, name, isOff, here, stale, cols, true))

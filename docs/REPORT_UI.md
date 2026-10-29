@@ -45,6 +45,15 @@ shows.
 5. Two KPIs the cards do not show: compactions per day and recall (proxy).
 6. Comparison table, copy panel, then details (trade-off, time breakdown, history, lite vs deep, sessions).
 
+Units: changes lead with a percent by default, with the per-day amount small after it; the header toggle `% | $`
+swaps them and is remembered in `localStorage` (`compactlab.unit`). Cost % is the change as a share of the harness
+default's window cost (list price) for that group, the engine's `d_cost_pct`; time % is the change as a share of the
+default's total wall-clock, `d_time_pct`. A zero reference has no percent and the amount leads instead. Aggregates
+(sidebar nodes, Overview totals and per-model bars) divide summed amounts by summed defaults, never average group
+percents; the Overview total uses all groups' default cost as the denominator. In % mode the main chart plots both
+panels in percent and Overview bars are sized by percent saved; the Overview table sorts by its column headers,
+using the lead unit. The definitions sit in the `(i)` next to the toggle.
+
 Sign convention: every delta (against the default or the current setting) carries both an arrow and a sign:
 `▼ −$429.3/day`, `▼ −117 min` save (green), `▲ +$1.2/day`, `▲ +5.8 min` add (amber). This holds for the chart's
 cursor labels and axis ticks, the tooltip, the answer line, the profile cards (including the wait / turn-time split),

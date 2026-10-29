@@ -11,36 +11,40 @@ shows what `compactlab simulate` estimated that choice saves or adds per day.
 
 **Terminal: a band above the prompt, laid out for the columns it has.** Rows break only between pieces, never
 inside a number and its unit. Wide or CJK glyphs count as two columns. From 60 columns the band is one row with full
-units. From 40 it is one row in a compact form (`▼−$205/d`, a shorter bar) when that fits. Below that, row one holds
-the bar and the context, and the chips follow.
+units: each change leads with its percent of the harness default and the per-day amount follows, dim
+(`▼−61% (−$204.8/day)`). From 40 columns it is one row with the percents only (a shorter bar) when that fits.
+Below that, row one holds the bar and the context, and the chips follow. A lens file from before the percents were
+added shows the amounts instead.
 
 120 or 80 columns:
 
 ```
-▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ◴2.0h ⚠
+▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−61% (−$204.8/day) ◷▲+0.4% (+4.8m/day) ⟳0 ◴2.0h ⚠
 ```
 
 55 columns:
 
 ```
-▸ ●●┃··┊ 412k ┊967k ┃500k ▼−$205/d ▲+4.8m/d ⟳0 ◴2.0h ⚠
+▸ ●●●●┃····┊ 412k ┊967k ┃500k ▼−61% ◷▲+0.4% ⟳0 ◴2.0h ⚠
 ```
 
 30 columns:
 
 ```
 ▸ ●●●●●●●●●··┃·········┊· 412k
-┊967k ┃500k ▼−$205/d ▲+4.8m/d
-⟳0 ◴2.0h ⚠
+┊967k ┃500k ▼−61% ◷▲+0.4% ⟳0
+◴2.0h ⚠
 ```
 
-| Glyph | Meaning |
+| Piece | Meaning |
 | --- | --- |
 | `●●●·` | the context in use, as a share of the model's window |
 | `┊967k` | the harness default threshold (dim tick) |
 | `┃500k` | the profile's threshold (accent tick) |
-| `▼−$204.8/day` | money per calendar day vs the default; green ▼ saves, amber ▲ adds |
-| `▲+4.8m/day` | wall-clock minutes per day vs the default |
+| `▼−61%` | cost vs the default: change as a share of the default's window cost (list price); green ▼ saves, amber ▲ adds |
+| `(−$204.8/day)` | the same change in dollars per calendar day (from 60 columns, and in the card) |
+| `◷▲+0.4%` | wall-clock vs the default: change as a share of the default's total wall-clock |
+| `(+4.8m/day)` | the same change in minutes per day |
 | `⟳0` | compactions so far in this session |
 | `◴2.0h` | age of the calibration; amber once older than twice the interval |
 | `⚠` | the auto-compact window in force differs from the profile's threshold |
@@ -50,13 +54,14 @@ the bar and the context, and the chips follow.
 
 ```
 ▾ ●●●●●●●●●●·┃··········┊· 412k
-┊967k ┃500k ▼−$205/d ▲+4.8m/d ⟳0 ◴2.0h
-⚠
+┊967k ┃500k ▼−61% ◷▲+0.4% ⟳0 ◴2.0h ⚠
 ▄ context per turn
-default 967k ▼−$205/d ◷▲+4.8m/d
-wait ▲+6.8m turns ▼−2.0m ⟳3.0/d
-current 400k ▲+$1/d ◷▼−0.3m/d
-wait ▲+1.7m turns ▼−2.0m ⟳3.0/d
+default 967k ▼−61% (−$205/d) ◷▲+0.4%
+(+4.8m/d) wait ▲+6.8m turns ▼−2.0m
+⟳3.0/d
+current 400k ▲+1.2% (+$1/d) ◷▼−0.2%
+(−0.3m/d) wait ▲+1.7m turns ▼−2.0m
+⟳3.0/d
 cost 200k [ balanced 500k ] time 575k
 [ ⧉ /autocompact 500k ]
 ⚠ live 967k ≠ balanced 500k

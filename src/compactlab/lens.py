@@ -25,7 +25,18 @@ def _impact(c: dict[str, Any] | None) -> dict[str, Any] | None:
         "turn_gain_min_per_day": im["turn_gain_minutes"]["per_day"],
         "compactions_per_day": im["compactions"]["per_day"],
         "ref_compactions_per_day": im["ref_compactions"]["per_day"],
+        # share of the reference's window cost / total wall-clock (None when the reference is zero)
+        "cost_pct": _pct(c, "d_cost"),
+        "time_pct": _pct(c, "d_time_s", "d_time_pct"),
     }
+
+
+def _pct(c: dict[str, Any] | None, delta: str, key: str = "d_cost_pct") -> float | None:
+    c = c or {}
+    if key not in c:
+        return None
+    # compare() writes 0.0 when the reference is zero; a nonzero change over a zero reference has no percent
+    return None if c[key] == 0 and c.get(delta) else float(c[key])
 
 
 def summarize(result: dict[str, Any]) -> dict[str, Any]:

@@ -6,9 +6,9 @@ declare const console: { log: (text: string) => void }
 
 import { command, dotBar, factsFrom, livePoint, spark, strWidth, usd } from '../hooks/lens'
 
-const impact = (u: number, m: number) => ({
+const impact = (u: number, m: number, cp: number | null = null, tp: number | null = null) => ({
   usd_per_day: u, usd_per_active_day: u * 1.4, min_per_day: m, wait_min_per_day: m + 2,
-  turn_gain_min_per_day: 2, compactions_per_day: 3, ref_compactions_per_day: 1,
+  turn_gain_min_per_day: 2, compactions_per_day: 3, ref_compactions_per_day: 1, cost_pct: cp, time_pct: tp,
 })
 const LENS = {
   schema: 1,
@@ -19,7 +19,7 @@ const LENS = {
     no_action_needed: false,
     profiles: {
       cost: { threshold: 200_000, action: 'set', flags: ['below_quarter_window'], vs_default: impact(-340, 93.5), vs_current: impact(-20, 30) },
-      balanced: { threshold: 500_000, action: 'set', flags: [], vs_default: impact(-204.8, 4.8), vs_current: impact(0.7, -0.3) },
+      balanced: { threshold: 500_000, action: 'set', flags: [], vs_default: impact(-204.8, 4.8, -0.61, 0.004), vs_current: impact(0.7, -0.3, 0.012, -0.002) },
       time: { threshold: 575_000, action: 'set', flags: [], vs_default: impact(-169, 4.2), vs_current: impact(1.2, -0.5) },
     },
   }],
@@ -79,11 +79,24 @@ test('the band shows context, both thresholds and per-day chips, on terminal and
     expect(all).toContain('412k')
     expect(all).toContain('┊967k')
     expect(all).toContain('┃500k')
-    expect(all).toContain('▼−$204.8')
-    expect(all).toContain('▲+4.8m')
+    expect(all).toContain('▼−61%') // percent of the default first, the amount after it
+    expect(all).toContain('(−$204.8/day)')
+    expect(all).toContain('◷▲+0.4%')
     expect(all).toContain('⚠') // the session still runs at the default, not the profile
     await band.unmount()
   }
+})
+
+test('an older lens file without percents leads with the amounts', async ($, on) => {
+  const old = JSON.parse(JSON.stringify(LENS)) as typeof LENS
+  for (const p of Object.values(old.groups[0]!.profiles)) { p.vs_default.cost_pct = null; p.vs_default.time_pct = null }
+  engine(on, { lens: old })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const all = await text(band)
+  expect(all).toContain('▼−$204.8/day')
+  expect(all).not.toContain('%')
+  await band.unmount()
 })
 
 test('without a lens file the band shows the hint icon and the card says to run simulate', async ($, on) => {
@@ -257,8 +270,11 @@ for (const lang of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         // numbers keep their units: thresholds and the per-day chips are each one drawn piece
         expect(parts).toContain('┃500k')
         expect(parts).toContain('┊967k')
-        expect(parts.some(x => /^▼−\$204\.8\/(day|天)$|^▼−\$205\/(d|天)$/.test(x))).toBe(true)
-        expect(parts.some(x => /^▲\+4\.8m\/(day|天|d)$/.test(x))).toBe(true)
+        // changes lead with the percent of the default, each one drawn piece; the amount follows dim when wide
+        expect(parts).toContain('▼−61%')
+        expect(parts).toContain('◷▲+0.4%')
+        if (cols >= 60 && rows[0]?.parts.includes('(−$204.8/day)')) expect(rows[0]?.parts.indexOf('(−$204.8/day)')).toBe(rows[0]?.parts.indexOf('▼−61%') + 1)
+        if (fold) expect(parts.some(x => /^\(−\$20[45](\.8)?\/(day|d|天)\)$/.test(x))).toBe(true)
         for (const x of parts) expect(x).not.toMatch(/^(k|y|ay|\/d|\/day)$/) // no stray unit fragments
         if (fold) expect(parts.some(x => x.includes('/autocompact 500k'))).toBe(true)
         // the wait / turn-time split is a delta too: arrow and sign

@@ -65,10 +65,13 @@ CHECK = """
     if(pm){pm.click();ok(S.gear==='balanced','balanced mark did not select the profile')}
     // one answer line with a copy button; savings carry ▼ and no minus sign
     {const im=impJS(pt(g,g.grid.indexOf(S.T)),g.default);const a=document.getElementById('ans').textContent;
-      ok(/per day vs default/.test(a)&&a.includes('$'+Math.abs(im.usd.per_day).toFixed(1)),'answer line: '+a);
+      // percent first (the default unit), the per-day amount small after it
+      const pd=pctAt(g,S.T,g.default);ok(S.unit==='pct'&&a.startsWith(fpct(pd.c)+' cost')&&a.includes(fsn(im.usd.per_day))&&/per day vs default/.test(a),'answer line: '+a);
       // every delta carries its arrow and its sign: '▼ −$x' saves, '▲ +$x' adds; never a bare '−$x' or '▼ $x'
-      document.querySelectorAll('#fImpact [data-m]').forEach(c=>ok(/^(\\$0|0 min|[▼] −|[▲] \\+)/.test(c.textContent.trim()),'unsigned delta chip: '+c.textContent));
-      ok(!/(^|[^▼▲ ])[ ]?−\\$/.test(document.getElementById('ans').textContent)&&!/[▼▲] \\$/.test(document.getElementById('ans').textContent),'answer line sign: '+document.getElementById('ans').textContent);
+      document.querySelectorAll('#fImpact [data-m] .ld').forEach(c=>ok(/^(\\$0|0 min|0%|[▼] −|[▲] \\+)/.test(c.textContent.trim()),'unsigned delta chip: '+c.textContent));
+      // the lead figures carry arrow and sign; the small secondary figures carry the sign only
+      document.querySelectorAll('#ans>span:not(.cap):not(.ans2)').forEach(x=>ok(/^[▼▲] [−+]/.test(x.textContent),'answer lead sign: '+x.textContent));
+      ok(!/per day per day/.test(a),'answer line repeats per day');
       ok(document.getElementById('cpOne').disabled===(action(g,S.T,S.vot)!=='aSet'),'copy button state');
       ok(!!g.current===!document.querySelector('#ans .ans2.cap'),'current-setting note');
       ok(!!g.current===!!document.querySelector('#fMain .mcur'),'current mark')}
@@ -86,19 +89,23 @@ CHECK = """
       hv.dispatchEvent(new PointerEvent('pointermove',at));
       const tip=document.getElementById('tip');ok(!tip.hidden&&/k/.test(tip.textContent),'tooltip not shown');
       // rows name their basis: the window total is a plain amount, the per-day rows are signed deltas
-      ok(/Window cost \\(total\\)\\$[\\d,]/.test(tip.textContent)&&/Δ cost \\/ day vs default(\\$0|[▼▲] [−+]\\$)/.test(tip.textContent)&&/Δ time \\/ day vs default/.test(tip.textContent),'tooltip rows: '+tip.textContent)}
+      ok(/Window cost \\(total\\)\\$[\\d,]/.test(tip.textContent)&&/Δ cost vs default([▼▲] [−+]\\d|0%)/.test(tip.textContent)&&/Δ time vs default/.test(tip.textContent),'tooltip rows: '+tip.textContent)}
     // per-day impact: three profile cards; the money cell shows the stored vs-default number for the chosen basis
     ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
     {const im=g.comparison.balanced.vs_default.impact;
-      const money=()=>document.querySelector('#fImpact [data-pc=balanced] [data-m=usd-vs_default]').textContent;
-      ok(money()===fsv(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
+      const cell=()=>document.querySelector('#fImpact [data-pc=balanced] [data-m=usd-vs_default]'),lead=()=>cell().querySelector('.ld').textContent,sec=()=>cell().querySelector('.sc').textContent;
+      // % leads (engine's d_cost_pct) with the per-day amount small; the $ toggle swaps them
+      ok(lead()===fpct(g.comparison.balanced.vs_default.d_cost_pct)&&sec()===fsn(im.usd.per_day),'percent lead '+lead()+' / '+sec());
+      document.querySelector('#units [data-unit=usd]').click();
+      const money=lead,n1=document.getElementById('rng');
+      ok(S.unit==='usd'&&money()===fsv(im.usd.per_day)&&sec()===fpn(g.comparison.balanced.vs_default.d_cost_pct),'per-day money '+money()+' != '+fsv(im.usd.per_day));
       document.querySelector('#fImpact [data-basis=per_month]').click();
       ok(money()===fsv(im.usd.per_month),'per-month money not shown');
       const bb=document.querySelector('#fImpact [data-basis=per_active_day]');
       ok(!!bb===Math.abs(g.active_days-Math.max(g.days,1))>=.05,'per-active-day toggle shown although it equals per day');
       if(bb){bb.focus();bb.click();ok(money()===fsv(im.usd.per_active_day),'per-active-day money not shown');
         ok(document.activeElement&&document.activeElement.dataset.basis==='per_active_day','basis lost focus')}
-      ok(document.getElementById('rng')===n0,'slider replaced by the impact panel');
+      ok(document.getElementById('rng')===n1,'slider replaced by the impact panel');
     }
     // every icon is either hidden from assistive tech or named; every button has an accessible name
     document.querySelectorAll('svg.ic').forEach((s,i)=>ok(s.getAttribute('aria-hidden')==='true'||s.getAttribute('aria-label'),'unnamed icon #'+i));
@@ -124,7 +131,7 @@ CHECK = """
     // the same rows in Chinese
     document.querySelector('#langs [data-l=zh]').click();
     {const hv2=document.querySelector('#fCost rect.hov'),r=hv2.getBoundingClientRect();hv2.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));
-      const tx=document.getElementById('tip').textContent;ok(/窗口总成本/.test(tx)&&/较默认每日费用/.test(tx)&&/较默认每日耗时/.test(tx),'zh tooltip rows: '+tx)}
+      const tx=document.getElementById('tip').textContent;ok(/窗口总成本/.test(tx)&&/较默认费用/.test(tx)&&/较默认耗时/.test(tx),'zh tooltip rows: '+tx)}
     document.querySelector('#langs [data-l=en]').click();
     // sidebar: harness > family > model; folds toggle and are remembered; search filters
     ok(document.querySelector('#tree .har .fam .mrow.cur .mn[aria-current=page]'),'selected model not in the tree');
@@ -139,8 +146,17 @@ CHECK = """
     ok(document.querySelectorAll('#fOv .ovrow').length===nAct,'overview bars '+document.querySelectorAll('#fOv .ovrow').length+' != '+nAct);
     ok(document.querySelectorAll('#ovT tr').length===D.groups.length+1,'roll-up rows');
     // the headline total counts only groups whose action is "set"
+    // totals: summed amounts over summed defaults, never averaged percents (the $ unit is still on from above)
     {const want=D.groups.reduce((a,x)=>a+setUsd(x),0),v=document.querySelector('#ovw .kpi .v').textContent;
       ok(v.startsWith(fsv(want)),'overview total '+v+' != '+fsv(want));
+      document.querySelector('#units [data-unit=pct]').click();
+      const wp=want/D.groups.reduce((a,x)=>a+defUsd(x),0),vp=document.querySelector('#ovw .kpi .v .ld').textContent;
+      ok(S.unit==='pct'&&vp===fpct(wp),'overview percent '+vp+' != '+fpct(wp));
+      let unitSaved=null;try{unitSaved=localStorage.getItem('compactlab.unit')}catch(e){}ok(unitSaved==null||unitSaved==='pct','unit not remembered');
+      // the table sorts by a column header
+      const sb=document.querySelector('#ovT [data-sort=cUsd]');sb.click();
+      const vals=[...document.querySelectorAll('#ovT tr')].slice(1).map(r=>D.groups[+r.querySelector('[data-tab]').dataset.tab]).filter(x=>!x.no_action_needed).map(x=>pctAt(x,x.profiles[S.op].threshold,x.default).c);
+      ok(vals.every((v,i)=>!i||v>=vals[i-1]-1e-12),'table not sorted by cost %');S.ovSort=null;keep(renderOverview);
       ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#fOv .ovrow.keep'):true,'keep-default rows not greyed')}
     ok(/^All sessions/.test(document.getElementById('hSess').textContent),'overview sessions title');
     // a "keep default" row says which rule kept it

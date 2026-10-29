@@ -47,6 +47,14 @@ export const usd = (v: number): string =>
 export const mins = (v: number): string =>
   Math.abs(v) < 0.05 ? '0m' : `${v < 0 ? MINUS : '+'}${Math.abs(v) < 100 ? Math.abs(v).toFixed(1) : Math.round(Math.abs(v))}m`
 export const arrow = (v: number): string => (Math.abs(v) < 0.05 ? '' : v < 0 ? '▼' : '▲')
+/** A share of the default as a signed percent: '−61%', '+0.4%' (one decimal under 10%). */
+export const pct = (v: number): string => {
+  const a = Math.abs(v * 100)
+  return a < 0.05 ? '0%' : `${v < 0 ? MINUS : '+'}${a < 10 ? a.toFixed(1) : Math.round(a)}%`
+}
+/** Arrow for a share (a fraction): the same 0.05 dead zone, measured in percent points. */
+const parrow = (v: number): string => arrow(v * 100)
+const ptone = (v: number) => tone(v * 100)
 /** Theme colour for a delta: savings green, additions amber (red is kept for broken guardrails). */
 export const tone = (v: number): 'success' | 'warning' | undefined =>
   Math.abs(v) < 0.05 ? undefined : v < 0 ? 'success' : 'warning'
@@ -79,9 +87,12 @@ export const factsFrom = (text: string, path: string, model: string, role = 'mai
 }
 
 type Imp = { usd: Per; minutes: Per; wait_minutes: Per; turn_gain_minutes: Per; compactions: Per; ref_compactions: Per }
+type Cmp = { impact?: Imp; d_cost?: number; d_cost_pct?: number; d_time_s?: number; d_time_pct?: number }
+// compare() writes 0 for a zero reference; a nonzero change over a zero reference has no percent
+const share = (p: number | undefined, d: number | undefined): number | null => (p == null || (p === 0 && d) ? null : p)
 type Per = { per_day: number; per_active_day: number | null }
 
-const impactOf = (c: { impact?: Imp } | null | undefined): LensImpact | null => {
+const impactOf = (c: Cmp | null | undefined): LensImpact | null => {
   const im = c?.impact
   if (!im) return null
   return {
@@ -92,6 +103,8 @@ const impactOf = (c: { impact?: Imp } | null | undefined): LensImpact | null => 
     turn_gain_min_per_day: im.turn_gain_minutes.per_day,
     compactions_per_day: im.compactions.per_day,
     ref_compactions_per_day: im.ref_compactions.per_day,
+    cost_pct: share(c?.d_cost_pct, c?.d_cost),
+    time_pct: share(c?.d_time_pct, c?.d_time_s),
   }
 }
 
@@ -102,7 +115,7 @@ const fromResultGroup = (g: Record<string, unknown>): LensGroup | null => {
     effective_max?: number; max_window?: number; default: { threshold: number }
     current?: { threshold: number; configured?: number } | null
     profiles: Record<string, { threshold: number; flags: string[] }>
-    comparison: Record<string, { action: string; vs_default: { impact?: Imp }; vs_current?: { impact?: Imp } | null }>
+    comparison: Record<string, { action: string; vs_default: Cmp; vs_current?: Cmp | null }>
   }
   if (!r.profiles || !r.comparison || !r.default) return null
   const profiles = {} as LensGroup['profiles']
@@ -235,13 +248,14 @@ const usdShort = (v: number): string =>
 
 export type BandInput = {
   cols: number; isOpen: boolean; tokens: number; window: number; def: number | null; prof: number | null
-  usd: number | null; min: number | null; compactions: number; calAge: string | null; calStale: boolean
+  usd: number | null; min: number | null; cpct: number | null; tpct: number | null; compactions: number; calAge: string | null; calStale: boolean
   isOff: boolean; hasFacts: boolean; w: Words
 }
 
 /**
- * The band's rows for `cols` columns. From 60 columns: one row with full units (`▼−$243.9/day`). From 40: one row,
- * compact (`▼−$244/d`, a shorter bar) when it fits. Below that, or when even the compact row does not fit: row one
+ * The band's rows for `cols` columns. Changes lead with the percent of the default (`▼−61%`, `◷▲+0.4%`); from 60
+ * columns the per-day amount follows, dim (`(−$204.8/day)`). From 40: one row, percent only (a shorter bar) when it
+ * fits; without a percent (older lens files) the amount leads instead. Below that, or when even the compact row does not fit: row one
  * holds the fold, the bar and the context, and the chips follow, wrapped between chips.
  */
 export const bandRows = (b: BandInput): Tok[][] => {
@@ -251,10 +265,15 @@ export const bandRows = (b: BandInput): Tok[][] => {
   const chips = (full: boolean): Tok[] => [
     ...(b.def != null ? [{ key: 'def', text: `┊${k(b.def)}`, dim: true }] : []),
     ...(b.prof != null ? [{ key: 'prof', text: `┃${k(b.prof)}`, color: 'claude' }] : []),
-    ...(b.usd != null ? [{ key: 'usd', color: tone(b.usd),
-      text: full ? `${arrow(b.usd)}${usd(b.usd)}${w.perDay}` : `${arrow(b.usd)}${usdShort(b.usd)}${w.perD}` }] : []),
-    ...(b.min != null ? [{ key: 'min', color: tone(b.min),
-      text: `${arrow(b.min)}${mins(b.min)}${full ? w.perDay : w.perD}` }] : []),
+    ...(b.usd != null ? (b.cpct != null
+      ? [{ key: 'usd', color: ptone(b.cpct), text: `${parrow(b.cpct)}${pct(b.cpct)}` },
+        ...(full ? [{ key: 'usd2', dim: true, text: `(${usd(b.usd)}${w.perDay})` }] : [])]
+      : [{ key: 'usd', color: tone(b.usd),
+        text: full ? `${arrow(b.usd)}${usd(b.usd)}${w.perDay}` : `${arrow(b.usd)}${usdShort(b.usd)}${w.perD}` }]) : []),
+    ...(b.min != null ? (b.tpct != null
+      ? [{ key: 'min', color: ptone(b.tpct), text: `◷${parrow(b.tpct)}${pct(b.tpct)}` },
+        ...(full ? [{ key: 'min2', dim: true, text: `(${mins(b.min)}${w.perDay})` }] : [])]
+      : [{ key: 'min', color: tone(b.min), text: `${arrow(b.min)}${mins(b.min)}${full ? w.perDay : w.perD}` }]) : []),
     { key: 'cmp', text: `⟳${b.compactions}`, dim: true },
     ...(b.calAge != null ? [{ key: 'cal', text: `◴${b.calAge}`, color: b.calStale ? 'warning' : undefined, dim: !b.calStale }] : []),
     ...(b.isOff ? [{ key: 'off', text: '⚠', color: 'warning' }] : []),
@@ -296,8 +315,14 @@ export const cardRows = (c: CardInput): Tok[][] => {
     const tg = -im.turn_gain_min_per_day
     rows.push(...pack([
       { key: `${key}-l`, text: lab, dim: true },
-      { key: `${key}-u`, text: `${arrow(im.usd_per_day)}${full ? usd(im.usd_per_day) : usdShort(im.usd_per_day)}${unit}`, color: tone(im.usd_per_day) },
-      { key: `${key}-m`, text: `◷${arrow(im.min_per_day)}${mins(im.min_per_day)}${unit}`, color: tone(im.min_per_day) },
+      ...(im.cost_pct != null
+        ? [{ key: `${key}-u`, text: `${parrow(im.cost_pct)}${pct(im.cost_pct)}`, color: ptone(im.cost_pct) },
+          { key: `${key}-u2`, text: `(${full ? usd(im.usd_per_day) : usdShort(im.usd_per_day)}${unit})`, dim: true }]
+        : [{ key: `${key}-u`, text: `${arrow(im.usd_per_day)}${full ? usd(im.usd_per_day) : usdShort(im.usd_per_day)}${unit}`, color: tone(im.usd_per_day) }]),
+      ...(im.time_pct != null
+        ? [{ key: `${key}-m`, text: `◷${parrow(im.time_pct)}${pct(im.time_pct)}`, color: ptone(im.time_pct) },
+          { key: `${key}-m2`, text: `(${mins(im.min_per_day)}${unit})`, dim: true }]
+        : [{ key: `${key}-m`, text: `◷${arrow(im.min_per_day)}${mins(im.min_per_day)}${unit}`, color: tone(im.min_per_day) }]),
       { key: `${key}-w`, text: `${w.wait} ${arrow(im.wait_min_per_day)}${mins(im.wait_min_per_day)}`, dim: true },
       { key: `${key}-t`, text: `${w.turns} ${arrow(tg)}${mins(tg)}`, dim: true },
       { key: `${key}-c`, text: `⟳${im.compactions_per_day.toFixed(1)}${unit}`, dim: true },

@@ -9,6 +9,9 @@ export type LensImpact = {
   turn_gain_min_per_day: number
   compactions_per_day: number
   ref_compactions_per_day: number
+  /** Change as a share of the reference's window cost / total wall-clock; absent in older lens files. */
+  cost_pct?: number | null
+  time_pct?: number | null
 }
 
 export type LensProfile = {
