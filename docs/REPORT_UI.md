@@ -8,7 +8,7 @@ Screenshots (synthetic showcase data from `scripts/make_assets.py`, never real h
 `docs/assets/report.png` (1440, light), `report-dark.png`, `report-overview.png`, `report-noop.png`,
 `report-mobile.png` and `report-mobile-dark.png` (390), plus the sidebar at 35 models over three harnesses
 (`report-tree.png` folded, `report-tree-search.png` with a search; a UI-only fixture of copied groups). The
-showcase has synthetic "current" settings on Opus 5.5 (525k) and Sonnet 5.5 (625k) so the current-setting path
+showcase has one dominant synthetic model (Opus 5, about $620/day) among small ones, and synthetic "current" settings on Opus 5.5 (525k) and Sonnet 5.5 (625k) so the current-setting path
 shows.
 
 ## Landing state
@@ -119,9 +119,18 @@ status icons.
 - Profile switch for the summary profile (also used for the sidebar badges and sorting).
 - KPIs: money per day and minutes per day if the "set" models are applied (keep-default groups are not counted),
   then models to change, models that keep the default and models needing no change (all in models).
-- Horizontal bars per model: money saved per day to the right of zero (adds in amber to the left), stacked main /
-  subagent; minutes per day next to it, each figure in its own colour. Keep-default models are grey and say so.
-  Rows open the model.
+- Before / after, per day: two panels, cost (list price) and wall-clock (agent minutes), one row per model and a
+  total row on top (summed was vs summed now of the "set" models). Grey bar = was (the harness default's per-day
+  amount, all the model's groups); accent bar on top, from the same origin = now (the profile applied to its "set"
+  groups); green hatch with a bracket between the two ends = saved; amber past the grey end = added. "Keep default"
+  rows show only the grey bar and a chip. The label column reads `▼ −21%  −$127.5/day` (lead per the `% | $`
+  toggle) and `was $619 → now $492`; a dotted leader joins short bars to it. Hover: main / subagent, and for time the
+  compaction-wait vs turn-time split. A one-line legend sits above the panels; each row is also a sentence in a
+  screen-reader list ("Opus 5: was $619.3 per day, now $491.8, saves 21 percent; …").
+- Toggles (remembered): `absolute | each row = 100%` (one shared, labelled axis, or every grey bar the same length so
+  small models are readable) and `by amount saved | by % saved` for the row order.
+- The model page repeats the language in a compact pair next to the answer line: cost and time at the cursor,
+  was vs now, with the legend in its tooltip and accessible name.
 - Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers
   (greyed unless the action is "set").
 - A "keep default" row carries a one-line reason from the same two tests the engine uses

@@ -96,6 +96,9 @@ def showcase(tmp: Path) -> dict:
     _extra_project(root, "h", ("claude-haiku-5-5-20260915",), 4, 3, 21, main_lines=90)
     _extra_project(root, "o", ("claude-opus-4-7", "claude-fable-5-1"), 6, 2, 31)
     _extra_project(root, "f", ("claude-sonnet-5",), 0, 4, 41)
+    # one dominant model: five projects on the same four days (about five heavy sessions a day, several $100/day)
+    for j, tag in enumerate("pqruv"):
+        _extra_project(root, tag, ("claude-opus-5",), 4, 0, 61 + j)
     synth.write_codex(tmp / "codex", n=6)
     ss = list(get_adapter("claude-code")(root).sessions()) + list(get_adapter("codex")(tmp / "codex").sessions())
     # synthetic "current" settings on two models, so the current-setting path is shown

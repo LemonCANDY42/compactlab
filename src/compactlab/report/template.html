@@ -9,14 +9,14 @@
  --serif:ui-serif,"New York","Iowan Old Style","Charter","Palatino Linotype",Georgia,"Songti SC","Noto Serif CJK SC",serif;
  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB",sans-serif;
  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
- --r:14px;--rs:10px;--pk:.07;--ht:.32;--mp:.45
+ --r:14px;--rs:10px;--pk:.07;--ht:.32;--mp:.45;--ba-was:#d9d5ca
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
  --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
- --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8}}
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8;--ba-was:#4d4a43}}
 :root[data-theme=dark]{
  --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
- --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8}
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1c;--amber:#e3a548;--amber-soft:#e3a5481c;--bad:#f2867a;--bad-soft:#f2867a1c;--pk:.16;--ht:.6;--mp:.8;--ba-was:#4d4a43}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -170,6 +170,16 @@ svg.mainc{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .kpi .v .nw{white-space:nowrap}.kpi .v .sc{display:block;font:500 12.5px/1.4 var(--mono);margin:2px 0 0;opacity:.85}#ovw .kpi .v{font-size:23px}
 .hrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.hrow .indep{margin:0 auto 0 0}
 .ld{font-weight:600}.sc{font-size:.85em;opacity:.8;margin-left:5px;font-weight:400}.chip .sc{margin-left:4px}tspan.sc2{font-weight:400;font-size:10px;opacity:.85}
+.ovctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px}.ovctl .seg button{font-size:12.5px;padding:3px 10px}
+.olg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--ink2);margin:0 0 4px}.olg span{display:inline-flex;align-items:center;gap:5px}
+.olg i{display:inline-block;width:16px;height:9px;border-radius:2px}.olg .lw{background:var(--ba-was)}.olg .ln{background:var(--acc)}
+.olg .ls{background:repeating-linear-gradient(45deg,var(--good) 0 1.4px,var(--good-soft) 1.4px 4px)}.olg .la{background:var(--amber)}
+h3.ovh{margin:14px 0 2px;color:var(--ink2);font-weight:500}
+.baw{fill:var(--ba-was)}.ban{fill:var(--acc)}.baa{fill:var(--amber)}.bash{fill:var(--good-soft)}.bahl{stroke:var(--good);stroke-width:1.4}
+.babr{fill:none;stroke:var(--good);stroke-width:1}.lead{stroke:var(--line2);stroke-dasharray:1 3}.axt{font-size:10px}
+tspan.big{font-size:13px;font-weight:700}.barow{cursor:pointer}.barow:hover .ovbg{fill:var(--bg2)}.barow.tot .ovname{font-weight:600}.barow.keep .ovname{fill:var(--ink3)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.minib{display:inline-flex;align-items:center;cursor:help}.mini{display:block}
 .indep{font-size:11px;color:var(--ink3);margin-bottom:8px}
 #marks.compact .mk.r1 .tx{display:none}
 .live{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.live .tval{min-width:0;font-size:18px}
@@ -457,7 +467,16 @@ const I={
  noopSub:['Every session peaks below the default auto-compact threshold, so no threshold in range changes cost or time.','每个会话的峰值都低于默认自动压缩阈值,范围内的任何阈值都不会改变成本或时间。'],
  mPeak:['peak','峰值'], zoneL:['auto-compacts here','此区间会自动压缩'],
  kTotUsd:['Δ cost vs default','较默认费用'], kTotMin:['Δ time vs default','较默认耗时'], kToSet:['To change','需要调整'], kNoCh:['No change needed','无需调整'],
- ovChart:['Per-day impact by model','各模型每日影响'], ovHelp:['Estimated money per day against the harness default for the chosen profile if the “set” groups are applied, split into main and subagent runs; right of each bar the minutes per day. Grey rows would keep the default (not counted in the totals). Click a row to open the model.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
+ ovChart:['Before and after, per day','前后对比(每天)'],
+ ovCostT:['Cost per day (list price)','每日费用(按公开标价)'], ovTimeT:['Wall-clock per day (agent minutes)','每日耗时(agent 分钟)'],
+ scL:['Scale','比例'], scAbs:['absolute','绝对值'], scNorm:['each row = 100%','每行 = 100%'], byL:['Sort','排序'], byUsd:['by amount saved','按节省金额'], byPct:['by % saved','按节省比例'],
+ axUsd:['$ per day, shared axis','美元/天,共用坐标'], axMin:['minutes per day, shared axis','分钟/天,共用坐标'], axNorm:['share of the original, each row = 100%','占原值比例,每行 = 100%'],
+ lgWas:['was (default)','原来(默认)'], lgNow:['now (profile)','现在(方案)'], lgSaved:['saved','节省'], lgAdded:['added','增加'],
+ lgLine:['grey = was (default), accent = now, green hatch = saved, amber = added','灰色 = 原来(默认),强调色 = 现在,绿色斜线 = 节省,琥珀色 = 增加'],
+ wasNow:[(a,b)=>'was '+a+' → now '+b,(a,b)=>'原来 '+a+' → 现在 '+b], totalSet:['Total','合计'], totalSub:[n=>n+' “set” models',n=>n+' 个“设置”模型'],
+ tWait:['compaction wait','压缩等待'], tTurn:['turn time','每轮耗时'],
+ srRow:[(n,w,c,v,p,tw,tn)=>n+': was '+w+' per day, now '+c+', '+v+' '+p+' percent; wall-clock was '+tw+', now '+tn,(n,w,c,v,p,tw,tn)=>n+':原来每天 '+w+',现在 '+c+','+v+' '+p+'%;耗时原来 '+tw+',现在 '+tn],
+ srKeep:[(n,w)=>n+': keep default, '+w+' per day',(n,w)=>n+':保持默认,每天 '+w], ovHelp:['Per model: the grey bar is the cost (or wall-clock) per day with the harness default, the accent bar the same with the chosen profile applied to its “set” groups; the green hatch between them is the saving, amber an addition. “Keep default” models show only the grey bar. The total sums the “set” models. Absolute shares one axis; “each row = 100%” makes every grey bar the same length. List-price estimates; hover a row for main / subagent and, for time, wait vs turn time.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
  ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['Δ $ / day','Δ 美元 / 天'], cMin:['Δ min / day','Δ 分钟 / 天'], cUsdP:['Δ cost %','Δ 费用 %'], cMinP:['Δ time %','Δ 耗时 %'], sortBy:['Sort by','排序:'],
  kTotPct:['% of the whole: the summed change of the “set” groups divided by the summed default cost (or wall-clock) per day of all groups in this history; group percents are never averaged.','占全部的百分比:“设置”分组的变化之和,除以本段历史中所有分组默认每日费用(或耗时)之和;不对分组百分比取平均。'],
  tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost vs default','较默认费用'], tDMin:['Δ time vs default','较默认耗时'],
@@ -479,7 +498,7 @@ const I={
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
 };
-const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{},unit:'pct',ovSort:null};
+const S={gi:0,gear:'balanced',T:null,vot:100,lang:'en',sid:null,basis:'per_day',theme:'auto',view:'group',op:'balanced',fold:{},unit:'pct',ovSort:null,ovScale:'abs',ovBy:'usd'};
 let sortK='peak',asc=false;
 const PROF=['cost','balanced','time'],PICON={cost:'coin',balanced:'scale',time:'clock',custom:'sliders'};
 // a broken guardrail is red, a warning amber (cost below a quarter of the window, more wait than the cap),
@@ -490,6 +509,7 @@ const flagKind=f=>VIOL(f)?'bad':NOTE(f)?'':'low';
 S.lang=/^zh/i.test(navigator.language||'')?'zh':'en';
 try{const l=localStorage.getItem('compactlab.lang');if(l==='en'||l==='zh')S.lang=l;const th=localStorage.getItem('compactlab.theme');if(th)S.theme=th;
   const un=localStorage.getItem('compactlab.unit');if(un==='pct'||un==='usd')S.unit=un;
+  const sc=localStorage.getItem('compactlab.ovScale');if(sc==='abs'||sc==='norm')S.ovScale=sc;const ob=localStorage.getItem('compactlab.ovBy');if(ob==='usd'||ob==='pct')S.ovBy=ob;
   const fo=JSON.parse(localStorage.getItem('compactlab.fold')||'{}');if(fo&&typeof fo==='object')S.fold=fo}catch(e){}
 function applyTheme(){if(S.theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.theme}
 applyTheme();
@@ -660,7 +680,7 @@ document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#re
 function buildBar(){const g=G();
   $('#bar').innerHTML=`<div class="gearrow"><div class="seg" id="gears" role="group" aria-label="${t('gear')}">${[...PROF,'custom'].map(k=>`<button data-gear="${k}" aria-pressed="false" aria-label="${t(k)}${k===g.profile?' ★':''}">${ic(PICON[k])}<span class="gt">${t(k)}${k===g.profile?'&nbsp;★':''}</span></button>`).join('')}</div>
   <span class="vot" id="vot"></span></div>
-  <div class="ansrow"><b class="tval" id="tval" aria-live="polite"></b><span class="ans" id="ans"></span><button type="button" class="btn sm" id="cpOne">${ic('copy')}<span>${t('cpCopy')}</span></button><span id="flags"></span></div>`;
+  <div class="ansrow"><b class="tval" id="tval" aria-live="polite"></b><span id="mini"></span><span class="ans" id="ans"></span><button type="button" class="btn sm" id="cpOne">${ic('copy')}<span>${t('cpCopy')}</span></button><span id="flags"></span></div>`;
   document.querySelectorAll('#gears button').forEach(b=>b.onclick=()=>setGear(b.dataset.gear));
   $('#cpOne').onclick=async()=>{const b=$('#cpOne'),ok=await copyStr(snippet(G(),S.T));b.querySelector('span').textContent=ok?t('cpCopied'):t('cpFail');
     clearTimeout(b.tm);b.tm=setTimeout(()=>{b.querySelector('span').textContent=t('cpCopy')},2200)}}
@@ -800,6 +820,7 @@ function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,
   const dcp=im.compactions.per_day-im.ref_compactions.per_day;
   const pd=pctAt(g,S.T,d),pcu=g.current?pctAt(g,S.T,g.current):null;
   $('#ans').innerHTML=answer(im.usd.per_day,im.minutes.per_day,t('vsDefL',def),pd.c,pd.t)+(icur?'<span class="ans2">'+answer(icur.usd.per_day,icur.minutes.per_day,t('vsCurL',fk(g.current.configured??g.current.threshold)),pcu.c,pcu.t)+'</span>':'<span class="ans2 cap">'+esc(t('noCur'))+'</span>');
+  $('#mini').innerHTML=miniBA(g,im);
   const cb=$('#cpOne'),keepIt=action(g,S.T,S.vot)!=='aSet';if(keepIt)$('#ans').insertAdjacentHTML('beforeend','<span class="ans2 kw">'+esc(keepWhy(g,S.T,S.vot))+'</span>');cb.disabled=keepIt;cb.dataset.tip=keepIt?t('cpKeep'):t('cpOneTip',snippet(g,S.T));cb.setAttribute('aria-label',t('cpCopy')+': '+(keepIt?t('cpKeep'):snippet(g,S.T)));
   $('#kpis').innerHTML=`
    <div class="kpi"><div class="kh">${ic('refresh')}<span>${t('kComp')}</span></div><div class="v">${im.compactions.per_day.toFixed(1)}</div>
@@ -1020,34 +1041,28 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('votS',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
    <div class="kpis">${kpi('coin','kTotUsd','<span class="nw">'+dual(tpu,fsv(tu)+t('uDay'),fsn(tu)+t('uDay'))+'</span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>'+ib(t('kTotPct')))+kpi('clock','kTotMin','<span class="nw">'+dual(tpm,fmv(tm)+t('uDay'),fmn(tm)+t('uDay'))+'</span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
      kpi('sliders','kToSet',String(cnt('set')),'',esc(t('mUnit')))+kpi('scale','kKeep',String(cnt('keep')),'',esc(t('mUnit')))+kpi('check','kNoCh',String(cnt('noop')),'',esc(t('mUnit')))}</div>
-   <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv"></div>
+   <h2>${t('ovChart')}${ib(t('ovHelp'))}</h2><div class="card fig" id="fOv">
+     <div class="ovctl"><div class="seg" role="group" aria-label="${t('scL')}">${[['abs','scAbs'],['norm','scNorm']].map(([k_,l])=>`<button data-ovs="${k_}" aria-pressed="${S.ovScale===k_}">${t(l)}</button>`).join('')}</div>
+       <div class="seg" role="group" aria-label="${t('byL')}">${[['usd','byUsd'],['pct','byPct']].map(([k_,l])=>`<button data-ovb="${k_}" aria-pressed="${S.ovBy===k_}">${t(l)}</button>`).join('')}</div></div>
+     ${legendBA()}<h3 class="ovh">${ic('coin')}${t('ovCostT')}</h3><div id="ovC"></div><h3 class="ovh">${ic('clock')}${t('ovTimeT')}</h3><div id="ovM"></div><ul class="sr" id="ovSR"></ul></div>
    <h2>${t('ovTable')}</h2><div class="card scroll" id="ovT"></div>`;
   box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>{S.op=b.dataset.op;S.tree=null;keep(()=>{renderOverview();tree()})});
-  // horizontal bars: money saved per day to the right of zero, added to the left (amber); "keep default" models grey
-  const rows=models.filter(m=>m.st!=='noop').sort((a,b)=>({set:0,keep:1}[a.st]-{set:0,keep:1}[b.st])||b.w-a.w);
-  const ob=$('#fOv'),W=boxW(ob),wide=W>=600,rowH=wide?34:50,L=wide?190:8,R=wide?270:8,H=Math.max(rowH*rows.length+30,80);
-  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t('ovChart')});
-  const byPct=S.unit==='pct'&&rows.every(m=>m.den>0);
-  const val=(m,g)=>(m.st==='set'?-usdOf(g,k)*(isSet(g,k)?1:0):-usdOf(g,k))/(byPct?m.den/100:1);
-  const sv=rows.map(m=>m.gs.map(i=>val(m,D.groups[i])));const pos=sv.map(v=>v.filter(x=>x>0).reduce((a,b)=>a+b,0)),neg=sv.map(v=>v.filter(x=>x<0).reduce((a,b)=>a+b,0));
-  const lo=Math.min(0,...neg),hi=Math.max(0,...pos,1e-9),X=v=>L+(v-lo)/((hi-lo)||1)*(W-L-R);
-  svg.append(el('line',{x1:X(0),x2:X(0),y1:6,y2:H-22,class:'zero'}));
-  for(const v of ticksN(lo,hi,3))if(v>=lo&&v<=hi)svg.append(el('text',{x:X(v),y:H-6,'text-anchor':'middle',class:v>0?'tk good':v<0?'tk warn':'tk'},v===0?'0':(v>0?'▼−':'▲+')+(byPct?(+Math.abs(v).toFixed(1))+'%':'$'+(+Math.abs(v).toFixed(1)))));
-  rows.forEach((m,r)=>{const y=10+r*rowH,gr=el('g',{class:'ovrow'+(m.st==='keep'?' keep':''),'data-tab':m.gs[0]});gr.append(el('rect',{x:0,y:y-4,width:W,height:rowH,rx:6,class:'ovbg'}));
-    const by=wide?y+2:y+22;gr.append(el('text',{x:8,y:y+11,class:'ovname'},label(m.id)));if(wide)gr.append(el('text',{x:8,y:y+24,class:'ovsub'},m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + ')));
-    let ap=0,an=0;m.gs.forEach((i,j)=>{const v=sv[r][j];if(Math.abs(v)<1e-9)return;const a=v>0?ap:an+v;if(v>0)ap+=v;else an+=v;
-      const x=X(a),w=Math.max(X(a+Math.abs(v))-x,1.5),role=D.groups[i].role;gr.append(el('rect',{x,y:by,width:w,height:18,rx:3,class:m.st==='keep'?'smk':v<0?'sma':role==='main'?'sm1':'sm2'}));
-      if(w>44)gr.append(el('text',{x:x+6,y:by+13,class:'seglab'},roleS(role)))});
-    // the label: money and minutes each in their own colour; "keep default" rows say so, greyed
-    const tx=wide?el('text',{x:Math.max(X(ap),X(0))+8,y:y+15,class:'dl b'}):el('text',{x:W-8,y:y+11,'text-anchor':'end',class:'dl b'});
-    const pu=ratio(m.usd,m.den),pm=ratio(m.min,m.mden),lead=(pv,a,b)=>byPct&&pv!=null?[fpct(pv),a]:[b,fpn(pv)];
-    if(m.st==='keep'){const u=m.keep.reduce((a,g)=>a+usdOf(g,k),0),[l1,s1]=lead(ratio(u,m.den),fsn(u)+t('uDay'),fsv(u)+t('uDay'));tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+l1+' '),el('tspan',{class:'mute sc2'},s1))}
-    else{const [l1,s1]=lead(pu,fsn(m.usd)+t('uDay'),fsv(m.usd)+t('uDay')),[l2,s2]=lead(pm,fmn(m.min),fmv(m.min));
-      tx.append(el('tspan',{class:tone(m.usd)},l1+' '),el('tspan',{class:tone(m.usd)+' sc2'},s1),el('tspan',{class:'mute'},' · '),el('tspan',{class:tone(m.min)},l2+' '),el('tspan',{class:tone(m.min)+' sc2'},s2))}
-    gr.append(tx);
-    gr.addEventListener('pointermove',e=>showTip('<b>'+esc(label(m.id))+'</b>'+m.gs.map(i=>{const g=D.groups[i];return tipRow(roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+' · '+fmv(minOf(g,k))+(isSet(g,k)?'':' · '+t('aKeep')))}).join(''),e.clientX,e.clientY));
-    gr.addEventListener('pointerleave',hideTip);gr.addEventListener('click',()=>pick(m.gs[0]));svg.append(gr)});
-  ob.append(svg);
+  box.querySelectorAll('[data-ovs]').forEach(b=>b.onclick=()=>{S.ovScale=b.dataset.ovs;try{localStorage.setItem('compactlab.ovScale',S.ovScale)}catch(e){}keep(renderOverview)});
+  box.querySelectorAll('[data-ovb]').forEach(b=>b.onclick=()=>{S.ovBy=b.dataset.ovb;try{localStorage.setItem('compactlab.ovBy',S.ovBy)}catch(e){}keep(renderOverview)});
+  // before / after per model: was = the default's summed per-day amount, now = was + the change of its "set" groups
+  const rows=models.filter(m=>m.st!=='noop').map(m=>{const G_=m.gs.map(i=>D.groups[i]),sg=G_.filter(g=>isSet(g,k)),im=sg.map(g=>impOf(g,k,'vs_default')).filter(Boolean);
+    return {m,name:label(m.id),sub:m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + '),keep:m.st==='keep',gi:m.gs[0],
+      c:{was:m.den,now:m.den+m.usd},t:{was:m.mden,now:m.mden+m.min},
+      wait:im.reduce((a,x)=>a+x.wait_minutes.per_day,0),turn:im.reduce((a,x)=>a-x.turn_gain_minutes.per_day,0),
+      roles:m.gs.map(i=>{const g=D.groups[i];return [roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+t('uDay')+(isSet(g,k)?'':' · '+t('aKeep'))]})}});
+  const sv=r=>r.keep?Infinity:S.ovBy==='pct'?(ratio(r.c.now-r.c.was,r.c.was)??0):r.c.now-r.c.was;
+  rows.sort((a,b)=>(a.keep-b.keep)||sv(a)-sv(b)||b.c.was-a.c.was);
+  const setR=rows.filter(r=>!r.keep),tot={name:t('totalSet'),sub:t('totalSub',setR.length),total:true,keep:false,gi:null,
+    c:{was:setR.reduce((a,r)=>a+r.c.was,0),now:setR.reduce((a,r)=>a+r.c.now,0)},t:{was:setR.reduce((a,r)=>a+r.t.was,0),now:setR.reduce((a,r)=>a+r.t.now,0)},
+    wait:setR.reduce((a,r)=>a+r.wait,0),turn:setR.reduce((a,r)=>a+r.turn,0),roles:[]};
+  const items=(setR.length?[tot]:[]).concat(rows);
+  beforeAfter($('#ovC'),items,'c');beforeAfter($('#ovM'),items,'t');
+  $('#ovSR').innerHTML=items.map(r=>'<li>'+esc(srRow(r))+'</li>').join('');
   // roll-up table, every group: set first, then keep default, then no change
   const rk=g=>g.no_action_needed?2:isSet(g,k)?0:1;
   const pcOf=g=>g.no_action_needed?{c:null,t:null}:pctAt(g,g.profiles[k].threshold,g.default);
@@ -1058,6 +1073,58 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   $('#ovT').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>pick(+b.dataset.tab));
   $('#ovT').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{const c=b.dataset.sort;S.ovSort=S.ovSort&&S.ovSort.k===c?{k:c,asc:!S.ovSort.asc}:{k:c,asc:true};keep(renderOverview)});  // first click: A→Z, or the biggest saving first
   copyPanel();renderS()}
+// ---------- before / after bars: grey = was (default), accent = now (profile), green hatch = saved, amber = added ----------
+const fabs=(v,kind)=>kind==='c'?'$'+(v>=100?Math.round(v).toLocaleString('en-US'):v.toFixed(1)):(v>=100?Math.round(v):v.toFixed(1))+' min';
+function legendBA(){return `<div class="olg"><span><i class="lw"></i>${t('lgWas')}</span><span><i class="ln"></i>${t('lgNow')}</span><span><i class="ls"></i>${t('lgSaved')}</span><span><i class="la"></i>${t('lgAdded')}</span></div>`}
+function baLabel(o,kind){const d=o.now-o.was,pv=ratio(d,o.was),p=S.unit==='pct'&&pv!=null;
+  return {lead:p?fpct(pv):(kind==='c'?fsv(d)+t('uDay'):fmv(d)+t('uDay')),sec:p?(kind==='c'?fsn(d)+t('uDay'):fmn(d)+t('uDay')):fpn(pv),tone:tone(kind==='c'?d:d),wn:t('wasNow',fabs(o.was,kind),fabs(o.now,kind))}}
+function srRow(r){const d=r.c.now-r.c.was,pv=ratio(d,r.c.was);
+  return r.keep?t('srKeep',r.name,fabs(r.c.was,'c')):t('srRow',r.name,fabs(r.c.was,'c'),fabs(r.c.now,'c'),d<0?t('saves'):t('adds'),pv==null?'–':pabs(pv),fabs(r.t.was,'t'),fabs(r.t.now,'t'))}
+function hatchDef(svg,id){const defs=el('defs'),p=el('pattern',{id,width:5,height:5,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});
+  p.append(el('rect',{width:5,height:5,class:'bash'}),el('line',{x1:0,y1:0,x2:0,y2:5,class:'bahl'}));defs.append(p);svg.append(defs)}
+function beforeAfter(box,items,kind){box.innerHTML='';if(!items.length)return;
+  const W=boxW(box.parentElement,36),wide=W>=600,rowH=wide?44:62,L=wide?180:8,R=wide?300:8,T=4,norm=S.ovScale==='norm';
+  const v=r=>r[kind],pw=W-L-R,mx=Math.max(...items.map(r=>Math.max(v(r).was,v(r).now)),1e-9);
+  // absolute: one shared axis; normalised: every row's "was" is the same length (80% of the plot, room for amber)
+  const len=(r,x)=>norm?(v(r).was>0?x/v(r).was:0)*pw*.8:x/mx*pw;
+  const H=T+items.length*rowH+30,svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':t(kind==='c'?'ovCostT':'ovTimeT')});svg.classList.add('bac');
+  const hid='hs-'+kind;hatchDef(svg,hid);
+  const ticks=norm?[0,.5,1].map(f=>[f*pw*.8,Math.round(f*100)+'%']):ticksN(0,mx,Math.max(3,Math.floor(pw/110))).filter(x=>x<=mx).map(x=>[x/mx*pw,kind==='c'?'$'+(+x.toFixed(1)):(+x.toFixed(1))+'']);
+  for(const [x,l] of ticks){svg.append(el('line',{x1:L+x,x2:L+x,y1:T,y2:H-26,class:'grid'}));svg.append(el('text',{x:L+x,y:H-12,'text-anchor':'middle'},l))}
+  svg.append(el('text',{x:L+pw,y:H-1,'text-anchor':'end',class:'axt'},t(norm?'axNorm':kind==='c'?'axUsd':'axMin')));
+  items.forEach((r,n)=>{const y=T+n*rowH,o=v(r),gr=el('g',{class:'barow'+(r.total?' tot':'')+(r.keep?' keep':'')});if(r.gi!=null)gr.dataset.tab=r.gi;
+    gr.append(el('rect',{x:0,y,width:W,height:rowH-2,rx:6,class:'ovbg'}));
+    if(r.total)svg.append(el('line',{x1:0,x2:W,y1:y+rowH-1,y2:y+rowH-1,class:'ax'}));
+    const by=wide?y+9:y+24,ww=Math.max(len(r,o.was),3),nw=r.keep?0:Math.max(len(r,o.now),o.now>0?2:0);
+    gr.append(el('text',{x:8,y:wide?y+17:y+14,class:'ovname'+(r.total?' b':'')},r.name));if(wide)gr.append(el('text',{x:8,y:y+31,class:'ovsub'},r.sub));
+    gr.append(el('rect',{x:L,y:by,width:ww,height:22,rx:3,class:'baw'}));
+    if(!r.keep){gr.append(el('rect',{x:L,y:by+5,width:nw,height:12,rx:2,class:'ban'}));
+      if(nw<ww-.5){gr.append(el('rect',{x:L+nw,y:by+5,width:ww-nw,height:12,fill:`url(#${hid})`}));
+        gr.append(el('path',{d:`M${L+nw},${by-2}v-3h${ww-nw}v3`,class:'babr'}))}   // bracket over the saving
+      else if(nw>ww+.5)gr.append(el('rect',{x:L+ww,y:by+5,width:nw-ww,height:12,rx:2,class:'baa'}))}
+    // labels: a fixed column on the right (a leader joins tiny bars to it); on a phone, above and below the bar
+    const lb=baLabel(o,kind),end=L+Math.max(ww,nw);
+    if(wide){const lx=L+pw+14;if(lx-end>10)gr.append(el('line',{x1:end+4,x2:lx-4,y1:by+11,y2:by+11,class:'lead'}));
+      const tx=el('text',{x:lx,y:y+17,class:'dl b'});
+      if(r.keep)tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+fabs(o.was,kind)+t('uDay')));
+      else tx.append(el('tspan',{class:'big '+lb.tone},lb.lead+' '),el('tspan',{class:lb.tone+' sc2'},lb.sec));
+      gr.append(tx);if(!r.keep)gr.append(el('text',{x:lx,y:y+32,class:'ovsub'},lb.wn))}
+    else{const tx=el('text',{x:W-8,y:y+14,'text-anchor':'end',class:'dl b'});
+      if(r.keep)tx.append(el('tspan',{class:'mute'},t('aKeep')));else tx.append(el('tspan',{class:'big '+lb.tone},lb.lead+' '),el('tspan',{class:lb.tone+' sc2'},lb.sec));
+      gr.append(tx);gr.append(el('text',{x:8,y:y+58,class:'ovsub'},r.keep?fabs(o.was,kind)+t('uDay'):lb.wn))}
+    const tip=()=>'<b>'+esc(r.name)+'</b>'+tipRow(t('lgWas'),fabs(o.was,kind)+t('uDay'))+(r.keep?tipRow(t('aKeep'),''):tipRow(t('lgNow'),fabs(o.now,kind)+t('uDay'))+tipRow(o.now<=o.was?t('lgSaved'):t('lgAdded'),fpct(ratio(o.now-o.was,o.was))+' · '+(kind==='c'?fsn(o.now-o.was):fmn(o.now-o.was))+t('uDay')))+
+      (kind==='t'&&!r.keep?tipRow(t('tWait'),fmv(r.wait)+t('uDay'))+tipRow(t('tTurn'),fmv(r.turn)+t('uDay')):'')+r.roles.map(([a,b])=>tipRow(a,b)).join('');
+    gr.addEventListener('pointermove',e=>showTip(tip(),e.clientX,e.clientY));gr.addEventListener('pointerleave',hideTip);
+    if(r.gi!=null)gr.addEventListener('click',()=>pick(r.gi));svg.append(gr)});
+  box.append(svg)}
+// compact pair on the model page: cost and time at the cursor against the default, in the same visual language
+function miniBA(g,im){const rows=[['c',defUsd(g),defUsd(g)+im.usd.per_day],['t',defMin(g),defMin(g)+im.minutes.per_day]],W=150,H=30,svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,class:'mini'});
+  hatchDef(svg,'hs-mini');const txt=[];
+  rows.forEach(([kind,was,now],n)=>{const mx=Math.max(was,now,1e-9),y=2+n*15,ww=Math.max(was/mx*(W-4),2),nw=Math.max(now/mx*(W-4),now>0?1:0);
+    svg.append(el('rect',{x:2,y,width:ww,height:12,rx:2,class:'baw'}),el('rect',{x:2,y:y+3,width:nw,height:6,rx:1,class:'ban'}));
+    if(nw<ww)svg.append(el('rect',{x:2+nw,y:y+3,width:ww-nw,height:6,fill:'url(#hs-mini)'}));else if(nw>ww)svg.append(el('rect',{x:2+ww,y:y+3,width:nw-ww,height:6,class:'baa'}));
+    txt.push(t(kind==='c'?'wCost':'wTime')+': '+t('wasNow',fabs(was,kind),fabs(now,kind))+' ('+fpct(ratio(now-was,was))+')')});
+  const s_=txt.join(' · ')+' — '+t('lgLine');svg.setAttribute('role','img');svg.setAttribute('aria-label',s_);return `<span class="minib" tabindex="0" data-tip="${esc(s_)}">${svg.outerHTML}</span>`}
 // update(): everything that depends on the selected threshold/profile; render(): full rebuild (group or language change)
 function update(){if(S.view!=='group')return;controls();impactPanel();comparison();pareto();costs();timeChart();hist();sessChart();moveCursor();hideTip()}
 function render(){keep(()=>{if(S.view==='overview'){renderOverview();return}header();renderS();

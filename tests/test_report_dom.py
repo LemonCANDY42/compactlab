@@ -76,6 +76,7 @@ CHECK = """
       ok(!!g.current===!document.querySelector('#ans .ans2.cap'),'current-setting note');
       ok(!!g.current===!!document.querySelector('#fMain .mcur'),'current mark')}
     ok(!document.querySelector('#kpis .kh .ic use[href="#i-coin"]'),'money KPI repeats the cards');
+    {const mb=document.querySelector('#mini .minib');ok(mb&&/was .* now /.test(mb.dataset.tip)&&mb.querySelector('svg[aria-label]'),'before/after pair on the model page')}
     // a warning triangle in the bar only for the selected profile's guardrail flags
     const want=g.profiles.balanced.flags.filter(f=>!NOTE(f)).length,warn=document.querySelectorAll('#flags .ib.low,#flags .ib.bad').length;
     ok(warn===want,'bar shows '+warn+' warnings for flags '+g.profiles.balanced.flags.join(','));
@@ -143,7 +144,24 @@ CHECK = """
     document.querySelector('#tree [data-ov]').click();
     ok(S.view==='overview'&&vis(document.getElementById('fOv'))&&!vis(document.getElementById('fMain')),'overview not shown');
     const nAct=new Set(D.groups.filter(x=>!x.no_action_needed).map(x=>x.harness+'|'+x.model)).size;
-    ok(document.querySelectorAll('#fOv .ovrow').length===nAct,'overview bars '+document.querySelectorAll('#fOv .ovrow').length+' != '+nAct);
+    // before / after: one row per model that is not "no change", plus a total row when any model is "set", in both panels
+    const nSet=new Set(D.groups.filter(x=>isSet(x)).map(x=>x.harness+'|'+x.model)).size,nRows=nAct+(nSet?1:0);
+    for(const id of ['ovC','ovM'])ok(document.querySelectorAll('#'+id+' .barow').length===nRows,id+' rows '+document.querySelectorAll('#'+id+' .barow').length+' != '+nRows);
+    ok(document.querySelectorAll('#ovSR li').length===nRows&&/per day/.test(document.getElementById('ovSR').textContent),'screen-reader rows');
+    // keep-default rows draw only the original bar
+    document.querySelectorAll('#ovC .barow.keep').forEach(r=>ok(!r.querySelector('.ban'),'keep-default row has a "now" bar'));
+    // the total sums the "set" models' was and now (never averaged percents)
+    if(nSet){const ms={};D.groups.forEach(x=>{const key=x.harness+'|'+x.model;(ms[key]=ms[key]||[]).push(x)});
+      const sets=Object.values(ms).filter(gs=>gs.some(x=>isSet(x))),was=sets.flat().reduce((a,x)=>a+defUsd(x),0),now=was+sets.flat().reduce((a,x)=>a+setUsd(x),0);
+      const tl=document.querySelector('#ovC .barow.tot tspan.big').textContent.trim();const want=S.unit==='pct'?fpct((now-was)/was):fsv(now-was)+t('uDay');ok(tl===want,'total row '+tl+' != '+want)}
+    // a model that gets dearer sticks out past its original bar in amber
+    {const gi=D.groups.findIndex(x=>isSet(x));if(gi>=0){const im=impOf(D.groups[gi],S.op,'vs_default'),keepU=im.usd.per_day;im.usd.per_day=Math.abs(keepU)+5;
+      renderOverview();ok(document.querySelector('#ovC .baa'),'no amber overshoot for an added cost');im.usd.per_day=keepU;renderOverview()}}
+    // each row = 100%: every model's original bar has the same length; the choice is remembered
+    document.querySelector('[data-ovs=norm]').click();
+    {const ws=[...document.querySelectorAll('#ovC .barow:not(.tot) .baw')].map(r=>+r.getAttribute('width'));ok(S.ovScale==='norm'&&ws.every(w=>Math.abs(w-ws[0])<.5),'normalised widths '+ws.join(','));
+      let sv=null;try{sv=localStorage.getItem('compactlab.ovScale')}catch(e){}ok(sv==null||sv==='norm','scale not remembered')}
+    document.querySelector('[data-ovs=abs]').click();
     ok(document.querySelectorAll('#ovT tr').length===D.groups.length+1,'roll-up rows');
     // the headline total counts only groups whose action is "set"
     // totals: summed amounts over summed defaults, never averaged percents (the $ unit is still on from above)
@@ -157,7 +175,7 @@ CHECK = """
       const sb=document.querySelector('#ovT [data-sort=cUsd]');sb.click();
       const vals=[...document.querySelectorAll('#ovT tr')].slice(1).map(r=>D.groups[+r.querySelector('[data-tab]').dataset.tab]).filter(x=>!x.no_action_needed).map(x=>pctAt(x,x.profiles[S.op].threshold,x.default).c);
       ok(vals.every((v,i)=>!i||v>=vals[i-1]-1e-12),'table not sorted by cost %');S.ovSort=null;keep(renderOverview);
-      ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#fOv .ovrow.keep'):true,'keep-default rows not greyed')}
+      ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#ovC .barow.keep'):true,'keep-default rows not greyed')}
     ok(/^All sessions/.test(document.getElementById('hSess').textContent),'overview sessions title');
     // a "keep default" row says which rule kept it
     D.groups.forEach((x,i)=>{const P=x.profiles[S.op];if(action(x,P.threshold,P.value_of_time)!=='aKeep')return;
