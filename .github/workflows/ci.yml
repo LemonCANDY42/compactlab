@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv && uv pip install -e ".[dev]"
+      - run: uv venv --clear && uv pip install -e ".[dev]"
       - run: .venv/bin/ruff check .
       - run: .venv/bin/ruff format --check .
       - run: .venv/bin/mypy
@@ -28,6 +28,6 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: uv venv --python ${{ matrix.python }} && uv pip install -e ".[dev]"
+      - run: uv venv --clear --python ${{ matrix.python }} && uv pip install -e ".[dev]"
       - run: .venv/bin/python -m pytest --cov --cov-report=term
       - run: .venv/bin/compactlab demo --out /tmp/demo --no-open
