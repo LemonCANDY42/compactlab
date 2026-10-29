@@ -87,18 +87,63 @@ def point(g: dict[str, Any], i: int, vot: float) -> dict[str, Any]:
     return p
 
 
-def compare(p: dict[str, Any], ref: dict[str, Any], days: float = 1.0) -> dict[str, Any]:
+MONTH_DAYS = 30.0
+
+
+def impact(
+    d_cost: float,
+    d_time_s: float,
+    wait_s: float,
+    turn_gain_s: float,
+    compactions: float,
+    ref_compactions: float,
+    days: float,
+    active_days: float | None = None,
+) -> dict[str, Any]:
+    """Per-day / per-active-day / per-month figures for one profile vs one reference.
+
+    Sign convention: negative usd = money saved, negative minutes = time saved. `wait_s` is added compaction
+    + re-discovery wait (positive = more waiting), `turn_gain_s` is the turn-speed gain from a smaller context
+    (positive = faster turns), so d_time_s = wait_s - turn_gain_s. A month is 30 calendar days.
+    """
+    days = max(float(days), 1.0)
+    active = max(float(active_days), 1.0) if active_days else None
+
+    def per(x: float, scale: float = 1.0) -> dict[str, float | None]:
+        return {
+            "per_day": x * scale / days,
+            "per_active_day": x * scale / active if active else None,
+            "per_month": x * scale / days * MONTH_DAYS,
+        }
+
+    return {
+        "days": days,
+        "active_days": active,
+        "usd": per(d_cost),
+        "minutes": per(d_time_s, 1 / 60),
+        "wait_minutes": per(wait_s, 1 / 60),
+        "turn_gain_minutes": per(turn_gain_s, 1 / 60),
+        "compactions": per(compactions),
+        "ref_compactions": per(ref_compactions),
+    }
+
+
+def compare(
+    p: dict[str, Any], ref: dict[str, Any], days: float = 1.0, active_days: float | None = None
+) -> dict[str, Any]:
     """Profile (or any point) minus a reference point (default or current)."""
     dc = p["combined_cost"] - ref["combined_cost"]
     added = (p["time_compact_s"] + p["time_redisc_s"]) - (ref["time_compact_s"] + ref["time_redisc_s"])
     dt = p["time_s"] - ref["time_s"]
+    gain = ref["time_turns_s"] - p["time_turns_s"]
     return {
+        "impact": impact(dc, dt, added, gain, p["compactions"], ref["compactions"], days, active_days),
         "d_cost": dc,
         "d_cost_pct": dc / ref["combined_cost"] if ref["combined_cost"] else 0.0,
         "d_time_s": dt,
         "d_time_pct": dt / ref["time_s"] if ref["time_s"] else 0.0,
         "d_time_min_per_day": dt / 60 / days,
-        "time_saved_context_s": ref["time_turns_s"] - p["time_turns_s"],
+        "time_saved_context_s": gain,
         "time_added_compaction_s": added,
         "added_wait_min_per_day": added / 60 / days,
         "compactions": p["compactions"],

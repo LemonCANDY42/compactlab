@@ -27,9 +27,22 @@ versioning: [SemVer](https://semver.org/).
   scroll kept across re-renders; copy button feedback and a file:// fallback; 44px touch targets on narrow or
   touch screens; reduced-motion and focus-ring support; no horizontal scroll at 375 / 768 / 1440 px. Regression
   tests run the report in headless Chrome (skipped when Chrome is absent).
+- Report redesign: warm off-white / near-black themes from CSS tokens (system preference plus a manual
+  Auto/Light/Dark toggle), one clay accent, hairline borders, a system serif for titles and tabular mono numbers,
+  a group sidebar that becomes a top bar on phones, a header with date range, data source and mode, KPI cards,
+  calmer charts with direct labels instead of legends, and plain-language callouts for thin data, short histories,
+  borrowed time models and guardrail flags (red only when a guardrail is broken). States it is an independent
+  open-source tool. Still one offline file; slider, sticky bar, tooltips and a11y behaviour unchanged.
+- docs/assets adds report-dark.png, report-mobile.png and report-mobile-dark.png.
+- Headless Chrome in tests and `scripts/make_assets.py` runs with `--use-mock-keychain` so it never asks for the
+  macOS keychain.
 - Synthetic demo latencies are closer to real logs (compaction ≈ 90 s + 0.4 s per 1k tokens).
 
 ### Added
+- **Per-day impact** for every profile of every group, vs the harness default and vs the current setting: USD,
+  minutes (compaction wait and turn-speed gain separately) and compactions, per calendar day, per active day and
+  per month. In the report (new section, basis switch), in `recommend` (table after the snippets, `impact` in
+  `--json`) and in the result (`comparison.<profile>.vs_default.impact`). Groups record `active_days` and `span`.
 - Time dimension: turn-latency and compaction-latency fits from log timestamps, wall-clock per threshold
   (saved by smaller contexts vs added by compactions and re-discovery).
 - Baselines: every profile compared with the harness default (`data/harness_defaults.json`, with sources) and with the

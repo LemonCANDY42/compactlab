@@ -5,6 +5,7 @@ from __future__ import annotations
 import bisect
 import math
 import statistics
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -249,8 +250,8 @@ def _comparison(g: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     return {
         "threshold": thr,
         "action": action,
-        "vs_default": compare(p, d, g["days"]),
-        "vs_current": compare(p, cur, g["days"]) if cur else None,
+        "vs_default": compare(p, d, g["days"], g.get("active_days")),
+        "vs_current": compare(p, cur, g["days"], g.get("active_days")) if cur else None,
     }
 
 
@@ -325,6 +326,8 @@ def analyze(
         }  # fmt: skip
         tss = [t.ts for s in ss for t in s.turns if t.ts]
         days = max((max(tss) - min(tss)) / 86400, 1.0) if tss else 1.0
+        # local dates with at least one turn, never more than the span (a 10.2-day span can touch 11 dates)
+        active_days = min(len({time.strftime("%Y-%m-%d", time.localtime(t)) for t in tss}) or 1, days)
 
         d_thr, d_note = default_threshold(harness, model, window)
         default = _point(run_all(traces, d_thr, c), d_thr, n_turns)
@@ -350,6 +353,8 @@ def analyze(
             "n_sessions": len(ss),
             "n_turns": n_turns,
             "days": days,
+            "active_days": active_days,
+            "span": [min(tss), max(tss)] if tss else None,
             "max_window": window,
             "window_source": "observed in logs" if observed_window else "pricing data",
             "effective_max": cap,

@@ -103,6 +103,24 @@ Selection only needs the stored grid arrays, so `report`, `recommend` and `apply
 `--value-of-time` on a saved `result.json` and re-select without replaying. The report's Pareto frontier and score
 curve are drawn at the selected profile's value of time.
 
+## Per-day impact
+
+For each profile and each reference point (harness default, current setting), with `Δ` = profile minus reference
+over the whole replayed history (`sim/select.py: impact`):
+
+| figure | formula |
+| --- | --- |
+| money | `Δ(list-price cost + re-discovery penalty)` |
+| wall-clock (net) | `Δtime = wait − turn gain` |
+| compaction wait | `Δ(compaction + re-discovery seconds)`, positive = more waiting |
+| turn gain | `reference turn seconds − profile turn seconds`, positive = faster turns |
+| compactions | the profile's compaction count (and the reference's) |
+
+Each is divided three ways: **per day** by `days = max(last turn − first turn, 1 day)` in the group; **per active
+day** by `active_days`, the number of local calendar dates with at least one turn, capped at `days` (a 10.2-day span
+can touch 11 dates); **per month** = per day × 30. Negative money or minutes means a saving. Results saved before
+`active_days` existed are re-selected on load; their per-active-day figures stay empty until `simulate` is re-run.
+
 ## Deep mode
 
 For each model/role group, up to N sessions (largest peak first) are cut where the replay would compact at each

@@ -1,124 +1,285 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>compactlab report</title>
 <style>
-:root{--bg:#fbfbfa;--fg:#17181a;--mut:#74777c;--bd:#e6e6e3;--card:#fff;--acc:#4f46e5;--acc2:#0f766e;--warn:#b45309;--ghost:#c9cbd0;--band:#4f46e514}
-@media (prefers-color-scheme:dark){:root{--bg:#0e0f11;--fg:#ececed;--mut:#8b8e94;--bd:#24262b;--card:#15171a;--acc:#8b93ff;--acc2:#5eead4;--warn:#fbbf24;--ghost:#3a3d44;--band:#8b93ff1a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 -apple-system,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-main{max-width:980px;margin:0 auto;padding:28px 16px 64px}
-h1{font-size:22px;font-weight:650;letter-spacing:-.02em;margin:0}h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:36px 0 10px}
-.mut{color:var(--mut)}.badge{display:inline-block;font-size:11px;border:1px solid var(--bd);border-radius:999px;padding:0 8px;margin-right:4px;color:var(--fg)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.sub{margin:4px 0 0;font-size:13px}
-details.note{margin:14px 0 0;font-size:12.5px;color:var(--mut);border-left:2px solid var(--warn);padding:2px 0 2px 12px}details.note summary{cursor:pointer;color:var(--fg)}
-.pills{display:flex;flex-wrap:wrap;gap:6px;margin:22px 0 0}
-.pills button,.seg button{font:inherit;color:var(--mut);background:transparent;border:1px solid var(--bd);border-radius:999px;padding:5px 12px;cursor:pointer;transition:color .15s,background .15s,border-color .15s;min-height:32px}
-.pills button:hover,.seg button:hover{color:var(--fg)}.pills button[aria-selected=true]{color:var(--fg);border-color:var(--fg)}
-.panel{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px 22px;margin-top:14px}
-.gearrow{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;justify-content:space-between}
-.seg{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--bg);border:1px solid var(--bd);border-radius:18px;padding:3px;max-width:100%}.seg button{border:0;border-radius:999px;padding:6px 14px;white-space:nowrap}
-.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg);font-weight:600}
-.bar{position:sticky;top:0;z-index:5;margin:14px -16px 0;padding:10px 16px 6px;background:color-mix(in srgb,var(--bg) 90%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--bd)}
-.slider{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:4px 12px;font-size:13px;color:var(--mut);flex:1 1 100%;min-width:0}.slider label{white-space:nowrap;line-height:28px}
-.track{position:relative;min-width:0;padding-bottom:46px}.tval{line-height:28px}
-input[type=range]{width:100%;height:28px;margin:0;accent-color:var(--acc);cursor:pointer;touch-action:pan-y}
-.tval{font-size:18px;font-weight:650;color:var(--fg);min-width:52px;text-align:right;font-variant-numeric:tabular-nums}
-.mk{position:absolute;transform:translateX(-50%);font:inherit;font-size:11px;line-height:1.2;white-space:nowrap;background:transparent;border:0;padding:4px 2px 2px;color:var(--mut);cursor:pointer;min-height:18px}
-.mk::before{content:"";position:absolute;left:50%;top:-4px;width:1.5px;height:7px;background:currentColor;transform:translateX(-50%)}
-.mk.r1{top:26px}.mk.r2{top:50px;color:var(--warn)}.mk.r2::before{height:5px;top:-2px}.mk.l1{margin-top:14px}.mk.l2{margin-top:28px}.mk.er{transform:translateX(calc(-100% + 4px))}.mk.er::before{left:auto;right:3px}.mk.el{transform:translateX(-4px)}.mk.el::before{left:3px}
-#ctl .kpis{margin-top:4px}#fCmp{max-height:none}.gearrow .vot{margin-left:auto}.mk.on{color:var(--fg);font-weight:600}.mk:hover{color:var(--fg)}
-.vot{font-size:12px}
-#tip{position:fixed;z-index:20;pointer-events:none;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5;box-shadow:0 6px 24px #0002;min-width:150px}
-#tip b{font-size:13px}#tip .r{display:flex;justify-content:space-between;gap:14px}#tip .r span:first-child{color:var(--mut)}
-:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+:root{
+ --bg:#f6f5f0;--bg2:#efede6;--card:#fdfcf9;--ink:#1f1e1b;--ink2:#56544d;--ink3:#77746c;--line:#e3e0d6;--line2:#cfcbbf;
+ --acc:#c15f3c;--acc-soft:#c15f3c17;--good:#2f7a4f;--good-soft:#2f7a4f14;--amber:#a26412;--amber-soft:#a2641214;--bad:#b42318;--bad-soft:#b4231812;
+ --serif:ui-serif,"New York","Iowan Old Style","Charter","Palatino Linotype",Georgia,"Songti SC","Noto Serif CJK SC",serif;
+ --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB",sans-serif;
+ --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+ --r:14px;--rs:10px
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+ --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1a;--amber:#e3a548;--amber-soft:#e3a5481a;--bad:#f2867a;--bad-soft:#f2867a1a}}
+:root[data-theme=dark]{
+ --bg:#1a1915;--bg2:#211f1b;--card:#24221e;--ink:#ecebe4;--ink2:#bab7ad;--ink3:#8f8c83;--line:#35332d;--line2:#4a4740;
+ --acc:#d97757;--acc-soft:#d9775722;--good:#6cc08e;--good-soft:#6cc08e1a;--amber:#e3a548;--amber-soft:#e3a5481a;--bad:#f2867a;--bad-soft:#f2867a1a}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.num,.kpi .v,.tval,td,.it td,#tip{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+code{font:12px var(--mono);background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+b{font-weight:600}
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+/* ---------- sidebar ---------- */
+.side{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;border-right:1px solid var(--line);padding:22px 14px 18px;display:flex;flex-direction:column;gap:20px;background:var(--bg)}
+.brand{display:flex;gap:10px;align-items:center;padding:0 8px}
+.brand svg{width:26px;height:26px;flex:none;color:var(--ink)}
+.wm{font:600 19px/1.1 var(--serif);letter-spacing:-.01em}
+.tag{font-size:11.5px;color:var(--ink3);line-height:1.3;margin-top:2px}
+#tabs{display:flex;flex-direction:column;gap:2px}
+.navh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:12px 10px 4px}
+.navh:first-child{padding-top:0}
+#tabs button{display:flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left;font:inherit;color:var(--ink2);background:transparent;border:1px solid transparent;border-radius:var(--rs);padding:7px 10px;cursor:pointer;min-height:44px;width:100%}
+#tabs button .nm{font-size:13.5px;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+#tabs button .rl{font-size:11.5px;color:var(--ink3)}
+#tabs button:hover{background:var(--bg2)}
+#tabs button[aria-selected=true]{background:var(--card);border-color:var(--line);box-shadow:inset 2px 0 0 var(--acc)}
+.sidefoot{margin-top:auto;display:grid;gap:8px;padding:0 8px}
+.lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+/* ---------- main ---------- */
+main{min-width:0;padding:28px 36px 72px;max-width:1180px;width:100%}
+.eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+h1{font:500 32px/1.15 var(--serif);letter-spacing:-.015em;margin:4px 0 0;overflow-wrap:anywhere}
+h1 .rl{color:var(--ink3)}
+h2{font:500 21px/1.25 var(--serif);letter-spacing:-.01em;margin:44px 0 4px}
+h2+.sub{margin:0 0 14px;color:var(--ink2);font-size:13px;max-width:72ch}
+h3{font:600 13.5px/1.35 var(--sans);margin:0 0 2px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 24px;margin:18px 0 0;padding:14px 0 0;border-top:1px solid var(--line)}
+.meta div{min-width:0}.meta dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}.meta dd{margin:2px 0 0;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+.badge{display:inline-block;font-size:11px;border:1px solid var(--line2);border-radius:999px;padding:0 8px;color:var(--ink2);vertical-align:1px}
+.badge.acc{border-color:var(--acc);color:var(--acc)}
+details.note{margin:16px 0 0;font-size:13px;color:var(--ink2)}
+details.note summary{cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;min-height:32px}
+details.note p{max-width:80ch;margin:6px 0 0}
+.mut{color:var(--ink2)}.zh{color:var(--ink3)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.card>p{margin:0 0 10px;font-size:12.5px;color:var(--ink2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+/* segmented controls */
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:3px;max-width:100%}
+.seg button{font:inherit;font-size:13px;color:var(--ink2);background:transparent;border:1px solid transparent;border-radius:9px;padding:5px 12px;cursor:pointer;white-space:nowrap;min-height:32px;transition:color .15s,background .15s,border-color .15s}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--card);color:var(--ink);border-color:var(--line);box-shadow:0 1px 1px #0000000a;font-weight:600}
+.seg.sm button{padding:3px 10px;font-size:12px;min-height:28px}
+.meta{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+/* sticky control bar */
+.bar{position:sticky;top:0;z-index:5;margin:22px -36px 0;padding:12px 36px 8px;background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:saturate(1.2) blur(10px);backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid var(--line)}
+.gearrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.vot{font-size:12px;color:var(--ink3);margin-left:auto}
+.slider{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:4px 14px;font-size:13px;color:var(--ink2);flex:1 1 100%;min-width:0}
+.slider label{white-space:nowrap;line-height:28px}
+.track{position:relative;min-width:0;padding-bottom:46px}
+input[type=range]{width:100%;height:28px;margin:0;accent-color:var(--acc);cursor:pointer;touch-action:pan-y;background:transparent}
+.tval{font:600 20px/28px var(--mono);color:var(--ink);min-width:60px;text-align:right}
+.mk{position:absolute;transform:translateX(-50%);font:inherit;font-size:11px;line-height:1.2;white-space:nowrap;background:transparent;border:0;padding:4px 2px 2px;color:var(--ink3);cursor:pointer;min-height:18px}
+.mk::before{content:"";position:absolute;left:50%;top:-4px;width:1px;height:7px;background:currentColor;transform:translateX(-50%)}
+.mk.r1{top:26px}.mk.r2{top:50px;color:var(--ink2)}.mk.r2::before{height:5px;top:-2px}
+.mk.l1{margin-top:14px}.mk.l2{margin-top:28px}.mk.er{transform:translateX(calc(-100% + 4px))}.mk.er::before{left:auto;right:3px}.mk.el{transform:translateX(-4px)}.mk.el::before{left:3px}
+.mk.on{color:var(--acc);font-weight:600}.mk:hover{color:var(--ink)}
+.gl .z{color:inherit;opacity:.7}
+/* KPI cards */
+#ctl{margin-top:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 13px;min-width:0}
+.kpi .k{font-size:12px;color:var(--ink2);line-height:1.35}
+.kpi .v{font:500 27px/1.25 var(--mono);letter-spacing:-.02em;margin-top:6px}
+.kpi .v small{font:400 12px var(--sans);color:var(--ink3);letter-spacing:0;margin-left:3px}
+.kpi .d{font-size:12px;color:var(--ink3);margin-top:4px;line-height:1.45}
+.good{color:var(--good)}.warn{color:var(--amber)}.bad{color:var(--bad)}
+/* callouts */
+#callouts{display:grid;gap:8px;margin-top:12px}
+.callout{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:10px 14px}
+.callout::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;margin-top:7px;background:var(--ink3)}
+.callout.info::before{background:var(--good)}.callout.low::before{background:var(--amber)}.callout.bad{border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}.callout.bad::before{background:var(--bad)}
+/* per-day impact */
+.ihead{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.pcs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 12px;min-width:0}
+.pc.sel{border-color:color-mix(in srgb,var(--acc) 55%,var(--line));box-shadow:inset 0 2px 0 var(--acc)}
+.pc header{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.pc .pn{font:500 17px/1.2 var(--serif)}.pc .pt{font:500 13px var(--mono);color:var(--ink2)}
+.chip{font-size:11px;border-radius:999px;padding:1px 8px;border:1px solid var(--line2);color:var(--ink2);margin-left:auto;white-space:nowrap}
+.chip.set{border-color:var(--acc);color:var(--acc)}
+.it{width:100%;border-collapse:collapse;font-size:12.5px}
+.it th,.it td{padding:5px 0;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-weight:400}
+.it th:first-child{text-align:left;color:var(--ink2);white-space:normal}
+.it thead th{font-size:11px;color:var(--ink3);padding-top:0;vertical-align:bottom;white-space:normal;padding-left:8px}
+.it td{font-family:var(--mono);font-size:13px;padding-left:8px}
+.it tr.big td{font-size:15px;font-weight:500}
+.it tr.sub th{padding-left:12px;font-size:11.5px;color:var(--ink3)}.it tr.sub td{font-size:12px;color:var(--ink2)}
+.it tr:last-child th,.it tr:last-child td{border-bottom:0}
+.it td .was{display:block;font:11px var(--sans);color:var(--ink3)}
+.pc .fl{margin:8px 0 0;padding:0;list-style:none;font-size:11.5px;line-height:1.45}
+.basis{font-size:12px;color:var(--ink2);margin:12px 0 0;max-width:90ch}
+/* charts */
+.fig h3{margin-bottom:2px}.fig>p{margin:0 0 10px}
+svg{width:100%;height:auto;display:block}
+text{fill:var(--ink3);font-size:10.5px;font-family:var(--sans)}
+.ax{stroke:var(--line2)}.grid{stroke:var(--line);stroke-dasharray:1 3}
+.dl{font-size:10.5px;paint-order:stroke;stroke:var(--card);stroke-width:3px;stroke-linejoin:round}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-top:6px}.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
 .hov{cursor:crosshair}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:18px;margin-top:22px}
-.kpis .k{font-size:12px;color:var(--mut);line-height:1.35;min-height:2.7em}.kpis .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.2}.kpis .d{font-size:12px;color:var(--mut)}
-.good{color:var(--acc2)}.bad{color:var(--warn)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.grid2{grid-template-columns:1fr}}
-.fig{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}.fig h3{font-size:13px;font-weight:600;margin:0 0 2px}.fig p{margin:0 0 8px;font-size:12px;color:var(--mut)}
-svg{width:100%;height:auto;display:block}text{fill:var(--mut);font-size:10.5px;font-family:inherit}.tip{font-size:11px}.ax{stroke:var(--bd)}.grid{stroke:var(--bd);stroke-dasharray:1 4}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin-top:6px}.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
-select,input[type=search]{font:inherit;font-size:13px;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:5px 9px}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
-th{cursor:pointer;color:var(--mut);font-weight:500}.scroll{overflow:auto;max-height:420px}
-ul.n{margin:12px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
-.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.seg.sm button{padding:3px 10px;font-size:12px}
-.zh{color:var(--mut)}.banner{margin-top:14px;padding:10px 14px;border-radius:10px;border:1px solid var(--acc2);color:var(--fg)}
-.ctlrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
-pre.snip{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:12px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;max-height:420px;margin:10px 0 0}
-.copyrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.btn{font:inherit;font-size:12px;border:1px solid var(--fg);background:var(--fg);color:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer}
-tr.sel td{font-weight:650}tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--acc2)}td.act{text-align:left}#fCmp th{white-space:normal;vertical-align:bottom}#fCmp td:last-child{white-space:normal;min-width:170px;font-size:11px}.kpis .v.sm{font-size:20px;line-height:1.5}#fCmp th,#fCmp td{padding:6px 5px;font-size:11.5px}
-@media (max-width:768px),(pointer:coarse){.seg button,.pills button,.btn{min-height:44px}.mk{min-height:24px}input[type=range]{height:44px}.mk.r1{top:38px}.mk.r2{top:64px}.track{padding-bottom:62px}}
-.gl .z{color:inherit;opacity:.75}
-@media (max-width:520px){.bar{padding-top:8px}.gearrow{gap:8px}#gears{display:grid;grid-template-columns:repeat(4,1fr);width:100%;border-radius:14px}
- #gears button{padding:4px 6px;white-space:normal;line-height:1.25;font-size:12.5px}#gears .sep{display:none}#gears .z{display:block;font-size:11px}
- .slider{grid-template-columns:1fr auto;width:100%}.slider label{grid-row:1}.tval{grid-row:1;grid-column:2}.track{grid-column:1/-1}.panel{padding:16px}}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--card);color:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12px;line-height:1.55;box-shadow:0 8px 28px #00000014;min-width:170px}
+#tip b{font:600 13px var(--mono)}#tip .r{display:flex;justify-content:space-between;gap:16px}#tip .r span:first-child{color:var(--ink2)}#tip .r span:last-child{font-family:var(--mono)}
+/* tables */
+input[type=search]{width:280px}
+select,input[type=search]{font:inherit;font-size:13px;background:var(--card);color:var(--ink);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;min-height:34px;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--ink3);font-weight:500;font-size:11.5px}
+#st th[data-k]{cursor:pointer}
+.scroll{overflow:auto;max-height:440px}
+#fCmp{max-height:none}#fCmp th{white-space:normal;vertical-align:bottom}#fCmp td:last-child{white-space:normal;min-width:170px;font-size:11.5px}#fCmp th,#fCmp td{padding:7px 6px}
+#fCmp td{font-family:var(--mono);font-size:12px}#fCmp td:first-child,#fCmp td.act{font-family:var(--sans)}
+tr.sel td{background:var(--acc-soft)}tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--acc);font-weight:600}td.act{text-align:left}
+ul.n{margin:0;padding-left:18px;font-size:12.5px;color:var(--ink2)}ul.n li{margin:3px 0}
+.ctlrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+pre.snip{background:var(--bg2);border:1px solid var(--line);border-radius:var(--rs);padding:12px 14px;overflow:auto;font:12px/1.55 var(--mono);white-space:pre;max-height:420px;margin:12px 0 0}
+.copyrow{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:13px;border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:9px;padding:5px 14px;cursor:pointer;min-height:32px}
+.foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink3);max-width:90ch}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+/* ---------- responsive ---------- */
+@media (max-width:1100px){.pcs{grid-template-columns:1fr 1fr}}
+@media (max-width:900px){
+ .app{display:block}
+ .side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:14px 16px 10px;gap:10px;display:grid;grid-template-columns:1fr auto;align-items:center}
+ .brand{padding:0}.sidefoot{margin:0;display:flex;gap:6px;padding:0;align-items:center}.sidefoot .lbl{display:none}
+ #tabs{grid-column:1/-1;flex-direction:row;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 16px}.navh{display:none}
+ #tabs button{flex:none;white-space:nowrap;width:auto;border:1px solid var(--line);border-radius:999px;padding:5px 12px;flex-direction:row;gap:6px;align-items:baseline}
+ #tabs button[aria-selected=true]{box-shadow:none;border-color:var(--ink)}
+ main{padding:22px 16px 64px}
+ .bar{margin:18px -16px 0;padding:10px 16px 6px}
+ .grid2{grid-template-columns:1fr}
+ h1{font-size:27px}
+}
+@media (max-width:768px),(pointer:coarse){.seg button,.btn,#tabs button{min-height:44px}.seg.sm button{min-height:40px}.mk{min-height:24px}input[type=range]{height:44px}.mk.r1{top:38px}.mk.r2{top:64px}.track{padding-bottom:62px}.slider label,.tval{line-height:44px}}
+@media (max-width:640px){.pcs{grid-template-columns:1fr}.wm{font-size:17px}.tag{display:none}}
+@media (max-width:520px){
+ .gearrow{gap:8px}#gears{display:grid;grid-template-columns:repeat(4,1fr);width:100%}
+ #gears button{padding:4px 4px;white-space:normal;line-height:1.25;font-size:12.5px}#gears .sep{display:none}#gears .z{display:block;font-size:11px}
+ .slider{grid-template-columns:1fr auto;width:100%}.slider label{grid-row:1}.tval{grid-row:1;grid-column:2}.track{grid-column:1/-1}
+ .vot{margin-left:0}.card{padding:14px}.kpi .v{font-size:24px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
-</style></head><body><main>
-<div class="top"><div><h1>compactlab</h1><p class="sub mut" id="meta"></p></div>
-<div class="seg sm" role="group" aria-label="Language" id="langs"></div></div>
-<details class="note"><summary id="howto"></summary><p id="caveat"></p></details>
-<div class="pills" id="tabs" role="tablist"></div>
-<div class="bar" id="bar"></div>
-<section class="panel" id="ctl"><div id="banner"></div><div class="kpis" id="kpis"></div><ul class="n" id="notes"></ul></section>
-<div id="tip" role="tooltip" hidden></div>
-<h2 id="hCmp"></h2>
-<div class="fig scroll" id="fCmp"></div>
-<h2 id="hCopy"></h2>
-<div class="fig" id="fCopy"></div>
-<h2 id="hTrade"></h2>
-<div class="grid2"><div class="fig" id="fPareto"></div><div class="fig" id="fCost"></div></div>
-<h2 id="hTime"></h2>
-<div class="fig" id="fTime"></div>
-<h2 id="hDeep"></h2>
-<div class="fig" id="fDeep"></div>
-<h2 id="hHist"></h2>
-<div class="grid2"><div class="fig" id="fHist"></div><div class="fig" id="fSess"></div></div>
-<h2 id="hSess"></h2>
-<p><input type="search" id="q"> <span class="mut" id="cnt"></span></p>
-<div class="fig scroll"><table id="st"></table></div>
+</style></head><body>
+<div class="app">
+<aside class="side" id="side">
+ <div class="brand"><svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1.5" y="1.5" width="23" height="23" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 9h12M7 13h8M7 17h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  <div><div class="wm">compactlab</div><div class="tag" id="tag"></div></div></div>
+ <nav id="tabs" role="tablist" aria-label="Groups"></nav>
+ <div class="sidefoot"><div class="lbl" id="lLang"></div><div class="seg sm" role="group" aria-label="Language" id="langs"></div>
+  <div class="lbl" id="lTheme"></div><div class="seg sm" role="group" aria-label="Theme" id="themes"></div></div>
+</aside>
+<main id="main">
+ <header>
+  <div class="eyebrow" id="eyebrow"></div>
+  <h1 id="title">compactlab</h1>
+  <dl class="meta" id="meta"></dl>
+  <details class="note"><summary id="howto"></summary><p id="caveat"></p></details>
+ </header>
+ <div class="bar" id="bar"></div>
+ <section id="ctl"><div id="banner"></div><div class="kpis" id="kpis"></div><div id="callouts"></div></section>
+ <h2 id="hImpact"></h2><p class="sub" id="sImpact"></p>
+ <div id="fImpact"></div>
+ <h2 id="hCmp"></h2><p class="sub" id="sCmp"></p>
+ <div class="card scroll" id="fCmp"></div>
+ <h2 id="hCopy"></h2>
+ <div class="card" id="fCopy"></div>
+ <h2 id="hTrade"></h2>
+ <div class="grid2"><div class="card fig" id="fPareto"></div><div class="card fig" id="fCost"></div></div>
+ <h2 id="hTime"></h2>
+ <div class="card fig" id="fTime"></div>
+ <h2 id="hHist"></h2>
+ <div class="grid2"><div class="card fig" id="fHist"></div><div class="card fig" id="fSess"></div></div>
+ <h2 id="hDeep"></h2>
+ <div class="card" id="fDeep"></div>
+ <h2 id="hSess"></h2>
+ <div class="ctlrow"><input type="search" id="q"> <span class="mut" id="cnt"></span></div>
+ <div class="card scroll"><table id="st"></table></div>
+ <h2 id="hNotes"></h2>
+ <ul class="n" id="notes"></ul>
+ <footer class="foot" id="foot"></footer>
 </main>
+</div>
+<div id="tip" role="tooltip" hidden></div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D=JSON.parse(document.getElementById('data').textContent);
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
 const fk=v=>v==null?'–':v>=1e6?(v/1e6)+'M':Math.round(v/1e3)+'k';
-const fd=v=>(v<0?'−':'')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString():Math.abs(v).toFixed(2));
-const fds=v=>(v>=0?'+':'−')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString():Math.abs(v).toFixed(2));
-const pc=v=>(v>=0?'+':'−')+Math.abs(v*100).toFixed(0)+'%';
-const fh=s=>{const a=Math.abs(s),sg=s>=0?'+':'−';return a>=3600?sg+(a/3600).toFixed(1)+'h':sg+Math.round(a/60)+'m'};
+const MINUS='−';
+const fd=v=>(v<0?MINUS:'')+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString('en-US'):Math.abs(v).toFixed(2));
+const fds=v=>(v>=0?'+':MINUS)+'$'+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString('en-US'):Math.abs(v).toFixed(2));
+// per-day money: one decimal below $1,000 ('−$204.8' = saves $204.8)
+const fusd=v=>v==null?'–':Math.abs(v)<.05?'$0':(v<0?MINUS:'+')+'$'+(Math.abs(v)<1000?Math.abs(v).toFixed(1):Math.round(Math.abs(v)).toLocaleString('en-US'));
+const pc=v=>(v>=0?'+':MINUS)+Math.abs(v*100).toFixed(0)+'%';
+const fh=s=>{const a=Math.abs(s),sg=s>=0?'+':MINUS;return a>=3600?sg+(a/3600).toFixed(1)+'h':sg+Math.round(a/60)+'m'};
 const fha=s=>s>=3600?(s/3600).toFixed(1)+'h':Math.round(s/60)+'m';
-const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fm=s=>{const a=Math.abs(s)/60;return (s>=0?'+':MINUS)+(a>=10?Math.round(a):a.toFixed(1))+'m'};
+// minutes on a basis; months switch to hours
+const fmin=(v,basis)=>{if(v==null)return '–';if(Math.abs(v)<.05)return '0';const sg=v<0?MINUS:'+',a=Math.abs(v);
+  if(basis==='per_month'&&a>=120)return sg+(a/60).toFixed(1)+' h';return sg+(a>=100?Math.round(a):a.toFixed(1))+' min'};
+const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
+const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tone=v=>Math.abs(v)<.05?'':v<0?'good':'warn';
 // ---------- i18n: every string in English and Chinese; default shows both ----------
 const I={
- synthetic:['synthetic demo data','合成演示数据'], mode:[m=>m+' mode',m=>m+' 模式'],
- groups:[n=>n+' model/role groups',n=>n+' 个模型/角色分组'], sessions:[n=>n+' sessions',n=>n+' 个会话'],
+ tag:['Independent open-source tool','独立开源工具'], lLang:['Language','语言'], lTheme:['Theme','主题'],
+ thAuto:['Auto','自动'], thLight:['Light','浅色'], thDark:['Dark','深色'],
+ synthetic:['synthetic demo data','合成演示数据'],
+ mRange:['History','历史范围'], mSource:['Data source','数据来源'], mMode:['Mode','模式'], mSize:['Sample','样本'],
+ rangeTxt:[(a,b,d,ad)=>a+' → '+b+' · '+d+' days, '+ad+' active',(a,b,d,ad)=>a+' → '+b+' · '+d+' 天,其中 '+ad+' 天活跃'],
+ rangeNo:[(d,ad)=>d+' days, '+ad+' active',(d,ad)=>d+' 天,其中 '+ad+' 天活跃'],
+ srcDemo:['Synthetic demo data, not your history','合成演示数据,不是你的历史'], srcLocal:[h=>'Local '+h+' logs on this machine',h=>'本机的 '+h+' 日志'],
+ modeLite:['lite · recall is a proxy','lite · 召回率为代理值'], modeDeep:['deep · recall measured at candidates','deep · 在候选阈值实测召回'],
+ sizeTxt:[(s,n)=>s+' sessions · '+n+' turns',(s,n)=>s+' 个会话 · '+n+' 轮'],
  howto:['How to read this (assumptions)','怎么读这份报告(假设)'],
- caveat:['Costs are <b>list-price estimates</b> from replaying your own history against a public price table (no discounts, plans or credits). Time comes from your own timestamps (turn and compaction latency fits; thin fits fall back to pooled data or a pessimistic prior). Recall is a <b>lite-mode proxy</b> (context-rot table × summary retention), not a measured curve for any model; it only acts as a floor. Each profile puts a different price on your time: cost $10/h, balanced $100/h, time $400/h. Every Δ is against the harness default, i.e. what happens if you change nothing. Treat the result as a starting point to try.',
-         '成本是按公开标价回放你自己历史得到的<b>估算</b>(不含折扣、套餐或额度)。时间来自你自己的时间戳(拟合每轮与压缩耗时;样本太少时改用同工具汇总数据或偏保守的先验值)。召回率是 <b>lite 模式的代理值</b>(上下文衰减表 × 摘要保留率),不是任何模型的实测曲线,只用作下限。三个方案给你的时间定了不同的价:省钱 $10/小时,均衡 $100/小时,省时 $400/小时。所有差值都相对于 harness 默认值,也就是什么都不改时的情况。把结果当作值得一试的起点。'],
+ caveat:['Costs are <b>list-price estimates</b> from replaying your own history against a public price table (no discounts, plans or credits). Time comes from your own timestamps (turn and compaction latency fits; thin fits fall back to pooled data or a pessimistic prior). Recall is a <b>lite-mode proxy</b> (context-rot table × summary retention), not a measured curve for any model; it only acts as a floor. Each profile puts a different price on your time: cost $10/h, balanced $100/h, time $400/h. Every Δ is against the harness default (what happens if you change nothing) unless it says “vs current”. Treat the result as a starting point to try.',
+         '成本是按公开标价回放你自己历史得到的<b>估算</b>(不含折扣、套餐或额度)。时间来自你自己的时间戳(拟合每轮与压缩耗时;样本太少时改用同工具汇总数据或偏保守的先验值)。召回率是 <b>lite 模式的代理值</b>(上下文衰减表 × 摘要保留率),不是任何模型的实测曲线,只用作下限。三个方案给你的时间定了不同的价:省钱 $10/小时,均衡 $100/小时,省时 $400/小时。除非写明“对当前”,所有差值都相对于 harness 默认值,也就是什么都不改时的情况。把结果当作值得一试的起点。'],
  gear:['Profile','方案'], cost:['Cost','省钱'], balanced:['Balanced','均衡'], time:['Time','省时'], custom:['Custom','自定义'],
  vot:[v=>'time valued at $'+v+'/h',v=>'时间按 $'+v+'/小时 计'],
  threshold:['Threshold','阈值'],
- kCost:['Cost vs default','成本(对默认)'], kTime:['Wall-clock vs default','耗时(对默认)'], kRecall:['Assumed recall','假设召回率'],
- kProf:['Profiles','三个方案'], kComp:['Compactions / day','每天压缩'],
- dDefault:[(t,n)=>'default '+t+' · '+n+' compactions',(t,n)=>'默认 '+t+' · 压缩 '+n+' 次'],
+ kMoney:['Money vs default','费用(对默认)'], kTimeD:['Wall-clock vs default','耗时(对默认)'], kRecall:['Assumed recall (proxy)','假设召回率(代理)'], kComp:['Compactions / day','每天压缩'],
+ uDay:['/day','/天'],
+ kSplit:[(w,g)=>'wait '+w+' · turns '+g,(w,g)=>'等待 '+w+' · 每轮 '+g],
+ kAct:[v=>v+' per active day',v=>'每活跃天 '+v], kCur:[v=>'vs current '+v,v=>'对当前 '+v], kPct:[v=>v+' of total cost',v=>'占总成本 '+v],
+ kCompSub:[(d,m)=>'default '+d+'/day · '+m+'/month here',(d,m)=>'默认 '+d+'/天 · 此处 '+m+'/月'],
  dRecall:[(h,f)=>'default '+h+' · floor '+f,(h,f)=>'默认 '+h+' · 下限 '+f],
- dProf:['cost · balanced · time','省钱 · 均衡 · 省时'],
- dComp:[(d,s,n)=>'default '+d+'/day · '+s+' sessions · '+n+' days',(d,s,n)=>'默认 每天 '+d+' 次 · '+s+' 个会话 · '+n+' 天'],
- perDay:[m=>m+'/day',m=>'每天 '+m],
  noAction:['No action needed: with the harness default these sessions never compact. Leave the setting alone.','无需调整:按 harness 默认设置,这些会话从未触发压缩,保持原样即可。'],
- hCmp:['Compared with the default','与默认设置对比'], hTrade:['Trade-off','取舍'], hTime:['Time','时间'], hDeep:['Lite vs deep','lite 与 deep 对比'], hHist:['Your history','你的历史'], hSess:['Sessions','会话'],
+ lowTime:[(a,b)=>'Time estimates are rough here: turn latency uses '+a+' and compaction latency uses '+b+', because this group has too few timed samples.',(a,b)=>'这里的时间估算比较粗:每轮耗时用的是'+a+',压缩耗时用的是'+b+',因为本组可计时的样本太少。'],
+ lowThin:[n=>'Thin data: only '+n+' sessions in this group. Treat the numbers as a rough guide.',n=>'数据偏少:本组只有 '+n+' 个会话,数字仅供粗略参考。'],
+ lowDays:[d=>'Short history: '+d+' days. Per-day and per-month figures extrapolate from a short window.',d=>'历史较短:只有 '+d+' 天。每天和每月的数字是从短窗口外推的。'],
+ lowPen:[n=>'The re-discovery penalty uses a prior ('+n+' observed compactions; 5 are needed to calibrate it).',n=>'找回惩罚用的是先验值(观察到 '+n+' 次压缩,至少 5 次才能校准)。'],
+ hImpact:['Per-day impact','每日影响'],
+ sImpact:['What each profile would change, per day of your own history. Green saves, amber adds. Red only marks a broken guardrail.','每个方案按你自己的历史每天会带来的变化。绿色是节省,琥珀色是增加。红色只表示护栏被突破。'],
+ bDay:['per day','每天'], bActive:['per active day','每活跃天'], bMonth:['per month','每月'],
+ iMoney:['Money','费用'], iTime:['Wall-clock (net)','耗时(净)'], iWait:['compaction wait','压缩等待'], iTurns:['faster turns','每轮提速'], iComp:['Compactions','压缩次数'],
+ iWas:[v=>'was '+v,v=>'原 '+v], iVsDef:[x=>'vs default '+x,x=>'对默认 '+x], iVsCur:[x=>'vs current '+x,x=>'对当前 '+x],
+ iBasis:[(d,a,r)=>'History covers '+d+' calendar days'+(r?' ('+r+')':'')+', '+a+' of them active (at least one turn). Per day = total ÷ calendar days; per active day = total ÷ active days, closer to a heavy day of use; per month = per day × 30.',
+        (d,a,r)=>'历史覆盖 '+d+' 个自然日'+(r?'('+r+')':'')+',其中 '+a+' 天活跃(至少一轮)。每天 = 总量 ÷ 自然日;每活跃天 = 总量 ÷ 活跃天,更接近重度使用的一天;每月 = 每天 × 30。'],
+ iNoActive:['Active days are not in this result; re-run compactlab simulate to get them.','这份结果里没有活跃天数;重新运行 compactlab simulate 即可得到。'],
+ iSign:['Sign: −$204.8 means it saves $204.8; + means it adds. For time, + is more waiting and − is time back. List-price estimates; recall is a lite-mode proxy.','符号:−$204.8 表示省 $204.8,+ 表示多花。时间上 + 是多等,− 是省下的时间。成本按公开标价估算;lite 模式下召回率是代理值。'],
+ hCmp:['Compared with the default','与默认设置对比'], sCmp:['Whole-history totals for each profile, your current setting and the slider position.','各方案、你当前的设置和滑块位置在整段历史上的总量。'],
+ hTrade:['Trade-off','取舍'], hTime:['Time','时间'], hDeep:['Lite vs deep','lite 与 deep 对比'], hHist:['Your history','你的历史'], hSess:['Sessions','会话'], hNotes:['Assumptions','假设'],
  cTier:['profile','方案'], cWin:['window','阈值'], cAct:['action','建议'], cDc:['Δcost vs default','成本差(对默认)'], cDt:['Δwall-clock (per day)','耗时差(每天)'], cWait:['added compaction wait / day','每天多等压缩'], cComp:['compactions / day','每天压缩'], cRec:['recall (proxy)','召回(代理)'], cCur:['vs current: cost · time','对当前:成本 · 时间'], cFlags:['notes','提示'],
- cSaved:['saved by smaller context','小上下文省下'], cAdded:['added by compactions','压缩增加'],
- rDefault:['default','默认'], rCurrent:['current','当前'], rSel:['selected','当前选择'],
+ rDefault:['default','默认'], rCurrent:['current','当前'], rSel:['slider','滑块'],
  aSet:['set','设置'], aKeep:['keep default','保持默认'], aNo:['no action needed','无需调整'],
  cmpNote:[(n,c)=>'Default: '+n+(c?' Current: '+c+'.':''),(n,c)=>'默认依据:'+n+(c?' 当前:'+c+'。':'')],
  pTitle:['Pareto frontier','帕累托前沿'], pSub:['Each dot is a threshold. Up and to the left is better: cheaper and safer (assumed recall).','每个点是一个阈值。越靠左上越好:更省钱、更安全(假设召回率)。'],
- pOpt:['Pareto-optimal','帕累托最优'], pDom:['dominated','被支配'], pSelL:['selected','当前选择'], pOther:['other profiles','其他方案'], pDef:['default / floor','默认 / 下限'], pDeep:['deep: measured recall','deep:实测召回'],
+ pFront:['frontier','前沿'], pFloor:['recall floor','召回下限'], pDeep:['deep: measured recall','deep:实测召回'],
  coTitle:['Cost by threshold','各阈值成本'], coSub:['Replay cost (list price), re-discovery penalty, and the profile score (cost + value of time × wall-clock).','回放成本(标价)、找回惩罚,以及方案评分(成本 + 时间价值 × 耗时)。'],
  lCost:['cost','成本'], lPen:['penalty','惩罚'], lScore:['score','评分'], lRange:['recommended range','推荐区间'], lDefault:['default','默认'],
  tTitle:['Wall-clock by threshold (vs default)','各阈值耗时(对默认)'],
  tSub:['Time saved by smaller contexts minus time added by compactions and re-discovery, from your own timestamps.','更小的上下文省下的时间,减去压缩和找回增加的时间,基于你自己的时间戳。'],
- tSaved:['saved by smaller context','小上下文省下'], tAdded:['added by compactions + re-discovery','压缩 + 找回增加'], tNet:['net change (negative = faster)','净变化(负数更快)'],
+ tSaved:['saved by smaller context','小上下文省下'], tAdded:['added by compactions','压缩增加'], tNet:['net','净变化'],
  tConf:[(c,n,cc,cn,ts,cs)=>'Turn latency: '+c+' ('+n+' timed turns), using '+ts+'. Compaction latency: '+cc+' ('+cn+' samples), using '+cs+'.',(c,n,cc,cn,ts,cs)=>'每轮耗时:'+c+'('+n+' 个可计时轮次),采用'+ts+'。压缩耗时:'+cc+'('+cn+' 个样本),采用'+cs+'。'],
  conf_ok:['ok','可信'], conf_low:['low confidence','置信度低'], conf_prior:['no usable data','无可用数据'],
  src_own:['this group\'s fit','本组拟合'], src_pooled:['the pooled fit of all sessions of this harness','同工具全部会话的汇总拟合'], src_prior:['a pessimistic prior','偏保守的先验值'],
@@ -129,11 +290,10 @@ const I={
  dLowered:[(p,t)=>'Measured recall at the lite '+p+' threshold fell below the floor; lowered to '+t+'.',(p,t)=>'lite '+p+' 方案阈值处的实测召回低于下限,已降到 '+t+'。'],
  hTitle:['Where your tokens sit','你的 token 分布'], hSub:['Share of turns and of read tokens by context size. Bars right of the line are what a lower threshold would cut.','按上下文大小统计的轮次占比和读取 token 占比。线右侧就是更低阈值会砍掉的部分。'],
  hTurns:['share of turns','轮次占比'], hRead:['share of read tokens','读取 token 占比'], hAbove:[(p,t)=>p+'% of read tokens above '+t,(p,t)=>p+'% 的读取 token 高于 '+t],
- sTitle:['History vs. estimate','历史与估算'], sSub:[t=>'Actual context (grey) and the same session replayed at '+t+' (colour).',t=>'真实上下文(灰)和同一会话在 '+t+' 下的回放(彩色)。'],
- sAct:[n=>'actual ('+n+' compactions)',n=>'实际(压缩 '+n+' 次)'], sRep:[n=>'replayed ('+n+' compactions)',n=>'回放(压缩 '+n+' 次)'], sPeak:['peak','峰值'], sTurns:['turns','轮'],
+ sTitle:['History vs. estimate','历史与估算'], sSub:[t=>'Actual context and the same session replayed at '+t+'.',t=>'真实上下文和同一会话在 '+t+' 下的回放。'],
+ sAct:[n=>'actual · '+n+' compactions',n=>'实际 · 压缩 '+n+' 次'], sRep:[n=>'replayed · '+n,n=>'回放 · '+n+' 次'],
  filter:['Filter sessions','筛选会话'], of:[(a,b)=>a+' of '+b,(a,b)=>a+' / '+b],
  colSession:['session','会话'], colHarness:['harness','工具'], colRole:['role','角色'], colModel:['model','模型'], colTurns:['turns','轮次'], colPeak:['peak','峰值'], colComp:['compactions','压缩'], colCtx:['context','上下文'],
- nPrior:[n=>'Penalty uses a prior ('+n+' observed compactions; ≥5 needed to calibrate).',n=>'惩罚参数用的是先验值(观察到 '+n+' 次压缩,至少 5 次才能校准)。'],
  nObs:[n=>'Penalty calibrated from '+n+' observed compactions.',n=>'惩罚参数由 '+n+' 次已观察到的压缩校准。'],
  nPrice:[(k,s)=>'Prices: row “'+k+'” from '+s+'.',(k,s)=>'价格:“'+k+'” 这一行,来源 '+s+'。'],
  nAssume:[(b,s,w)=>'Assumed base '+b+', summary '+s+', window '+w+'. Each profile = largest threshold within 2% of its lowest score, above the recall floor and inside its guardrails.',(b,s,w)=>'假设基础上下文 '+b+',摘要 '+s+',窗口 '+w+'。每个方案 = 在其最低评分 2% 以内、不低于召回下限且符合护栏的最大阈值。'],
@@ -144,7 +304,6 @@ const I={
  f_wait_cap_unreachable:[c=>'no threshold keeps added wait under '+c+' min/day',c=>'没有阈值能把额外等待压到每天 '+c+' 分钟内'],
  f_min_window_unreachable:['grid does not reach the minimum window','网格达不到最小窗口'],
  f_deep_recall_below_floor:['deep: measured recall below floor, lowered','deep:实测召回低于下限,已下调'],
- nFloor:['No threshold met the recall floor; showing highest-recall candidates.','没有阈值达到召回下限,显示召回最高的候选。'],
  nEdge:['Optimum is at the lowest grid value; widen the grid or revisit the penalty assumptions.','最优值落在网格最低点,可以放宽网格或检查惩罚假设。'],
  none:['No sessions found.','没有找到会话。'],
  hCopy:['Copy settings','复制推荐设置'],
@@ -152,13 +311,20 @@ const I={
  cpHarness:['Harness','工具'], cpScope:['Scope','作用范围'], cpTier:['Profile','方案'], cpFormat:['Format','格式'],
  global:['Global (user)','全局(用户级)'], project:['Project','项目级'], agent:['Per agent','按 agent'],
  cpCopy:['Copy','复制'], cpCopied:['Copied','已复制'], cpFail:['Select the text and copy manually','请手动选中复制'],
- cpNone:['Nothing to set for this choice:','这个选择下无需设置:']
+ cpNone:['Nothing to set for this choice:','这个选择下无需设置:'],
+ foot:['compactlab is an independent open-source tool. It is not made, endorsed or supported by any model provider or harness vendor; model and tool names only identify your own sessions. Everything here was computed locally from your logs and this file works offline.',
+       'compactlab 是独立的开源工具,不是任何模型厂商或工具厂商的产品,也未获其背书;模型和工具名称只用来标识你自己的会话。这里的一切都在本机根据你的日志计算,这个文件可以离线打开。']
 };
-const S={gi:0,gear:'balanced',T:null,vot:100,lang:'both',sid:null};
+const S={gi:0,gear:'balanced',T:null,vot:100,lang:'both',sid:null,basis:'per_day',theme:'auto'};
 const PROF=['cost','balanced','time'];
-try{const l=localStorage.getItem('compactlab.lang');if(l)S.lang=l}catch(e){}
+// guardrail breaks are red; other flags are amber notes
+const VIOL=f=>['recall_floor_not_met','wait_cap_unreachable','min_window_unreachable'].includes(f);
+try{const l=localStorage.getItem('compactlab.lang');if(l)S.lang=l;const th=localStorage.getItem('compactlab.theme');if(th)S.theme=th}catch(e){}
+function applyTheme(){if(S.theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.theme}
+applyTheme();
 function t(k,...a){const v=I[k];if(!v)return k;const f=x=>typeof x==='function'?x(...a):x;
   return S.lang==='en'?f(v[0]):S.lang==='zh'?f(v[1]):f(v[0])+' · '+f(v[1])}
+function t1(k,...a){const v=I[k],f=x=>typeof x==='function'?x(...a):x;return S.lang==='zh'?f(v[1]):f(v[0])}
 function t2(k,suf=''){const v=I[k];return S.lang==='en'?v[0]+suf:S.lang==='zh'?v[1]+suf:v[0]+suf+'<span class="sep"> · </span><span class="z">'+v[1]+'</span>'}
 function tp(k,...a){const v=I[k],f=x=>typeof x==='function'?x(...a):x;
   return S.lang==='en'?f(v[0]):S.lang==='zh'?f(v[1]):f(v[0])+'<br><span class="zh">'+f(v[1])+'</span>'}
@@ -169,6 +335,12 @@ const SCp=(g,p)=>p.combined_cost+p.time_s/3600*S.vot;
 function pt(g,i){return {threshold:g.grid[i],combined_cost:g.combined_cost[i],time_s:g.time_s[i],time_turns_s:g.time_turns_s[i],time_compact_s:g.time_compact_s[i],time_redisc_s:g.time_redisc_s[i],compactions:g.compactions[i],recall:g.recall[i]}}
 function cmp(a,r){const days=Math.max(G().days||1,1);return {dc:a.combined_cost-r.combined_cost,dcp:r.combined_cost?(a.combined_cost-r.combined_cost)/r.combined_cost:0,dt:a.time_s-r.time_s,dtd:(a.time_s-r.time_s)/days,
   saved:r.time_turns_s-a.time_turns_s,added:(a.time_compact_s+a.time_redisc_s)-(r.time_compact_s+r.time_redisc_s),addd:((a.time_compact_s+a.time_redisc_s)-(r.time_compact_s+r.time_redisc_s))/days,cpd:a.compactions/days,dr:a.recall-r.recall}}
+// same arithmetic as compactlab.sim.select.impact (used for the slider position; profiles use the stored numbers)
+function impJS(a,r){const g=G(),days=Math.max(g.days||1,1),act=g.active_days?Math.max(g.active_days,1):null,c=cmp(a,r);
+  const per=(x,s=1)=>({per_day:x*s/days,per_active_day:act?x*s/act:null,per_month:x*s/days*30});
+  return {days,active_days:act,usd:per(c.dc),minutes:per(c.dt,1/60),wait_minutes:per(c.added,1/60),turn_gain_minutes:per(c.saved,1/60),compactions:per(a.compactions),ref_compactions:per(r.compactions)}}
+function impOf(g,k,ref){const c=g.comparison[k][ref];if(!c)return null;if(c.impact)return c.impact;
+  return impJS(pt(g,g.grid.indexOf(g.profiles[k].threshold)),ref==='vs_default'?g.default:g.current)}
 function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i);
   return (thr>=d.threshold||p.combined_cost+p.time_s/3600*vot>=d.combined_cost+d.time_s/3600*vot)?'aKeep':'aSet'}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}
@@ -178,33 +350,50 @@ function nearest(g,v){let b=0;g.grid.forEach((x,i)=>{if(Math.abs(x-v)<Math.abs(g
 // re-render a box without losing keyboard focus or scroll position
 function keep(fn){const a=document.activeElement,key=a&&a.dataset?Object.entries(a.dataset).map(([k,v])=>`[data-${k}="${v}"]`).join(''):'',y=scrollY;fn();
   if(key){const n=document.querySelector(key);if(n&&n!==a)n.focus({preventScroll:true})}if(scrollY!==y)scrollTo(0,y)}
-const fm=s=>{const a=Math.abs(s)/60;return (s>=0?'+':'−')+(a>=10?Math.round(a):a.toFixed(1))+'m'};
 function flagText(f,p){const k='f_'+f;return I[k]?t(k,f==='guardrail_applied'?fk(p.unconstrained_threshold):p.wait_cap_min_per_day,fk(p.threshold)):f}
 function frame(W,H,m){const svg=el('svg',{viewBox:`0 0 ${W} ${H}`});return {svg,x0:m.l,x1:W-m.r,y0:H-m.b,y1:m.t}}
 function axes(f,X,Y,xt,yt,xf,yf){for(const v of yt){f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(v),y2:Y(v),class:'grid'}));f.svg.append(el('text',{x:f.x0-6,y:Y(v)+3.5,'text-anchor':'end'},yf(v)))}
   for(const v of xt)f.svg.append(el('text',{x:X(v),y:f.y0+16,'text-anchor':'middle'},xf(v)));f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:f.y0,y2:f.y0,class:'ax'}))}
 const ticks=(lo,hi,n)=>Array.from({length:n+1},(_,i)=>lo+(hi-lo)*i/n);
 const leg=items=>'<div class="legend">'+items.map(([c,l,h])=>`<span><i style="background:${c};${h?'height:8px':''}"></i>${l}</span>`).join('')+'</div>';
+// direct labels: [{x,y,text,color,anchor}] nudged apart vertically so they never overlap
+function dlabels(f,items,gap=12){items.sort((a,b)=>a.y-b.y);for(let i=1;i<items.length;i++)if(items[i].y-items[i-1].y<gap)items[i].y=items[i-1].y+gap;
+  const over=items.length?items[items.length-1].y-(f.y0-4):0;if(over>0)items.forEach(it=>it.y-=over);
+  for(const it of items)f.svg.append(el('text',{x:it.x,y:it.y,'text-anchor':it.anchor||'end',class:'dl',style:'fill:'+it.color+(it.bold?';font-weight:600':'')},it.text))}
+function line(f,X,Y,xs,v,c,w,d){f.svg.append(el('polyline',{points:xs.map((x,i)=>X(x)+','+Y(v[i])).join(' '),fill:'none',stroke:c,'stroke-width':w,'stroke-dasharray':d||'','stroke-linejoin':'round','stroke-linecap':'round'}))}
 function statics(){
   document.documentElement.lang=S.lang==='zh'?'zh':'en';
-  $('#meta').innerHTML=(D.demo?'<span class="badge">'+t('synthetic')+'</span> ':'')+'<span class="badge">'+t('mode',D.mode)+'</span> '+esc(D.generated)+' · '+t('groups',D.groups.length)+' · '+t('sessions',D.sessions.length);
-  $('#howto').textContent=t('howto');$('#caveat').innerHTML=tp('caveat');
-  for(const k of ['hCmp','hCopy','hTrade','hTime','hDeep','hHist','hSess'])$('#'+k).textContent=t(k);
-  $('#q').placeholder=t('filter');
+  $('#tag').textContent=t1('tag');$('#lLang').textContent=t('lLang');$('#lTheme').textContent=t('lTheme');
+  $('#howto').textContent=t('howto');$('#caveat').innerHTML=tp('caveat');$('#foot').innerHTML=tp('foot');
+  for(const k of ['hImpact','hCmp','hCopy','hTrade','hTime','hDeep','hHist','hSess','hNotes'])$('#'+k).textContent=t(k);
+  $('#sImpact').innerHTML=tp('sImpact');$('#sCmp').innerHTML=tp('sCmp');
+  $('#q').placeholder=t('filter');$('#q').setAttribute('aria-label',t('filter'));
   $('#langs').innerHTML=[['both','中 / EN'],['en','EN'],['zh','中文']].map(([k,l])=>`<button data-l="${k}" aria-pressed="${S.lang===k}">${l}</button>`).join('');
-  document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}statics();render();renderS()});
-  document.querySelectorAll('#tabs button').forEach((b,i)=>b.textContent=D.groups[i].model+' · '+D.groups[i].role)}
+  document.querySelectorAll('#langs button').forEach(b=>b.onclick=()=>{S.lang=b.dataset.l;try{localStorage.setItem('compactlab.lang',S.lang)}catch(e){}keep(()=>{statics();render();renderS()})});
+  $('#themes').innerHTML=[['auto','thAuto'],['light','thLight'],['dark','thDark']].map(([k,l])=>`<button data-th="${k}" aria-pressed="${S.theme===k}">${t1(l)}</button>`).join('');
+  document.querySelectorAll('#themes button').forEach(b=>b.onclick=()=>{S.theme=b.dataset.th;try{localStorage.setItem('compactlab.theme',S.theme)}catch(e){}applyTheme();keep(()=>{statics();render()})});
+  nav()}
+function nav(){const box=$('#tabs');box.innerHTML='';let h=null;
+  D.groups.forEach((g,i)=>{if(g.harness!==h){h=g.harness;const d=document.createElement('div');d.className='navh';d.textContent=h;box.append(d)}
+    const b=document.createElement('button');b.setAttribute('role','tab');b.setAttribute('aria-selected',i===S.gi);b.dataset.tab=i;
+    b.innerHTML=`<span class="nm">${esc(g.model)}</span><span class="rl">${esc(g.role)} · ${g.n_sessions}</span>`;b.onclick=()=>pick(i);box.append(b)})}
+function header(){const g=G(),d=fdays(Math.max(g.days,1)),ad=g.active_days!=null?fdays(g.active_days):'?';
+  $('#eyebrow').textContent=g.harness;$('#title').innerHTML=esc(g.model)+' <span class="rl">· '+esc(g.role)+'</span>';
+  const range=g.span?t1('rangeTxt',day(g.span[0]),day(g.span[1]),d,ad):t1('rangeNo',d,ad);
+  const src=D.demo?'<span class="badge acc">'+t('synthetic')+'</span>':t1('srcLocal',g.harness);
+  const items=[['mRange',range],['mSource',src],['mMode',t1(D.mode==='deep'?'modeDeep':'modeLite')+(D.generated?' · '+esc(D.generated):'')],['mSize',t1('sizeTxt',g.n_sessions,g.n_turns.toLocaleString('en-US'))]];
+  $('#meta').innerHTML=items.map(([k,v])=>`<div><dt>${t(k)}</dt><dd>${v}</dd></div>`).join('')}
 // The control bar (profile buttons, slider, marks) is built once per group/language and then only updated in
 // place, so dragging the slider never replaces the <input type=range> under the pointer.
 function buildBar(){const g=G(),n=g.grid.length,lo=g.grid[0],hi=g.grid[n-1];
   const pos=v=>Math.min(Math.max((v-lo)/((hi-lo)||1),0),1),at=v=>`left:calc(8px + (100% - 16px) * ${pos(v).toFixed(4)})`;
   const byT={};PROF.forEach(k=>{(byT[g.profiles[k].threshold]=byT[g.profiles[k].threshold]||[]).push(k)});
-  const marks=Object.entries(byT).map(([T,ks])=>`<button class="mk r1" data-mk="${T}" data-g="${ks[0]}" style="${at(+T)}" aria-label="${t('threshold')} ${fk(+T)}: ${ks.map(k=>t(k)).join(', ')}">${ks.map(k=>S.lang==='zh'?I[k][1]:I[k][0]).join(' · ')}</button>`);
+  const marks=Object.entries(byT).map(([T,ks])=>`<button class="mk r1" data-mk="${T}" data-g="${ks[0]}" style="${at(+T)}" aria-label="${t('threshold')} ${fk(+T)}: ${ks.map(k=>t(k)).join(', ')}">${ks.map(k=>t1(k)).join(' · ')}</button>`);
   const refs=[[g.default.threshold,'rDefault']].concat(g.current?[[g.current.threshold,'rCurrent']]:[]);
-  refs.forEach(([T,k])=>marks.push(`<button class="mk r2" data-mk="${T}" data-ref="${k}" style="${at(T)}" aria-label="${t(k)} ${fk(T)}">${S.lang==='zh'?I[k][1]:I[k][0]} ${fk(T)}</button>`));
+  refs.forEach(([T,k])=>marks.push(`<button class="mk r2" data-mk="${T}" data-ref="${k}" style="${at(T)}" aria-label="${t(k)} ${fk(T)}">${t1(k)} ${fk(T)}</button>`));
   $('#bar').innerHTML=`<div class="gearrow"><div class="seg" id="gears" role="group" aria-label="${t('gear')}">${[...PROF,'custom'].map(k=>`<button data-gear="${k}" aria-pressed="false" class="gl">${t2(k,k===g.profile?'&nbsp;★':'')}</button>`).join('')}</div>
+  <span class="vot" id="vot"></span>
   <div class="slider"><label for="rng">${t('threshold')}</label><div class="track"><input type="range" min="0" max="${n-1}" step="1" id="rng"><div id="marks">${marks.join('')}</div></div><span class="tval" id="tval" aria-live="polite"></span></div></div>`;
-  $('#gears').insertAdjacentHTML('afterend','<span class="vot mut" id="vot"></span>');
   document.querySelectorAll('#gears button').forEach(b=>b.onclick=()=>setGear(b.dataset.gear));
   document.querySelectorAll('#marks .mk').forEach(b=>b.onclick=()=>{if(b.dataset.g)setGear(b.dataset.g);else setT(g.grid[nearest(g,+b.dataset.mk)])});
   $('#rng').addEventListener('input',e=>{S.gear='custom';S.T=g.grid[+e.target.value];update()});
@@ -217,35 +406,65 @@ function spreadMarks(){const tb=document.querySelector('.track');if(!tb)return;c
   for(const m of ms){const r=m.getBoundingClientRect();let lv=ends.findIndex(e=>r.left>e+4);if(lv<0)lv=2;if(lv)m.classList.add('l'+lv);ends[lv]=r.right}}
   const tr=document.querySelector('.track');if(tr){const extra=[...document.querySelectorAll('#marks .mk')].reduce((a,m)=>Math.max(a,m.classList.contains('l2')?28:m.classList.contains('l1')?14:0),0);tr.style.paddingBottom='';tr.style.paddingBottom=(parseFloat(getComputedStyle(tr).paddingBottom)+extra)+'px'}}
 addEventListener('resize',()=>{clearTimeout(spreadMarks.tm);spreadMarks.tm=setTimeout(spreadMarks,100)});
-function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,i),d=g.default,c=cmp(p,d),P=g.profiles,rng=$('#rng');
+function controls(){const g=G(),i=g.grid.indexOf(S.T),r=g.recommendation,p=pt(g,i),d=g.default,c=cmp(p,d),rng=$('#rng');
   if(+rng.value!==i)rng.value=i;rng.setAttribute('aria-valuetext',fk(S.T));$('#tval').textContent=fk(S.T);
   document.querySelectorAll('#gears button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.gear===S.gear));
   document.querySelectorAll('#marks .mk').forEach(b=>b.classList.toggle('on',+b.dataset.mk===S.T));
   $('#vot').textContent=t('vot',S.vot);
-  $('#banner').innerHTML=g.no_action_needed?'<div class="banner" style="margin:0 0 6px">'+tp('noAction')+'</div>':'';
+  $('#banner').innerHTML=g.no_action_needed?'<div class="callout info" style="margin-bottom:12px">'+tp('noAction')+'</div>':'';
+  const im=impJS(p,d),ic=g.current?impJS(p,g.current):null,u=t1('uDay');
+  const cur=(v,f)=>ic?'<br>'+t1('kCur',f(v)+u):'';
   $('#kpis').innerHTML=`
-   <div><div class="k">${tp('kCost')}</div><div class="v ${c.dc<=0?'good':'bad'}">${pc(c.dcp)}</div><div class="d">${fds(c.dc)} · ${t('dDefault',fk(d.threshold),d.compactions)}</div></div>
-   <div><div class="k">${tp('kTime')}</div><div class="v ${c.dt<=0?'good':'bad'}">${fh(c.dt)}</div><div class="d">${t('perDay',fm(c.dtd))} · ${t('cAdded')} ${t('perDay',fm(Math.max(c.addd,0)))}</div></div>
-   <div><div class="k">${tp('kRecall')}</div><div class="v ${p.recall>=r.recall_floor?'':'bad'}">${p.recall.toFixed(3)}</div><div class="d">${t('dRecall',d.recall.toFixed(3),r.recall_floor)}</div></div>
-   <div><div class="k">${tp('kProf')}</div><div class="v sm">${PROF.map(k=>fk(P[k].threshold)).join(' · ')}</div><div class="d">${t('dProf')}</div></div>
-   <div><div class="k">${tp('kComp')}</div><div class="v">${c.cpd.toFixed(1)}</div><div class="d">${t('dComp',(d.compactions/Math.max(g.days,1)).toFixed(1),g.n_sessions,Math.round(g.days))}</div></div>`;
+   <div class="kpi"><div class="k">${tp('kMoney')}</div><div class="v ${tone(im.usd.per_day)}">${fusd(im.usd.per_day)}<small>${u}</small></div><div class="d">${t1('kPct',pc(c.dcp))}${im.active_days?' · '+t1('kAct',fusd(im.usd.per_active_day)):''}${cur(ic&&ic.usd.per_day,fusd)}</div></div>
+   <div class="kpi"><div class="k">${tp('kTimeD')}</div><div class="v ${tone(im.minutes.per_day)}">${fmin(im.minutes.per_day)}<small>${u}</small></div><div class="d">${t1('kSplit',fmin(im.wait_minutes.per_day),fmin(-im.turn_gain_minutes.per_day))}${cur(ic&&ic.minutes.per_day,fmin)}</div></div>
+   <div class="kpi"><div class="k">${tp('kComp')}</div><div class="v">${im.compactions.per_day.toFixed(1)}</div><div class="d">${t1('kCompSub',im.ref_compactions.per_day.toFixed(1),Math.round(im.compactions.per_month))}</div></div>
+   <div class="kpi"><div class="k">${tp('kRecall')}</div><div class="v ${p.recall>=r.recall_floor?'':'bad'}">${p.recall.toFixed(3)}</div><div class="d">${t1('dRecall',d.recall.toFixed(3),r.recall_floor)}</div></div>`;
+  $('#callouts').innerHTML=callouts(g).map(([k,h])=>`<div class="callout ${k}"><div>${h}</div></div>`).join('');
   $('#notes').innerHTML=notes(g).map(n=>'<li>'+n+'</li>').join('')}
-function notes(g){const n=[],pp=g.penalty_params,P=g.profiles[S.gear];
-  if(P)for(const f of P.flags)n.push('<span class="bad">'+esc(flagText(f,P))+'</span>');
-  if(S.T===g.grid[0])n.push(t('nEdge'));
-  n.push(pp.source==='prior'?t('nPrior',pp.n_observed):t('nObs',pp.n_observed));
+// plain-language warnings: thin data, short history, borrowed time model, guardrail flags of the selected profile
+function callouts(g){const out=[],tm=g.time_model||{},P=g.profiles[S.gear];
+  if(P)for(const f of P.flags)out.push([VIOL(f)?'bad':'low',esc(flagText(f,P))]);
+  if(S.T===g.grid[0])out.push(['low',t('nEdge')]);
+  if((tm.turn_source||'prior')!=='own'||(tm.compact_source||'prior')!=='own')out.push(['low',tp('lowTime',t1('src_'+(tm.turn_source||'prior')),t1('src_'+(tm.compact_source||'prior')))]);
+  if(g.n_sessions<5)out.push(['low',tp('lowThin',g.n_sessions)]);
+  if(g.days<3)out.push(['low',tp('lowDays',fdays(g.days))]);
+  if(g.penalty_params.source==='prior')out.push(['low',tp('lowPen',g.penalty_params.n_observed)]);
+  return out}
+function notes(g){const n=[],pp=g.penalty_params;
+  if(pp.source!=='prior')n.push(t('nObs',pp.n_observed));
   n.push(esc(t('nPrice',g.price_key,g.price_source)));
-  n.push(t('nAssume',fk(g.base_tokens),fk(g.summary_tokens),fk(g.max_window)));return n}
+  n.push(t('nAssume',fk(g.base_tokens),fk(g.summary_tokens),fk(g.max_window)));
+  const d=g.default,cur=g.current;n.push(esc(S.lang==='zh'?I.cmpNote[1](d.note_zh||d.note,cur?cur.source:(g.current_note||'')):I.cmpNote[0](d.note,cur?cur.source:(g.current_note||''))));return n}
+// ---------- per-day impact: every profile vs default and vs current ----------
+function impactPanel(){const g=G(),box=$('#fImpact');
+  if(g.no_action_needed){box.innerHTML='<div class="callout info">'+tp('noAction')+'</div>';return}
+  const B=S.basis,hasAct=g.active_days!=null;if(B==='per_active_day'&&!hasAct)S.basis='per_day';
+  const refs=[['vs_default',t1('iVsDef',fk(g.default.threshold))]].concat(g.current?[['vs_current',t1('iVsCur',fk(g.current.configured??g.current.threshold))]]:[]);
+  const bases=[['per_day','bDay'],['per_active_day','bActive'],['per_month','bMonth']].filter(([k])=>k!=='per_active_day'||hasAct);
+  const cell=(im,key,fmt,neg)=>{if(!im)return '<td>–</td>';const v=im[key][S.basis];const x=neg?-v:v;return `<td class="${tone(x)}">${fmt(x,S.basis)}</td>`};
+  const cards=PROF.map(k=>{const P=g.profiles[k],c=g.comparison[k],ims=refs.map(([r])=>impOf(g,k,r)),act=action(g,P.threshold,P.value_of_time);
+    const row=(lab,key,fmt,cls,neg)=>`<tr class="${cls||''}"><th>${lab}</th>${ims.map(im=>cell(im,key,fmt,neg)).join('')}</tr>`;
+    const comp=`<tr><th>${t1('iComp')}</th>${ims.map(im=>{const v=im.compactions[S.basis],w=im.ref_compactions[S.basis],f=x=>S.basis==='per_month'?Math.round(x):x.toFixed(1);return `<td>${f(v)}<span class="was">${t1('iWas',f(w))}</span></td>`}).join('')}</tr>`;
+    const fl=P.flags.map(f=>`<li class="${VIOL(f)?'bad':'warn'}">${esc(flagText(f,P))}</li>`).join('');
+    return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header><span class="pn">${t1(k)}${k===g.profile?'&nbsp;★':''}</span><span class="pt">${fk(P.threshold)}</span><span class="chip ${act==='aSet'?'set':''}">${t1(act)}</span></header>
+     <table class="it"><thead><tr><th>${t1(bases.find(([b])=>b===S.basis)[1])}</th>${refs.map(([,l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>
+     ${row(t1('iMoney'),'usd',fusd,'big')}${row(t1('iTime'),'minutes',fmin,'big')}${row(t1('iWait'),'wait_minutes',fmin,'sub')}${row(t1('iTurns'),'turn_gain_minutes',fmin,'sub',true)}${comp}</tbody></table>
+     ${fl?'<ul class="fl">'+fl+'</ul>':''}</article>`}).join('');
+  const range=g.span?day(g.span[0])+' → '+day(g.span[1]):'';
+  box.innerHTML=`<div class="ihead"><div class="seg" data-k="basis" role="group" aria-label="basis">${bases.map(([k,l])=>`<button data-basis="${k}" aria-pressed="${S.basis===k}">${t(l)}</button>`).join('')}</div></div>
+   <div class="pcs">${cards}</div>
+   <p class="basis">${hasAct?tp('iBasis',fdays(Math.max(g.days,1)),fdays(g.active_days),range):tp('iNoActive')}</p><p class="basis">${tp('iSign')}</p>`;
+  box.querySelectorAll('[data-basis]').forEach(b=>b.onclick=()=>{S.basis=b.dataset.basis;keep(impactPanel)})}
 // ---------- hover / tap tooltips on charts ----------
 function tipRow(k,v){return `<div class="r"><span>${k}</span><span>${v}</span></div>`}
-function tipHTML(g,i){const p=pt(g,i),c=cmp(p,g.default);return `<b>${fk(p.threshold)}</b>`+tipRow(t('lCost'),fd(p.combined_cost)+' ('+pc(c.dcp)+')')+
-  tipRow(t('cDt'),fh(c.dt)+' ('+fm(c.dtd)+')')+tipRow(t('kComp'),c.cpd.toFixed(1))+tipRow(t('cRec'),p.recall.toFixed(3))}
+function tipHTML(g,i){const p=pt(g,i),d=g.default,c=cmp(p,d),im=impJS(p,d);return `<b>${fk(p.threshold)}</b>`+tipRow(t1('lCost'),fd(p.combined_cost)+' ('+pc(c.dcp)+')')+
+  tipRow(t1('iMoney')+t1('uDay'),fusd(im.usd.per_day))+tipRow(t1('iTime')+t1('uDay'),fmin(im.minutes.per_day))+tipRow(t1('kComp'),c.cpd.toFixed(1))+tipRow(t1('cRec'),p.recall.toFixed(3))}
 function showTip(html,x,y){const tp_=$('#tip');tp_.innerHTML=html;tp_.hidden=false;const w=tp_.offsetWidth,h=tp_.offsetHeight;
   tp_.style.left=Math.max(8,Math.min(x+14,innerWidth-w-8))+'px';tp_.style.top=Math.max(8,(y-h-12<8?y+16:y-h-12))+'px'}
 function hideTip(){$('#tip').hidden=true}
 // idxAt(svgX, svgY) -> grid index or -1. Hover shows the tooltip; click/tap selects that threshold.
 function hover(f,idxAt){const g=G(),r=el('rect',{x:f.x0,y:f.y1,width:f.x1-f.x0,height:f.y0-f.y1,fill:'transparent',class:'hov'});
-  const guide=el('line',{y1:f.y1,y2:f.y0,stroke:'var(--mut)','stroke-width':.8,'stroke-dasharray':'2 2',visibility:'hidden','pointer-events':'none'});
+  const guide=el('line',{y1:f.y1,y2:f.y0,stroke:'var(--ink3)','stroke-width':.8,'stroke-dasharray':'2 2',visibility:'hidden','pointer-events':'none'});
   f.svg.append(guide,r);const loc=e=>{const m=f.svg.getScreenCTM();if(!m)return -1;const q=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());return idxAt(q.x,q.y)};
   const move=e=>{const i=loc(e);if(i<0){hideTip();return}showTip(tipHTML(g,i),e.clientX,e.clientY);const gx=f.gx?f.gx(i):null;if(gx!=null){guide.setAttribute('x1',gx);guide.setAttribute('x2',gx);guide.setAttribute('visibility','visible')}};
   r.addEventListener('pointermove',move);r.addEventListener('pointerdown',move);
@@ -263,65 +482,75 @@ function comparison(){const g=G(),d=g.default,box=$('#fCmp'),cur=g.current;
     const sel=!isDef&&(P?S.gear===P.profile:S.gear==='custom'&&p.threshold===S.T);
     const vc=cur&&c&&p!==cur?cmp(p,cur):null;
     return `<tr class="${sel?'sel':''}"><td>${name}</td><td>${no?'–':fk(p.threshold??p.configured)}</td><td class="act">${act?t(act):'–'}</td>`+
-      (c?`<td>${fds(c.dc)} (${pc(c.dcp)})</td><td>${fh(c.dt)} <span class="mut">(${fm(c.dtd)})</span></td><td>${fm(c.addd)}</td><td>${c.cpd.toFixed(1)} <span class="mut">(${(d.compactions/Math.max(g.days,1)).toFixed(1)})</span></td><td>${p.recall.toFixed(3)} <span class="mut">(${(c.dr>=0?'+':'')+c.dr.toFixed(3)})</span></td>`
+      (c?`<td class="${tone(c.dc)}">${fds(c.dc)} (${pc(c.dcp)})</td><td class="${tone(c.dt)}">${fh(c.dt)} <span class="mut">(${fm(c.dtd)})</span></td><td>${fm(c.addd)}</td><td>${c.cpd.toFixed(1)} <span class="mut">(${(d.compactions/Math.max(g.days,1)).toFixed(1)})</span></td><td>${p.recall.toFixed(3)} <span class="mut">(${(c.dr>=0?'+':'')+c.dr.toFixed(3)})</span></td>`
         :`<td>${fd(p.combined_cost)}</td><td>${fha(p.time_s)}</td><td>–</td><td>${(p.compactions/Math.max(g.days,1)).toFixed(1)}</td><td>${p.recall.toFixed(3)}</td>`)+
       (cur?`<td>${vc?pc(vc.dcp)+' · '+fh(vc.dt):'–'}</td>`:'')+
-      `<td class="act">${P&&!no?P.flags.map(f=>'<span class="bad">'+esc(flagText(f,P))+'</span>').join('<br>'):''}</td></tr>`}).join('')+'</table>'+
-    '<p class="mut" style="margin:8px 0 0">'+esc(S.lang==='en'?I.cmpNote[0](d.note,cur?cur.source:(g.current_note||'')):S.lang==='zh'?I.cmpNote[1](d.note_zh||d.note,cur?cur.source:(g.current_note||'')):I.cmpNote[0](d.note,cur?cur.source:(g.current_note||''))+' · '+I.cmpNote[1](d.note_zh||d.note,''))+'</p>'}
+      `<td class="act">${P&&!no?P.flags.map(f=>'<span class="'+(VIOL(f)?'bad':'warn')+'">'+esc(flagText(f,P))+'</span>').join('<br>'):''}</td></tr>`}).join('')+'</table>'}
 function pareto(){const g=G(),box=$('#fPareto'),sc=SC(g);box.innerHTML='<h3>'+t('pTitle')+'</h3><p>'+tp('pSub')+'</p>';
-  const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=sc,ys=g.recall,dx=SCp(g,g.default);
+  const f=frame(460,300,{l:50,r:14,t:12,b:30}),xs=sc,ys=g.recall,dx=SCp(g,g.default);
   let x0=Math.min(...xs,dx),x1=Math.max(...xs,dx),y0=Math.min(...ys,g.default.recall),y1=Math.max(...ys,g.default.recall);
-  const px=(x1-x0||1)*.06,py=(y1-y0||.01)*.12;x0-=px;x1+=px;y0-=py;y1+=py;
+  const px=(x1-x0||1)*.08,py=(y1-y0||.01)*.14;x0-=px;x1+=px;y0-=py;y1+=py;
   const X=v=>f.x0+(v-x0)/(x1-x0)*(f.x1-f.x0),Y=v=>f.y0-(v-y0)/(y1-y0)*(f.y0-f.y1);
   axes(f,X,Y,ticks(x0,x1,4),ticks(y0,y1,4),fd,v=>v.toFixed(3));
-  const fr=paretoIdx(xs,ys).sort((a,b)=>xs[a]-xs[b]),fl=g.recommendation.recall_floor;
-  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(fl),y2:Y(fl),stroke:'var(--warn)','stroke-dasharray':'4 4','stroke-width':.8}));
-  f.svg.append(el('polyline',{points:fr.map(i=>X(xs[i])+','+Y(ys[i])).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.5,opacity:.7}));
-  g.grid.forEach((_,i)=>{const on=fr.includes(i);f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:on?4:2.6,fill:on?'var(--acc)':'var(--ghost)'}))});
-  const hy=deepOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--fg)','stroke-width':1.3}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--fg)','stroke-dasharray':'2 2','stroke-width':.8}))});
-  PROF.forEach(k=>{const i=g.grid.indexOf(g.profiles[k].threshold);if(i>=0&&k!==S.gear){f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:7,fill:'none',stroke:'var(--mut)','stroke-width':1.2}));f.svg.append(el('text',{x:X(xs[i])+9,y:Y(ys[i])+12},t(k)))}});
-  const si=g.grid.indexOf(S.T);f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:8,fill:'var(--acc2)',opacity:.9}));f.svg.append(el('text',{x:X(xs[si])+11,y:Y(ys[si])-9,style:'fill:var(--fg);font-weight:600'},fk(S.T)));
-  f.svg.append(el('rect',{x:X(dx)-4,y:Y(g.default.recall)-4,width:8,height:8,fill:'var(--warn)'}));f.svg.append(el('text',{x:X(dx)-8,y:Y(g.default.recall)+16,'text-anchor':'end',style:'fill:var(--warn)'},t('rDefault')+' '+fk(g.default.threshold)));
-  f.svg.append(el('text',{x:f.x1,y:f.y1+8,'text-anchor':'end'},'x: '+t('lScore')+' · '+t('vot',S.vot)));
+  const fr=paretoIdx(xs,ys).sort((a,b)=>xs[a]-xs[b]),fl=g.recommendation.recall_floor,L=[];
+  if(fl>=y0&&fl<=y1){f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(fl),y2:Y(fl),stroke:'var(--amber)','stroke-dasharray':'3 4','stroke-width':.9}));
+    f.svg.append(el('text',{x:f.x0+4,y:Y(fl)-4,class:'dl',style:'fill:var(--amber)'},t1('pFloor')+' '+fl))}
+  g.grid.forEach((_,i)=>{if(!fr.includes(i))f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:2.4,fill:'var(--line2)'}))});
+  f.svg.append(el('polyline',{points:fr.map(i=>X(xs[i])+','+Y(ys[i])).join(' '),fill:'none',stroke:'var(--ink3)','stroke-width':1.1}));
+  fr.forEach(i=>f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:2.8,fill:'var(--ink3)'})));
+  const hy=deepOf(g);if(hy)hy.points.forEach(p=>{const i=g.grid.indexOf(p.threshold);if(i<0)return;f.svg.append(el('rect',{x:X(xs[i])-3.5,y:Y(p.measured_recall)-3.5,width:7,height:7,fill:'none',stroke:'var(--ink)','stroke-width':1.2}));f.svg.append(el('line',{x1:X(xs[i]),x2:X(xs[i]),y1:Y(ys[i]),y2:Y(p.measured_recall),stroke:'var(--ink)','stroke-dasharray':'2 2','stroke-width':.8}))});
+  PROF.forEach(k=>{const i=g.grid.indexOf(g.profiles[k].threshold);if(i>=0&&k!==S.gear){f.svg.append(el('circle',{cx:X(xs[i]),cy:Y(ys[i]),r:6,fill:'none',stroke:'var(--ink2)','stroke-width':1}));L.push({x:X(xs[i])+9,y:Y(ys[i])+13,text:t1(k)+' '+fk(g.profiles[k].threshold),color:'var(--ink2)',anchor:'start'})}});
+  f.svg.append(el('rect',{x:X(dx)-3.5,y:Y(g.default.recall)-3.5,width:7,height:7,fill:'var(--ink2)'}));
+  L.push({x:X(dx)-8,y:Y(g.default.recall)+15,text:t1('rDefault')+' '+fk(g.default.threshold),color:'var(--ink2)',anchor:'end'});
+  const si=g.grid.indexOf(S.T);f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:9,fill:'var(--acc-soft)',stroke:'var(--acc)','stroke-width':1.2}));f.svg.append(el('circle',{cx:X(xs[si]),cy:Y(ys[si]),r:4,fill:'var(--acc)'}));
+  L.push({x:X(xs[si])+12,y:Y(ys[si])-8,text:fk(S.T),color:'var(--acc)',anchor:'start',bold:1});
+  for(const l of L){if(l.anchor==='start'&&l.x>f.x1-50){l.anchor='end';l.x-=24}if(l.anchor==='end'&&l.x<f.x0+50){l.anchor='start';l.x+=16}}
+  dlabels(f,L,11);
+  f.svg.append(el('text',{x:f.x1,y:f.y1+2,'text-anchor':'end'},'x: '+t1('lScore')+' · '+t1('vot',S.vot)));
   hover(f,(x,y)=>{let b=-1,bd=24*24;xs.forEach((v,i)=>{const d=(X(v)-x)**2+(Y(ys[i])-y)**2;if(d<bd){bd=d;b=i}});return b});
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--acc)',t('pOpt')],['var(--ghost)',t('pDom')],['var(--acc2)',t('pSelL')],['transparent','○ '+t('pOther')],['var(--warn)',t('pDef')]].concat(hy?[['var(--fg)',t('pDeep')]]:[])))}
+  box.append(f.svg);if(hy)box.insertAdjacentHTML('beforeend',leg([['var(--ink)',t('pDeep')]]))}
 function deepOf(g){return D.deep&&D.deep.groups.find(x=>x.model===g.model&&x.role===g.role)}
-function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);if(!D.deep){b.innerHTML='<p>'+tp('dLite')+'</p>';return}
-  if(!hy){b.innerHTML='<p>'+t('dNone')+'</p>';return}
-  b.innerHTML='<p>'+esc(t('dHead',D.deep.model,D.deep.judge_model,D.deep.repeats,fd(D.deep.spent_usd),fd(D.deep.budget_usd)))+(D.deep.stopped?' '+esc(D.deep.stopped):'')+'</p><table><tr><th>'+t('threshold')+'</th><th>'+t('dAssumed')+'</th><th>'+t('dMeasured')+'</th><th>'+t('dSamples')+'</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="bad">'+t('dDis')+'</span>':''}</td></tr>`).join('')+'</table>'+Object.entries(hy.adjusted||{}).map(([k,v])=>'<p class="bad">'+t('dLowered',t(k),fk(v))+'</p>').join('')}
-function line(f,X,Y,xs,v,c,w,d){f.svg.append(el('polyline',{points:xs.map((x,i)=>X(x)+','+Y(v[i])).join(' '),fill:'none',stroke:c,'stroke-width':w,'stroke-dasharray':d||''}))}
+function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);if(!D.deep){b.innerHTML='<p class="mut" style="margin:0">'+tp('dLite')+'</p>';return}
+  if(!hy){b.innerHTML='<p class="mut" style="margin:0">'+t('dNone')+'</p>';return}
+  b.innerHTML='<p>'+esc(t('dHead',D.deep.model,D.deep.judge_model,D.deep.repeats,fd(D.deep.spent_usd),fd(D.deep.budget_usd)))+(D.deep.stopped?' '+esc(D.deep.stopped):'')+'</p><table><tr><th>'+t('threshold')+'</th><th>'+t('dAssumed')+'</th><th>'+t('dMeasured')+'</th><th>'+t('dSamples')+'</th><th></th></tr>'+hy.points.map(p=>`<tr><td>${fk(p.threshold)}</td><td>${p.assumed_recall==null?'–':p.assumed_recall.toFixed(3)}</td><td>${p.measured_recall.toFixed(3)}</td><td>${p.samples}</td><td>${p.assumed_recall!=null&&Math.abs(p.measured_recall-p.assumed_recall)>.1?'<span class="warn">'+t('dDis')+'</span>':''}</td></tr>`).join('')+'</table>'+Object.entries(hy.adjusted||{}).map(([k,v])=>'<p class="warn">'+t('dLowered',t(k),fk(v))+'</p>').join('')}
 function costs(){const g=G(),box=$('#fCost'),sc=SC(g);box.innerHTML='<h3>'+t('coTitle')+'</h3><p>'+tp('coSub')+'</p>';
-  const f=frame(460,300,{l:48,r:14,t:10,b:30}),xs=g.grid,hi=Math.max(...sc,SCp(g,g.default))*1.06;
+  const f=frame(460,300,{l:50,r:14,t:12,b:30}),xs=g.grid,hi=Math.max(...sc,SCp(g,g.default))*1.08;
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
-  const P=g.profiles[S.gear];if(P){const r=P.recommendation;f.svg.append(el('rect',{x:X(r.range[0]),y:f.y1,width:Math.max(X(r.range[1])-X(r.range[0]),3),height:f.y0-f.y1,fill:'var(--band)'}))}
+  const P=g.profiles[S.gear];if(P){const r=P.recommendation;f.svg.append(el('rect',{x:X(r.range[0]),y:f.y1,width:Math.max(X(r.range[1])-X(r.range[0]),3),height:f.y0-f.y1,fill:'var(--acc-soft)'}))}
   const st=Math.ceil(xs.length/6);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(0,hi,4),fk,fd);
-  line(f,X,Y,xs,g.cost,'var(--ghost)',1.5);line(f,X,Y,xs,g.penalty,'var(--warn)',1.2,'3 3');line(f,X,Y,xs,sc,'var(--acc)',2.2);
-  const dv=SCp(g,g.default);f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(dv),y2:Y(dv),stroke:'var(--warn)','stroke-dasharray':'2 3','stroke-width':1}));
-  const si=xs.indexOf(S.T);f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-width':1.5}));f.svg.append(el('circle',{cx:X(S.T),cy:Y(sc[si]),r:4,fill:'var(--acc2)'}));
+  const dv=SCp(g,g.default);f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(dv),y2:Y(dv),stroke:'var(--ink3)','stroke-dasharray':'2 3','stroke-width':.9}));
+  line(f,X,Y,xs,g.cost,'var(--ink3)',1.1);line(f,X,Y,xs,g.penalty,'var(--amber)',1.1,'3 3');line(f,X,Y,xs,sc,'var(--acc)',2);
+  const si=xs.indexOf(S.T);f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc)','stroke-width':1,opacity:.6}));f.svg.append(el('circle',{cx:X(S.T),cy:Y(sc[si]),r:4,fill:'var(--acc)'}));
+  const e=xs.length-1,xe=f.x1-2;
+  dlabels(f,[{x:xe,y:Y(sc[e])-6,text:t1('lScore'),color:'var(--acc)',bold:1},{x:xe,y:Y(g.cost[e])-6,text:t1('lCost'),color:'var(--ink2)'},{x:xe,y:Y(g.penalty[e])-6,text:t1('lPen'),color:'var(--amber)'},{x:f.x0+4,y:Y(dv)-5,text:t1('lDefault')+' '+fk(g.default.threshold),color:'var(--ink2)',anchor:'start'}]);
   hover(f,byX(f,X,xs));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('lCost')],['var(--warn)',t('lPen')],['var(--acc)',t('lScore')+' ('+t('vot',S.vot)+')'],['var(--warn)',t('lDefault')+' '+fk(g.default.threshold)],['var(--band)',t('lRange'),1]]))}
+  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--acc-soft)',t('lRange'),1]]))}
 function timeChart(){const g=G(),d=g.default,box=$('#fTime'),tm=g.time_model,xs=g.grid;
   const saved=xs.map((_,i)=>d.time_turns_s-g.time_turns_s[i]),added=xs.map((_,i)=>(g.time_compact_s[i]+g.time_redisc_s[i])-(d.time_compact_s+d.time_redisc_s)),net=xs.map((_,i)=>g.time_s[i]-d.time_s);
-  const conf=c=>t('conf_'+c);
   box.innerHTML='<h3>'+t('tTitle')+'</h3><p>'+tp('tSub')+'</p>';
-  const f=frame(940,260,{l:52,r:14,t:10,b:30}),all=[...saved,...added,...net,0],lo=Math.min(...all),hi=Math.max(...all),pad=(hi-lo||1)*.08;
+  const f=frame(940,260,{l:54,r:14,t:12,b:30}),all=[...saved,...added,...net,0],lo=Math.min(...all),hi=Math.max(...all),pad=(hi-lo||1)*.1;
   const X=v=>f.x0+(v-xs[0])/((xs[xs.length-1]-xs[0])||1)*(f.x1-f.x0),Y=v=>f.y0-(v-(lo-pad))/((hi+pad)-(lo-pad))*(f.y0-f.y1);
   const st=Math.ceil(xs.length/10);axes(f,X,Y,xs.filter((_,i)=>i%st===0),ticks(lo-pad,hi+pad,4),fk,fh);
-  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(0),y2:Y(0),stroke:'var(--mut)','stroke-width':.8}));
-  line(f,X,Y,xs,saved,'var(--acc2)',1.6);line(f,X,Y,xs,added,'var(--warn)',1.6);line(f,X,Y,xs,net,'var(--acc)',2.4);
-  f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-dasharray':'4 3'}));
+  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(0),y2:Y(0),stroke:'var(--ink3)','stroke-width':.8}));
+  line(f,X,Y,xs,saved,'var(--good)',1.1);line(f,X,Y,xs,added,'var(--amber)',1.1);line(f,X,Y,xs,net,'var(--acc)',2);
+  f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc)','stroke-dasharray':'3 3',opacity:.7}));
+  const L=[[saved,'tSaved','var(--good)'],[added,'tAdded','var(--amber)'],[net,'tNet','var(--acc)']].map(([v,k,c])=>{const i=v.reduce((b,x,j)=>Math.abs(x)>Math.abs(v[b])?j:b,0);return {x:Math.min(X(xs[i])+6,f.x1-130),y:Y(v[i])+(v[i]>=0?-6:14),text:t1(k),color:c,anchor:'start',bold:k==='tNet'}});
+  dlabels(f,L);
   hover(f,byX(f,X,xs));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--acc2)',t('tSaved')],['var(--warn)',t('tAdded')],['var(--acc)',t('tNet')]])+'<p class="'+(tm.turn_source==='own'&&tm.compact_source==='own'?'mut':'bad')+'" style="margin:8px 0 0;font-size:12px">'+esc(t('tConf',conf(tm.turn_confidence),tm.n_turn_samples,conf(tm.compact_confidence),tm.n_compact_samples,t('src_'+(tm.turn_source||'prior')),t('src_'+(tm.compact_source||'prior'))))+'</p>')}
+  box.append(f.svg);box.insertAdjacentHTML('beforeend','<p class="'+(tm.turn_source==='own'&&tm.compact_source==='own'?'mut':'warn')+'" style="margin:10px 0 0;font-size:12px">'+esc((S.lang==='en'?[0]:S.lang==='zh'?[1]:[0,1]).map(L=>I.tConf[L](I['conf_'+tm.turn_confidence][L],tm.n_turn_samples,I['conf_'+tm.compact_confidence][L],tm.n_compact_samples,I['src_'+(tm.turn_source||'prior')][L],I['src_'+(tm.compact_source||'prior')][L])).join(' · '))+'</p>')}
 function hist(){const g=G(),box=$('#fHist'),h=g.hist;box.innerHTML='<h3>'+t('hTitle')+'</h3><p>'+tp('hSub')+'</p>';
-  const f=frame(460,300,{l:40,r:14,t:10,b:30}),n=h.turns.length,mx=Math.max(...h.turns,...h.share)*1.1||1,bw=(f.x1-f.x0)/n;
+  const f=frame(460,300,{l:42,r:14,t:12,b:30}),n=h.turns.length,mx=Math.max(...h.turns,...h.share)*1.15||1,bw=(f.x1-f.x0)/n;
   const Y=v=>f.y0-v/mx*(f.y0-f.y1),X=v=>f.x0+v/(n*h.bin)*(f.x1-f.x0);
   axes(f,X,Y,Array.from({length:Math.min(n,8)+1},(_,i)=>Math.round(i*n/Math.min(n,8))*h.bin),ticks(0,mx,4),fk,v=>Math.round(v*100)+'%');
-  h.turns.forEach((v,i)=>f.svg.append(el('rect',{x:f.x0+i*bw+1,y:Y(v),width:bw-2,height:f.y0-Y(v),fill:'var(--ghost)',rx:2})));
-  f.svg.append(el('polyline',{points:h.share.map((v,i)=>(f.x0+(i+.5)*bw)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.8}));
-  f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--acc2)','stroke-width':1.5,'stroke-dasharray':'4 3'}));
+  h.turns.forEach((v,i)=>f.svg.append(el('rect',{x:f.x0+i*bw+1,y:Y(v),width:Math.max(bw-2,1),height:f.y0-Y(v),fill:'var(--line2)',rx:2})));
+  f.svg.append(el('polyline',{points:h.share.map((v,i)=>(f.x0+(i+.5)*bw)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.8,'stroke-linejoin':'round'}));
+  f.svg.append(el('line',{x1:X(S.T),x2:X(S.T),y1:f.y1,y2:f.y0,stroke:'var(--ink)','stroke-width':1,'stroke-dasharray':'3 3'}));
   const over=h.share.reduce((a,v,i)=>a+((i+1)*h.bin>S.T?v:0),0);
-  f.svg.append(el('text',{x:Math.min(X(S.T)+6,f.x1-170),y:f.y1+10,style:'fill:var(--acc2)'},S.lang==='zh'?I.hAbove[1](Math.round(over*100),fk(S.T)):I.hAbove[0](Math.round(over*100),fk(S.T))));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('hTurns'),1],['var(--acc)',t('hRead')]]))}
+  const ti=h.turns.reduce((b,x,j)=>x>h.turns[b]?j:b,0),ri=h.share.reduce((b,x,j)=>x>h.share[b]?j:b,0);
+  dlabels(f,[{x:Math.min(X(S.T)+6,f.x1-150),y:f.y1+10,text:t1('hAbove',Math.round(over*100),fk(S.T)),color:'var(--ink)',anchor:'start'},
+    {x:Math.min(f.x0+(ri+.5)*bw+6,f.x1-90),y:Y(h.share[ri])-6,text:t1('hRead'),color:'var(--acc)',anchor:'start',bold:1},
+    {x:Math.min(f.x0+(ti+.5)*bw+6,f.x1-90),y:Y(h.turns[ti])-6,text:t1('hTurns'),color:'var(--ink2)',anchor:'start'}]);
+  box.append(f.svg)}
 function simulate(sess,g,T){const out=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
   for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.round(pp.rho*d+pp.fixed_tokens)}out.push(c)}return {out,k}}
 function sessList(){const g=G();return D.sessions.filter(s=>s.model===g.model&&s.role===g.role).sort((a,b)=>b.peak-a.peak).slice(0,30)}
@@ -331,13 +560,15 @@ function sessPick(){const box=$('#fSess'),ss=sessList();
   $('#sp').onchange=e=>{S.sid=e.target.value;sessChart()};sessChart()}
 function sessChart(){const g=G(),box=$('#sChart'),s=sessList().find(x=>x.id===S.sid);$('#sSub').innerHTML=tp('sSub',fk(S.T));box.innerHTML='';if(!s)return;
   const sim=simulate(s,g,S.T),n=s.curve.length;
-  const f=frame(460,260,{l:40,r:14,t:10,b:26}),hi=Math.max(...s.curve,...sim.out,S.T)*1.06;
+  const f=frame(460,260,{l:42,r:14,t:14,b:26}),hi=Math.max(...s.curve,...sim.out,S.T)*1.1;
   const X=i=>f.x0+i/((n-1)||1)*(f.x1-f.x0),Y=v=>f.y0-v/hi*(f.y0-f.y1);
   axes(f,X,Y,[0,Math.round((n-1)/2),n-1],ticks(0,hi,4),i=>Math.round(i/(n-1||1)*100)+'%',fk);
-  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(S.T),y2:Y(S.T),stroke:'var(--acc2)','stroke-dasharray':'4 3','stroke-width':1}));
-  f.svg.append(el('polyline',{points:s.curve.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--ghost)','stroke-width':1.8}));
-  f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6}));
-  box.append(f.svg);box.insertAdjacentHTML('beforeend',leg([['var(--ghost)',t('sAct',s.compactions)],['var(--acc)',t('sRep',sim.k)],['var(--acc2)',t('threshold')]]))}
+  f.svg.append(el('line',{x1:f.x0,x2:f.x1,y1:Y(S.T),y2:Y(S.T),stroke:'var(--ink3)','stroke-dasharray':'3 3','stroke-width':.9}));
+  f.svg.append(el('polyline',{points:s.curve.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--line2)','stroke-width':1.6,'stroke-linejoin':'round'}));
+  f.svg.append(el('polyline',{points:sim.out.map((v,i)=>X(i)+','+Y(v)).join(' '),fill:'none',stroke:'var(--acc)','stroke-width':1.6,'stroke-linejoin':'round'}));
+  dlabels(f,[{x:f.x0+4,y:Y(S.T)-5,text:t1('threshold')+' '+fk(S.T),color:'var(--ink2)',anchor:'start'},
+    {x:f.x1-2,y:Y(s.curve[n-1])-6,text:t1('sAct',s.compactions),color:'var(--ink2)'},{x:f.x1-2,y:Y(sim.out[sim.out.length-1])-6,text:t1('sRep',sim.k),color:'var(--acc)',bold:1}]);
+  box.append(f.svg)}
 function copyPanel(){const b=$('#fCopy'),R=D.recommendations||[];
   const hs=[...new Set(R.map(r=>r.harness))];if(!hs.length){b.innerHTML='<p class="mut">–</p>';return}
   S.cp=S.cp||{harness:G().harness,scope:'global',profile:G().profile||'balanced',format:null};if(!hs.includes(S.cp.harness))S.cp.harness=hs[0];
@@ -347,8 +578,8 @@ function copyPanel(){const b=$('#fCopy'),R=D.recommendations||[];
   const snips=rows.filter(r=>!r.omitted),om=rows.filter(r=>r.omitted);
   const txt=snips.map(r=>r.text).join('\n');
   b.innerHTML='<p>'+tp('cpSub')+'</p><div class="copyrow">'+seg('harness',hs,'cpHarness')+seg('scope',['global','project','agent'],'cpScope')+seg('profile',PROF,'cpTier')+seg('format',fmts,'cpFormat')+'</div>'+
-    (snips.length?'<div class="copyrow" style="margin-top:10px"><button class="btn" id="cpBtn">'+t('cpCopy')+'</button><span class="mut" id="cpMsg" role="status" aria-live="polite"></span></div><pre class="snip" id="cpPre"></pre>':'')+
-    (om.length?'<ul class="n">'+om.map(o=>'<li>'+(snips.length?'':t('cpNone')+' ')+esc(o.omitted)+'</li>').join('')+'</ul>':'');
+    (snips.length?'<div class="copyrow" style="margin-top:12px"><button class="btn" id="cpBtn">'+t('cpCopy')+'</button><span class="mut" id="cpMsg" role="status" aria-live="polite"></span></div><pre class="snip" id="cpPre"></pre>':'')+
+    (om.length?'<ul class="n" style="margin-top:12px">'+om.map(o=>'<li>'+(snips.length?'':t('cpNone')+' ')+esc(o.omitted)+'</li>').join('')+'</ul>':'');
   if(snips.length){$('#cpPre').textContent=txt;$('#cpBtn').onclick=()=>copyText(txt)}
   b.querySelectorAll('.seg[data-k]').forEach(sg=>sg.querySelectorAll('button').forEach(bt=>bt.onclick=()=>{S.cp[sg.dataset.k]=bt.dataset.v;if(sg.dataset.k!=='format')S.cp.format=null;keep(copyPanel)}))}
 // navigator.clipboard needs a secure context (not file://); fall back to execCommand, then to selecting the text
@@ -357,13 +588,12 @@ async function copyText(txt){let ok=false;
   if(!ok){try{const ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove()}catch(e){}}
   const msg=$('#cpMsg'),btn=$('#cpBtn');
   if(ok){msg.textContent='✓ '+t('cpCopied');msg.className='good';btn.textContent=t('cpCopied')}
-  else{msg.textContent=t('cpFail');msg.className='bad';const r=document.createRange();r.selectNodeContents($('#cpPre'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r)}
+  else{msg.textContent=t('cpFail');msg.className='warn';const r=document.createRange();r.selectNodeContents($('#cpPre'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r)}
   clearTimeout(copyText.tm);copyText.tm=setTimeout(()=>{if($('#cpBtn')){$('#cpBtn').textContent=t('cpCopy');$('#cpMsg').textContent=''}},2200)}
 // update(): everything that depends on the selected threshold/profile; render(): full rebuild (group or language change)
-function update(){controls();comparison();pareto();costs();timeChart();hist();sessChart();hideTip()}
-function render(){keep(()=>{buildBar();sessPick();update();copyPanel();deepPanel()})}
-function pick(i){S.gi=i;S.gear=G().profile||'balanced';S.T=G().profiles[S.gear].threshold;S.vot=G().profiles[S.gear].value_of_time;S.sid=null;document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-selected',j===i));render()}
-D.groups.forEach((g,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.onclick=()=>pick(i);$('#tabs').append(b)});
+function update(){controls();impactPanel();comparison();pareto();costs();timeChart();hist();sessChart();hideTip()}
+function render(){keep(()=>{header();buildBar();sessPick();update();copyPanel();deepPanel()})}
+function pick(i){S.gi=i;S.gear=G().profile||'balanced';S.T=G().profiles[S.gear].threshold;S.vot=G().profiles[S.gear].value_of_time;S.sid=null;document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected',+b.dataset.tab===i));render()}
 statics();
 if(D.groups.length)pick(0);else $('#ctl').textContent=t('none');
 addEventListener('scroll',hideTip,{passive:true});

@@ -243,6 +243,8 @@ def _load_result(path: str) -> dict[str, Any]:
     res: dict[str, Any] = json.loads(p.read_text())
     if res.get("schema", 0) < 4:
         raise CLIError(f"{p} was made by an older compactlab (schema {res.get('schema')}); re-run compactlab simulate")
+    if any("impact" not in c["vs_default"] for g in res["groups"] for c in g.get("comparison", {}).values()):
+        reselect(res)  # results saved before per-day impact existed: recompute selection (no replay)
     return res
 
 
@@ -462,6 +464,116 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
 def _dc(c: dict[str, Any]) -> str:
     sign = "+" if c["d_cost"] >= 0 else "-"
     return f"{sign}${abs(c['d_cost']):,.0f} ({c['d_cost_pct'] * 100:+.0f}%)"
+
+
+IMPACT: dict[str, dict[str, Any]] = {
+    "en": {
+        "title": "Per-day impact · {m} · {r} · history {d:.1f} calendar days, {a} active days (with ≥1 turn)",
+        "vs": {"vs_default": "vs harness default {t}", "vs_current": "vs your current {t}"},
+        "cols": (
+            "profile",
+            "window",
+            "$/day",
+            "$/active d",
+            "$/month",
+            "min/day",
+            "wait",
+            "turns",
+            "min/active d",
+            "h/month",
+            "compact/d",
+            "/month",
+        ),
+        "legend": "Sign: -$ / -min = saves, + = adds. min/day = wait (compaction + re-discovery) - turns "
+        "(faster turns from a smaller context). Month = 30 days. List-price estimates; recall is a lite-mode proxy.",
+        "keep": "{p}: picks {t}, which is not better than the default: recommend keeps the default",
+    },
+    "zh": {
+        "title": "每日影响 · {m} · {r} · 历史覆盖 {d:.1f} 个自然日,其中 {a} 个活跃日(至少一轮)",
+        "vs": {"vs_default": "对 harness 默认 {t}", "vs_current": "对你当前的 {t}"},
+        "cols": (
+            "方案",
+            "阈值",
+            "$/天",
+            "$/活跃天",
+            "$/月",
+            "分钟/天",
+            "等待",
+            "每轮",
+            "分钟/活跃天",
+            "小时/月",
+            "压缩/天",
+            "/月",
+        ),
+        "legend": "符号:-$ / -分钟 = 节省,+ = 增加。分钟/天 = 等待(压缩 + 重新查找)- 每轮提速(上下文更小)。"
+        "一个月按 30 天。成本按公开标价估算;lite 模式下召回率是代理值。",
+        "keep": "{p}:选出 {t},不比默认值好,recommend 会保持默认",
+    },
+}
+IWIDTHS = ((14, "<"), (7, ">"), (10, ">"), (11, ">"), (11, ">"), (9, ">"), (8, ">"), (8, ">"), (13, ">"),
+           (9, ">"), (10, ">"), (7, ">"))  # fmt: skip
+
+
+def _usd(x: float | None) -> str:
+    if x is None:
+        return "-"
+    if abs(x) < 0.05:
+        return "$0"
+    return f"{'-' if x < 0 else '+'}${abs(x):,.1f}" if abs(x) < 1000 else f"{'-' if x < 0 else '+'}${abs(x):,.0f}"
+
+
+def _mins(x: float | None) -> str:
+    return "-" if x is None else ("0.0" if abs(x) < 0.05 else f"{x:+.1f}")
+
+
+def impact_text(res: dict[str, Any], lang: str = "both") -> str:
+    """Per-day / per-active-day / per-month table for every profile of every group, vs default and current."""
+    langs = ["en", "zh"] if lang == "both" else [lang]
+    lines: list[str] = []
+    for g in res["groups"]:
+        if g["no_action_needed"]:
+            continue
+        sel = g["profile"]
+        active = g.get("active_days")
+        act = f"{active:.3g}" if active is not None else "?"
+        lines.append("")
+        lines += [IMPACT[x]["title"].format(m=g["model"], r=g["role"], d=g["days"], a=act) for x in langs]
+        for ref in ("vs_default", "vs_current"):
+            refpt = g["default"] if ref == "vs_default" else g.get("current")
+            if not refpt:
+                continue
+            thr = _k_(refpt.get("configured", refpt["threshold"]))
+            lines.append("  " + " / ".join(IMPACT[x]["vs"][ref].format(t=thr) for x in langs))
+            for x in langs:
+                lines.append(
+                    "    " + "".join(_pad(h, w, al) for h, (w, al) in zip(IMPACT[x]["cols"], IWIDTHS, strict=True))
+                )
+            for n in [sel] + [n for n in PROFILE_NAMES if n != sel]:
+                cm = g["comparison"][n]
+                im = (cm.get(ref) or {}).get("impact")
+                if not im:
+                    continue
+                u, m, w, tg, c = (
+                    im["usd"],
+                    im["minutes"],
+                    im["wait_minutes"],
+                    im["turn_gain_minutes"],
+                    im["compactions"],
+                )
+                cells = ("/".join(T[x][n] for x in langs) + ("*" if n == sel else ""), _k_(cm["threshold"]),
+                         _usd(u["per_day"]), _usd(u["per_active_day"]), _usd(u["per_month"]),
+                         _mins(m["per_day"]), _mins(w["per_day"]), _mins(-tg["per_day"]),
+                         _mins(m["per_active_day"]), _mins(m["per_month"] / 60), f"{c['per_day']:.1f}",
+                         f"{c['per_month']:.0f}")  # fmt: skip
+                lines.append("    " + "".join(_pad(v, w_, al) for v, (w_, al) in zip(cells, IWIDTHS, strict=True)))
+        for n in PROFILE_NAMES:
+            if g["comparison"][n]["action"] == "keep default":
+                lines += ["  · " + IMPACT[x]["keep"].format(p=T[x][n], t=_k_(g["profiles"][n]["threshold"]))
+                          for x in langs]  # fmt: skip
+    if lines:
+        lines.append("")
+        lines += [IMPACT[x]["legend"] for x in langs]
+    return "\n".join(ln.rstrip() for ln in lines)
 
 
 # ---------- commands ----------
@@ -772,10 +884,20 @@ def cmd_recommend(a: argparse.Namespace) -> int:
     text = "\n".join(s.text() for s in snippets)
     notes = [f"# omitted: {o.harness}: {o.reason}" for o in omitted]
     if a.json:
-        print(json.dumps({"snippets": [s.to_dict() for s in snippets],
-                          "omitted": [vars(o) for o in omitted]}, indent=2, ensure_ascii=False))  # fmt: skip
+        imp = [{"harness": g["harness"], "model": g["model"], "role": g["role"], "days": g["days"],
+                "active_days": g.get("active_days"),
+                "profiles": {n: {"threshold": c["threshold"], "action": c["action"],
+                                 "vs_default": c["vs_default"]["impact"],
+                                 "vs_current": (c["vs_current"] or {}).get("impact")}
+                             for n, c in g["comparison"].items()}}
+               for g in res["groups"]]  # fmt: skip
+        print(json.dumps({"snippets": [s.to_dict() for s in snippets], "omitted": [vars(o) for o in omitted],
+                          "impact": imp}, indent=2, ensure_ascii=False))  # fmt: skip
     else:
         print(text + ("\n" + "\n".join(notes) if notes else ""))
+        table = impact_text(res, a.lang)
+        if table:
+            print(table)
     if a.copy:
         if not snippets:
             print("nothing to copy", file=sys.stderr)

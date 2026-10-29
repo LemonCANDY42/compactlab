@@ -4,7 +4,8 @@
   python scripts/make_assets.py [--chrome PATH]
 
 Produces:
-  docs/assets/report.png          first screen of the demo report (headless Chrome)
+  docs/assets/report.png          first screen of the demo report (headless Chrome), plus report-dark.png,
+                                  report-mobile.png and report-mobile-dark.png
   docs/assets/social-preview.png  1280x640 card for the GitHub social preview (headless Chrome)
   docs/assets/demo.svg            animated terminal of `compactlab demo` (pure SVG/CSS, no Chrome needed)
 """
@@ -37,10 +38,11 @@ def chrome(path: str | None) -> str:
     sys.exit("headless Chrome/Chromium not found; pass --chrome PATH")
 
 
-def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2) -> None:
+def shot(browser: str, url: str, out: Path, w: int, h: int, scale: int = 2, dark: bool = False) -> None:
     with tempfile.TemporaryDirectory() as prof:
         subprocess.run(
-            [browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--user-data-dir={prof}",
+            [browser, f"--blink-settings=preferredColorScheme={0 if dark else 1}", "--allow-file-access-from-files", "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
+             f"--user-data-dir={prof}",
              "--hide-scrollbars", f"--force-device-scale-factor={scale}", f"--window-size={w},{h}",
              f"--screenshot={out}", url],
             check=True, capture_output=True, timeout=120,
@@ -124,7 +126,15 @@ def main() -> None:
         text, result = demo(tmp)
         (ASSETS / "demo.svg").write_text(terminal_svg(text))
         b = chrome(a.chrome)
-        shot(b, (tmp / "demo" / "report.html").as_uri(), ASSETS / "report.png", 1100, 1160)
+        page = (tmp / "demo" / "report.html").as_uri()
+        shot(b, page, ASSETS / "report.png", 1280, 1180)
+        shot(b, page, ASSETS / "report-dark.png", 1280, 1180, dark=True)
+        # headless Chrome will not go below ~500px wide, so the phone view is an iframe in a host page
+        host = tmp / "mobile.html"
+        host.write_text(f'<!doctype html><body style="margin:0"><iframe src="{page}" '
+                        'style="width:390px;height:1500px;border:0;display:block"></iframe>')  # fmt: skip
+        shot(b, host.as_uri(), ASSETS / "report-mobile.png", 390, 1500)
+        shot(b, host.as_uri(), ASSETS / "report-mobile-dark.png", 390, 1500, dark=True)
         card = tmp / "social.html"
         card.write_text(social_html(result))
         shot(b, card.as_uri(), ASSETS / "social-preview.png", 1280, 640, scale=1)

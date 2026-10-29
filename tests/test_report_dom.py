@@ -55,6 +55,24 @@ CHECK = """
       const at={bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2};
       hv.dispatchEvent(new PointerEvent('pointermove',at));
       const tip=document.getElementById('tip');ok(!tip.hidden&&/k/.test(tip.textContent),'tooltip not shown')}
+    // per-day impact: three profile cards; the money cell shows the stored vs-default number for the chosen basis
+    ok(document.querySelectorAll('#fImpact .pc').length===3,'impact cards missing');
+    if(!g.no_action_needed){
+      const im=g.comparison.balanced.vs_default.impact;
+      const money=()=>document.querySelector('#fImpact [data-pc=balanced] tr.big td').textContent;
+      ok(money()===fusd(im.usd.per_day),'per-day money '+money()+' != '+fusd(im.usd.per_day));
+      document.querySelector('#fImpact [data-basis=per_month]').click();
+      ok(money()===fusd(im.usd.per_month),'per-month money not shown');
+      {const bb=document.querySelector('#fImpact [data-basis=per_active_day]');bb.focus();bb.click()}
+      ok(money()===fusd(im.usd.per_active_day),'per-active-day money not shown');
+      ok(document.activeElement&&document.activeElement.dataset.basis==='per_active_day','basis lost focus');
+      ok(document.getElementById('rng')===n0,'slider replaced by the impact panel');
+    }
+    // theme toggle sets data-theme on <html>
+    document.querySelector('#themes [data-th=dark]').click();
+    ok(document.documentElement.dataset.theme==='dark','dark theme not applied');
+    document.querySelector('#themes [data-th=auto]').click();
+    ok(!document.documentElement.dataset.theme,'auto theme not restored');
     // the control bar stays visible while scrolling
     scrollTo(0,document.body.scrollHeight);
     ok(Math.abs(document.getElementById('bar').getBoundingClientRect().top)<1,'control bar is not sticky');
@@ -82,7 +100,8 @@ def test_slider_survives_input_events(tmp_path, claude_root, codex_root):
     page = tmp_path / "r.html"
     page.write_text(render_html(res).replace("</body>", CHECK + "</body>"))
     out = subprocess.run(
-        [chrome, "--headless=new", "--disable-gpu", "--no-first-run", f"--user-data-dir={tmp_path / 'prof'}",
+        [chrome, "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
+         f"--user-data-dir={tmp_path / 'prof'}",
          "--dump-dom", page.as_uri()],
         capture_output=True, text=True, timeout=120,
     )  # fmt: skip
@@ -105,7 +124,8 @@ def test_no_horizontal_scroll(tmp_path, claude_root, codex_root, width):
         "document.body.dataset.sw=d.scrollWidth+'/'+d.clientWidth},300)</script>"
     )
     out = subprocess.run(
-        [chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--allow-file-access-from-files",
+        [chrome, "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
+         "--allow-file-access-from-files",
          f"--user-data-dir={tmp_path / 'prof'}", "--virtual-time-budget=3000", "--window-size=1500,1000",
          "--dump-dom", host.as_uri()],
         capture_output=True, text=True, timeout=120,

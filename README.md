@@ -27,7 +27,7 @@ a huge, cached-but-not-free prefix, and long contexts get less reliable. The rig
 sessions grow, your models and their prices. compactlab replays your own session logs at every threshold and tells
 you where the trade-off sits, per model and per role (main agent vs subagent).
 
-![compactlab HTML report: profile switch, side-by-side comparison, Pareto frontier and cost curve (synthetic demo data)](docs/assets/report.png)
+![compactlab HTML report: group sidebar, profile switch, KPI cards and per-day impact of each profile (synthetic demo data)](docs/assets/report.png)
 
 ## Quickstart
 
@@ -99,10 +99,45 @@ gpt-5-codex · main · 6 sessions · 871 turns · 5 days · window 400k
   time                 350k keep default                    +$0 (+1%)        +4m (+1m)            3.3   0.929 (-0.000)
 ```
 
-The HTML report is one offline file, in Chinese and English (switchable). It has a sticky profile switch and threshold
-slider (with marks for each profile, the default and your current setting), the three profiles side by side
-against the default and your current setting, a Pareto frontier with hover/tap tooltips, cost and wall-clock curves, where your tokens sit by context size, and any session's real context curve
-next to the same session replayed at the chosen threshold.
+The HTML report is one offline file (no fonts, scripts or images fetched), in Chinese and English, light or dark
+(follows the system, or pick one). A sidebar lists each harness / model / role group (a top bar on phones); the
+header states the history's date range, data source and mode. A sticky control bar holds the profile switch and a
+threshold slider with marks for each profile, the default and your current setting. Below it: KPI cards for the
+slider position, the per-day impact of every profile, a comparison table, a Pareto frontier and cost and wall-clock
+curves with hover/tap tooltips and direct labels, where your tokens sit by context size, and any session's real
+context curve next to the same session replayed at the chosen threshold. Thin data, short histories and borrowed
+time models are called out in plain language.
+
+| Light | Dark | Phone |
+| --- | --- | --- |
+| ![report, light](docs/assets/report.png) | ![report, dark](docs/assets/report-dark.png) | ![report on a phone](docs/assets/report-mobile.png) |
+
+### Per-day impact
+
+For each profile of each group, versus the harness default and versus your current setting: money saved or added
+(USD), wall-clock saved or added (minutes, with compaction wait and the turn-speed gain from a smaller context shown
+separately), and compactions, each per calendar day, per active day and per month (30 days). The calendar span is
+the history window actually covered; an active day is a local date with at least one turn. Dividing by calendar days
+understates a heavy user's day, so both are shown. **Sign: `-$204.8/day` means it saves $204.8 a day**; `+` adds.
+The report colours savings green and added cost or time amber, and keeps red for broken guardrails. Money is a
+list-price estimate and recall is a lite-mode proxy. `compactlab recommend` prints the same table after the
+snippets (`--json` adds it under `impact`):
+
+```
+Per-day impact · claude-opus-5-5 · main · history 10.5 calendar days, 10.5 active days (with ≥1 turn)
+  vs harness default 967k
+    profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
+    balanced*         325k     -$19.0      -$19.0     -$569.2      -1.5     +4.0     -5.5          -1.5      -0.8        3.0      89
+    cost              175k     -$22.3      -$22.3     -$668.0      -1.4     +7.8     -9.2          -1.4      -0.7        6.5     195
+    time              625k      -$9.7       -$9.7     -$291.0      -1.2     +0.7     -1.9          -1.2      -0.6        1.2      37
+  vs your current 600k
+    profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
+    balanced*         325k      -$9.2       -$9.2     -$276.2      -1.4     +2.1     -3.5          -1.4      -0.7        3.0      89
+    cost              175k     -$12.5      -$12.5     -$375.0      -1.2     +5.9     -7.1          -1.2      -0.6        6.5     195
+    time              625k      +$0.1       +$0.1       +$2.0      -1.1     -1.2     +0.1          -1.1      -0.5        1.2      37
+```
+
+(Synthetic demo data, `--lang en`. The demo spreads sessions over every day, so active days equal calendar days.)
 
 ## Copy the settings
 
