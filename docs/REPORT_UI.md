@@ -50,7 +50,9 @@ swaps them and is remembered in `localStorage` (`compactlab.unit`). Cost % is th
 default's window cost (list price) for that group, the engine's `d_cost_pct`; time % is the change as a share of the
 default's total wall-clock, `d_time_pct`. A zero reference has no percent and the amount leads instead. Aggregates
 (sidebar nodes, Overview totals and per-model bars) divide summed amounts by summed defaults, never average group
-percents; the Overview total uses all groups' default cost as the denominator. In % mode the main chart plots both
+percents. One base serves the Overview cards, the chart's Total rows and the sidebar badges: the summed default
+per-day cost (or wall-clock) of the models with at least one "set" group, all of their groups included. A model that
+only keeps the default shows its own figure in a greyed badge labelled "keep default". In % mode the main chart plots both
 panels in percent and Overview bars are sized by percent saved; the Overview table sorts by its column headers,
 using the lead unit. The definitions sit in the `(i)` next to the toggle.
 

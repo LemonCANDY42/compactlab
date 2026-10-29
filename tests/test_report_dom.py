@@ -177,7 +177,7 @@ CHECK = """
     {const want=D.groups.reduce((a,x)=>a+setUsd(x),0),v=document.querySelector('#ovw .kpi .v').textContent;
       ok(v.startsWith(fsv(want)),'overview total '+v+' != '+fsv(want));
       document.querySelector('#units [data-unit=pct]').click();
-      const wp=want/D.groups.reduce((a,x)=>a+defUsd(x),0),vp=document.querySelector('#ovw .kpi .v .ld').textContent;
+      const wp=want/baseUsd(D.groups),vp=document.querySelector('#ovw .kpi .v .ld').textContent;
       ok(S.unit==='pct'&&vp===fpct(wp),'overview percent '+vp+' != '+fpct(wp));
       let unitSaved=null;try{unitSaved=localStorage.getItem('compactlab.unit')}catch(e){}ok(unitSaved==null||unitSaved==='pct','unit not remembered');
       // the table sorts by a column header
@@ -186,6 +186,12 @@ CHECK = """
       ok(vals.every((v,i)=>!i||v>=vals[i-1]-1e-12),'table not sorted by cost %');S.ovSort=null;keep(renderOverview);
       ok(D.groups.some(x=>!x.no_action_needed&&!isSet(x))?document.querySelector('#ovC .barow.keep'):true,'keep-default rows not greyed')}
     ok(/^All sessions/.test(document.getElementById('hSess').textContent),'overview sessions title');
+    // one base: the cards' percent equals the chart's Total row, for cost and time, and the Overview badge agrees
+    {const pc=document.querySelector('#ovw .kpi .v .ld').textContent,tc=document.querySelector('#ovC .barow.tot tspan.big');
+      const pm=document.querySelectorAll('#ovw .kpi .v .ld')[1].textContent,tm=document.querySelector('#ovM .barow.tot tspan.big');
+      ok(S.unit==='pct'&&tc&&pc===tc.textContent.trim()&&tm&&pm===tm.textContent.trim(),'card vs Total row: '+pc+' / '+(tc&&tc.textContent)+' · '+pm+' / '+(tm&&tm.textContent));
+      const ob=document.querySelector('#tree [data-ov] .bdg').firstChild.textContent;ok(ob.replace('▼−','▼ −').replace('▲+','▲ +')===pc,'Overview badge '+ob+' != '+pc);
+}
     // a "keep default" row says which rule kept it
     D.groups.forEach((x,i)=>{const P=x.profiles[S.op];if(action(x,P.threshold,P.value_of_time)!=='aKeep')return;
       const tr=document.querySelector(`#ovT [data-tab="${i}"]`).closest('tr');ok(tr.querySelector('.kw')&&/keep default: /.test(tr.querySelector('.kw').textContent),'keep-default row without a reason: '+x.model)});
@@ -255,3 +261,48 @@ def test_no_horizontal_scroll(tmp_path, claude_root, codex_root, width):
     )  # fmt: skip
     sw, cw = out.stdout.split('data-sw="')[1].split('"')[0].split("/")
     assert int(sw) <= int(cw), f"horizontal scroll at {width}px: {sw} > {cw}"
+
+
+ONE_BASE = """
+<script>
+(function(){
+  const fail=[];const ok=(c,m)=>{if(!c)fail.push(m)};
+  try{
+    ok(D.groups.some(x=>x.no_action_needed)&&D.groups.some(x=>!x.no_action_needed&&!isSet(x)),'fixture lacks no-op or keep-default groups');
+    overview();
+    const card=[...document.querySelectorAll('#ovw .kpi .v .ld')].map(n=>n.textContent),tot=['#ovC','#ovM'].map(q=>document.querySelector(q+' .barow.tot tspan.big').textContent.trim());
+    ok(card[0]===tot[0]&&card[1]===tot[1],'cards '+card.join(',')+' != Total rows '+tot.join(','));
+    const sets=D.groups.filter(x=>setModel(x)),was=sets.reduce((a,x)=>a+defUsd(x),0),saved=D.groups.reduce((a,x)=>a+setUsd(x),0);
+    ok(card[0]===fpct(saved/was),'cost % is not saving / default of the set models: '+card[0]+' vs '+fpct(saved/was));
+    const ob=document.querySelector('#tree [data-ov] .bdg').firstChild.textContent.replace('▼−','▼ −').replace('▲+','▲ +');ok(ob===card[0],'Overview badge '+ob);
+    // harness badge: the same base over that harness's groups
+    const h=D.groups[0].harness,hg=D.groups.filter(x=>x.harness===h),hp=hg.reduce((a,x)=>a+setUsd(x),0)/baseUsd(hg);
+    const hb=document.querySelector(`#tree [data-fold="h:${h}"] .bdg`).firstChild.textContent.replace('▼−','▼ −').replace('▲+','▲ +');
+    ok(hb===fpct(hp),'harness badge '+hb+' != '+fpct(hp));
+  }catch(e){fail.push('error: '+e.message)}
+  document.body.dataset.selftest=fail.length?'fail: '+fail.join(' | '):'ok';
+})();
+</script>
+"""
+
+
+@pytest.mark.skipif(_chrome() is None, reason="no Chrome/Chromium for the DOM check")
+def test_overview_percent_has_one_base(tmp_path):
+    """Cards, the chart's Total rows and the sidebar badges share one base, on data with keep-default and no-op."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "make_assets", Path(__file__).parent.parent / "scripts" / "make_assets.py"
+    )
+    assert spec and spec.loader
+    ma = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ma)
+    res = ma.showcase(tmp_path / "showcase")
+    page = tmp_path / "r.html"
+    page.write_text(render_html(res).replace("</body>", ONE_BASE + "</body>"))
+    out = subprocess.run(
+        [_chrome(), "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
+         f"--user-data-dir={tmp_path / 'prof'}", "--dump-dom", page.as_uri()],
+        capture_output=True, text=True, timeout=120,
+    )  # fmt: skip
+    assert 'data-selftest="ok"' in out.stdout, out.stdout.split("data-selftest=")[-1][:400]

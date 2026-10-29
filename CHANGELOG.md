@@ -9,6 +9,8 @@ versioning: [SemVer](https://semver.org/).
 - `compactlab serve` is quiet: one in-place progress line only on a terminal (cut to its width at a space, so it
   never wraps into extra rows), nothing otherwise; the log says `recalibrating (reason)` and `recalibrated in Ns:
   N files, M cached, K parsed, X groups; next calibration: <time>`, and the next calibration at start.
+- **One percent base.** Overview cards, the chart's Total rows and the sidebar badges all divide the summed change by
+  the summed default of the models marked "set" (they disagreed: −21% vs −24% for the same −$185.3/day).
 - **Before / after on the Overview.** Per model, a grey "was" bar (default) with the "now" bar (profile) overlaid,
   the saving hatched green and additions amber, for cost and wall-clock per day; a total row from summed amounts;
   `absolute | each row = 100%` and sort toggles; screen-reader sentences. The model page shows a compact pair.

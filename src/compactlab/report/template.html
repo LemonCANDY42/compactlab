@@ -361,6 +361,10 @@ function pctAt(g,thr,ref){const i=g.grid.indexOf(thr);if(i<0||!ref)return {c:nul
 function dual(pv,lead,sec){const p=S.unit==='pct'&&pv!=null;return `<b class="ld">${p?fpct(pv):lead}</b><small class="sc">${p?sec:fpn(pv)}</small>`}
 // per-day amounts of the default, the denominators for aggregated percents (summed amounts, never averaged percents)
 const defUsd=g=>g.default.combined_cost/Math.max(g.days||1,1),defMin=g=>g.default.time_s/60/Math.max(g.days||1,1);
+// One base for every aggregated percent (Overview cards, the chart's Total row, sidebar badges): the summed default
+// per-day amount of the models with at least one "set" group (all their groups, as the chart's grey bars).
+const setModel=(g,k=S.op)=>D.groups.some(x=>x.harness===g.harness&&x.model===g.model&&isSet(x,k));
+const baseUsd=(gs,k=S.op)=>gs.reduce((a,g)=>a+(setModel(g,k)?defUsd(g):0),0),baseMin=(gs,k=S.op)=>gs.reduce((a,g)=>a+(setModel(g,k)?defMin(g):0),0);
 const fdays=v=>(+v).toFixed(Math.abs(v-Math.round(v))<.05?0:1);
 const day=ts=>new Date(ts*1000).toISOString().slice(0,10);
 const dur=s=>{s=Math.max(0,s);return s<3600?Math.round(s/60)+'m':s<86400?(s/3600).toFixed(s<36000?1:0)+'h':(s/86400).toFixed(s<864000?1:0)+'d'};
@@ -463,7 +467,7 @@ const I={
  overview:['Overview','概览'], allModels:['All models','全部模型'], models:['Models','模型'], search:['Search models','搜索模型'],
  rMain:['main','主'], rSub:['subagent','子 agent'], rMainS:['main','主'], rSubS:['sub','子'],
  noChange:['No change needed','无需调整'], ncWhy:[(p,d)=>'peak '+p+' < '+d,(p,d)=>'峰值 '+p+' < '+d],
- bTip:[u=>u+' per day vs default if the “set” groups are applied (est.; % of the default\'s cost)',u=>'应用“设置”分组后每天 '+u+'(对默认,估算;% 为占默认费用的比例)'],
+ bTip:[u=>u+' per day vs default if the “set” groups are applied (est.; % of the default cost of the models marked “set”)',u=>'应用“设置”分组后每天 '+u+'(对默认,估算;% 为占“设置”模型默认费用的比例)'],
  mTitle:['Cost and time by auto-compact threshold','各自动压缩阈值下的成本和时间'],
  mHelp:['Top: money per day against the harness default; bottom: wall-clock minutes per day against the default. Both share the threshold axis. The grey bars behind are where your sessions actually peak; the hatched zone is below the recall floor (recall is a lite-mode proxy). Drag the chart or the slider (or focus the slider and use the arrow keys); ▼ saves, ▲ adds. List-price estimates.','上:每天费用相对 harness 默认值的变化;下:每天耗时(分钟)相对默认值的变化,两者共用阈值轴。背后的灰色柱是你的会话实际达到的峰值;斜线区域低于召回下限。拖动图表或滑块;▼ 节省,▲ 增加。'],
  dUsd:['$ / day vs default','美元 / 天(对默认)'], dMin:['minutes / day vs default','分钟 / 天(对默认)'],
@@ -484,7 +488,7 @@ const I={
  srRow:[(n,w,c,v,p,tw,tn)=>n+': was '+w+' per day, now '+c+', '+v+' '+p+' percent; wall-clock was '+tw+', now '+tn,(n,w,c,v,p,tw,tn)=>n+':原来每天 '+w+',现在 '+c+','+v+' '+p+'%;耗时原来 '+tw+',现在 '+tn],
  srKeep:[(n,w)=>n+': keep default, '+w+' per day',(n,w)=>n+':保持默认,每天 '+w], ovHelp:['Per model: the grey bar is the cost (or wall-clock) per day with the harness default, the accent bar the same with the chosen profile applied to its “set” groups; the green hatch between them is the saving, amber an addition. “Keep default” models show only the grey bar. The total sums the “set” models. Absolute shares one axis; “each row = 100%” makes every grey bar the same length. List-price estimates; hover a row for main / subagent and, for time, wait vs turn time.','所选方案相对 harness 默认值的每天费用估算,分为主会话和子 agent;每条右侧是每天分钟数。点击一行打开该模型。'],
  ovTable:['Recommended settings','推荐设置'], cModel:['model','模型'], cRole:['role','角色'], cDef:['default','默认'], cUsd:['Δ $ / day','Δ 美元 / 天'], cMin:['Δ min / day','Δ 分钟 / 天'], cUsdP:['Δ cost %','Δ 费用 %'], cMinP:['Δ time %','Δ 耗时 %'], sortBy:['Sort by','排序:'],
- kTotPct:['% of the whole: the summed change of the “set” groups divided by the summed default cost (or wall-clock) per day of all groups in this history; group percents are never averaged.','占全部的百分比:“设置”分组的变化之和,除以本段历史中所有分组默认每日费用(或耗时)之和;不对分组百分比取平均。'],
+ kTotPct:['% of the default cost (or wall-clock) per day of the models marked “set”: their summed change divided by their summed default, the same base as the chart\'s Total row and the sidebar badges; group percents are never averaged.','占“设置”模型默认每日费用(或耗时)的百分比:它们的变化之和除以它们的默认值之和,与图表合计行和侧栏徽标同一基数;不对分组百分比取平均。'],
  tWin:['Window cost (total)','窗口总成本'], tDUsd:['Δ cost vs default','较默认费用'], tDMin:['Δ time vs default','较默认耗时'],
  unitL:['Show changes as','变化显示为'], unit_pct:['percent of the default','占默认值的百分比'], unit_usd:['amount per day','每日金额'],
  unitHelp:['% = change against the harness default for the same history: cost as a share of the default\'s window cost (list price) for that group, time as a share of the default\'s total wall-clock. Totals divide summed amounts by summed defaults, never average percents. $ = the change per calendar day. Toggle % | $ to lead with either; the other is shown small.','% = 同一段历史下相对 harness 默认值的变化:费用占该分组默认窗口成本(按公开标价)的比例,时间占默认总耗时的比例。汇总值是加总金额除以加总默认值,不对百分比取平均。$ = 每个自然日的变化。用 % | $ 切换主显示,另一个以小字显示。'],
@@ -617,7 +621,7 @@ function buildTree(){const H=new Map(),nc=[];
     const f=h.fams.get(fam);if(!f.models.has(g.model))f.models.set(g.model,{id:g.model,harness:g.harness,name:label(g.model),gs:[]});f.models.get(g.model).gs.push(i)});
   const agg=(o,gs)=>{const G_=gs.map(i=>D.groups[i]);o.usd=G_.reduce((a,g)=>a+setUsd(g),0);o.keep=G_.reduce((a,g)=>a+(isSet(g)?0:usdOf(g)),0);
     o.w=G_.reduce((a,g)=>a+Math.abs(setUsd(g)),0)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g)),0);
-    o.den=G_.reduce((a,g)=>a+defUsd(g),0);o.n=G_.reduce((a,g)=>a+g.n_sessions,0);o.turns=G_.reduce((a,g)=>a+g.n_turns,0);return o};
+    o.den=baseUsd(G_);o.keepDen=G_.reduce((a,g)=>a+defUsd(g),0);o.n=G_.reduce((a,g)=>a+g.n_sessions,0);o.turns=G_.reduce((a,g)=>a+g.n_turns,0);return o};
   const byW=(a,b)=>b.w-a.w||b.turns-a.turns,hs=[];
   for(const h of H.values()){const fams=[];
     for(const f of h.fams.values()){const ms=[...f.models.values()];
@@ -631,7 +635,7 @@ function buildTree(){const H=new Map(),nc=[];
 // per role, so the reason matches the page it opens: 'peak main 416k · sub 506k < 967k'
 function ncWhy(m){const gs=m.gs.map(i=>D.groups[i]);return t('ncWhy',gs.map(g=>(gs.length>1?roleS(g.role)+' ':'')+fk(g.peak_max||0)).join(' · '),fk(gs[0].default.threshold))}
 // money per day of the groups that would be set (muted: only "keep default" figures), and the session count
-function badge(o){const muted=Math.abs(o.usd)<.05&&Math.abs(o.keep||0)>=.05,v=muted?o.keep:o.usd,pv=ratio(v,o.den);
+function badge(o){const muted=Math.abs(o.usd)<.05&&Math.abs(o.keep||0)>=.05,v=muted?o.keep:o.usd,pv=ratio(v,muted?o.keepDen:o.den);
   const both=fsv(v)+(pv!=null?' ('+fpn(pv)+')':''),tip=(muted?t('bKeep',both):t('bTip',both))+' · '+t('bSess',o.n);
   const txt=S.unit==='pct'&&pv!=null?(Math.abs(pv*100)<.05?'':(v<0?'▼−':'▲+')+pabs(pv)+'%'):fus(v);
   return `<span class="bdg ${muted?'mute':tone(v)}" data-tip="${esc(tip)}">${txt}<i>${ic('flag')}${o.n}</i></span>`}
@@ -645,7 +649,7 @@ function tree(){const T=S.tree||(S.tree=buildTree()),q=$('#tq').value.trim().toL
       :`<span class="rt">${ic(roleIc(g0.role))}${esc(roleS(g0.role))}</span>`;
     return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m)}<span class="roles">${roles}</span></div>`};
   const all=T.hs.flatMap(h=>h.fams.flatMap(f=>f.models.flatMap(m=>m.gs)));
-  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge({usd:all.reduce((a,i)=>a+setUsd(D.groups[i]),0),den:D.groups.reduce((a,g)=>a+defUsd(g),0),n:D.groups.reduce((a,g)=>a+g.n_sessions,0)})}</button>`;
+  let h=`<button type="button" class="ovr" data-ov="1"${S.view==='overview'?' aria-current="page"':''}>${ic('grid')}<span class="nm">${t('overview')}</span>${badge({usd:all.reduce((a,i)=>a+setUsd(D.groups[i]),0),den:baseUsd(D.groups),n:D.groups.reduce((a,g)=>a+g.n_sessions,0)})}</button>`;
   for(const H_ of T.hs){const inner=H_.fams.map(f=>{const ms=f.models.filter(hit);if(!ms.length)return '';
       return fold(f.key,'fam',`<span class="nm">${esc(f.name)}</span>${badge(f)}`,ms.map(m=>mrow(m)).join(''),ms.some(isSel))}).join('');
     if(inner)h+=fold(H_.key,'har',`<span class="nm">${esc(H_.name)}</span>${badge(H_)}`,inner,H_.fams.some(f=>f.models.some(isSel)))}
@@ -1043,7 +1047,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
     m.w=Math.abs(m.usd)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g,k)),0);m.gs.sort((a,b)=>(D.groups[a].role==='main'?0:1)-(D.groups[b].role==='main'?0:1))});
   const tu=models.reduce((a,m)=>a+m.usd,0),tm=models.reduce((a,m)=>a+m.min,0),cnt=st=>models.filter(m=>m.st===st).length;
   // percents of the whole: summed changes over summed defaults (all groups), never an average of group percents
-  const tpu=ratio(tu,D.groups.reduce((a,g)=>a+defUsd(g),0)),tpm=ratio(tm,D.groups.reduce((a,g)=>a+defMin(g),0));
+  const tpu=ratio(tu,baseUsd(D.groups,k)),tpm=ratio(tm,baseMin(D.groups,k));
   const kpi=(icn,lab,v,cls,sub)=>`<div class="kpi"><div class="kh">${ic(icn)}<span>${t(lab)}</span></div><div class="v ${cls||''}">${v}</div>${sub?`<div class="cap">${sub}</div>`:''}</div>`;
   box.innerHTML=`<div class="ovbar"><div class="seg" role="group" aria-label="${t('gear')}">${PROF.map(p=>`<button data-op="${p}" aria-pressed="${p===k}" aria-label="${t(p)}">${ic(PICON[p])}<span class="gt">${t(p)}</span></button>`).join('')}</div><span class="vot">${esc(t('votS',D.groups[0]?D.groups[0].profiles[k].value_of_time:0))}</span></div>
    <div class="kpis">${kpi('coin','kTotUsd','<span class="nw">'+dual(tpu,fsv(tu)+t('uDay'),fsn(tu)+t('uDay'))+'</span>',tone(tu),esc(t('kTotSub',cnt('set')))+' <span class="est">'+t('est')+'</span>'+ib(t('kTotPct')))+kpi('clock','kTotMin','<span class="nw">'+dual(tpm,fmv(tm)+t('uDay'),fmn(tm)+t('uDay'))+'</span>',tone(tm),esc(t('kTotSub',cnt('set'))))+
