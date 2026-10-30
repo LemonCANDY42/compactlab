@@ -7,6 +7,7 @@ from compactlab.eval.executors import ClaudeCodeExecutor, CodexExecutor
 from compactlab.model import Session, Turn
 from compactlab.pricing import PricingTable
 from compactlab.pricing.refresh import parse_litellm, parse_models_dev, refresh
+from compactlab.sim.engine import reselect
 from compactlab.sim.select import PROFILES, select_profile
 
 GRID = [100_000 + 50_000 * i for i in range(19)]  # 100k .. 1M
@@ -121,8 +122,8 @@ def test_refresh_writes_layer_and_offline_ignores_it(tmp_path):
 def test_executors_parse_output():
     seen = {}
 
-    def runner(cmd, prompt, cwd):
-        seen["cmd"], seen["cwd"] = cmd, cwd
+    def runner(cmd, prompt, cwd, env=None):
+        seen["cmd"], seen["cwd"], seen["env"] = cmd, cwd, env
         return json.dumps(
             {"result": "hello", "usage": {"input_tokens": 10, "cache_read_input_tokens": 5, "output_tokens": 3}}
         )
@@ -130,6 +131,7 @@ def test_executors_parse_output():
     c = ClaudeCodeExecutor(runner).complete("claude-sonnet-5-5", "hi", 50)
     assert (c.text, c.input_tokens, c.output_tokens) == ("hello", 15, 3)
     assert seen["cmd"][:2] == ["claude", "-p"] and "compactlab-deep-" in seen["cwd"]
+    assert seen["env"] == {"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "50"}  # provider-side output limit
     c2 = CodexExecutor(lambda cmd, p, cwd: "  ok \n").complete("gpt-5-codex", "x" * 40, 50)
     assert c2.text == "ok" and c2.input_tokens == 11
 
@@ -145,7 +147,7 @@ def _session():
 
 def _result(make_group):
     g = make_group([100_000, 200_000, 300_000], cost=[3.0, 2.0, 1.0], recall=[0.95, 0.94, 0.93])
-    g.update({"model": "claude-opus-5-5", "role": "main", "base_tokens": 30_000})
+    g.update({"harness": "claude-code", "model": "claude-opus-5-5", "role": "main", "base_tokens": 30_000})
     return {"groups": [g], "options": {}}
 
 
@@ -200,3 +202,106 @@ def test_deep_lowers_profiles_when_measured_recall_fails(make_group):
             budget_usd=5,
             confirm=True,
         )
+
+
+def test_refreshed_base_price_moves_carried_tiers(tmp_path):
+    out = tmp_path / "ref.json"
+    refresh(
+        "models.dev",
+        out,
+        fetcher=lambda url: {
+            "a": {"models": {"claude-opus-5-5": {"cost": {"input": 9, "output": 9, "cache_write": 11.25}}}}
+        },
+    )
+    p = PricingTable.load(refreshed=out).lookup("claude-opus-5-5")
+    assert p.cache_write == 11.25 and p.cache_write_1h == 18.0  # 1.6x the 5-minute write, as bundled (5 -> 8)
+    assert p.for_ttl(3600).cache_write == 18.0
+
+
+def test_refreshed_long_context_scales_and_unchanged_prices_are_kept(tmp_path):
+    out = tmp_path / "ref.json"
+    out.write_text(
+        '{"version":2,"models":{"claude-haiku-5-5":{"input":0.2,"output":0.5,"cache_write":0.25,"cache_read":0.01},'
+        '"claude-opus-5":{"input":5,"output":25,"cache_write":6.25,"cache_read":0.5}}}'
+    )
+    t = PricingTable.load(refreshed=out)
+    h = t.lookup("claude-haiku-5-5")
+    assert h.cache_write_1h == 0.4 and h.long_cache_write_1h == 2.0 and h.long_input == 1.0
+    o = t.lookup("claude-opus-5")
+    assert o.cache_write_1h == 10  # base unchanged: bundled tier kept as is
+
+
+@pytest.mark.parametrize("bad", [-1, float("nan"), float("inf"), "x"])
+def test_refresh_rejects_invalid_rates_and_keeps_cached_file(tmp_path, bad):
+    out = tmp_path / "ref.json"
+    out.write_text('{"version":2,"models":{"claude-opus-5-5":{"input":7,"output":7}}}')
+    before = out.read_text()
+    models = {
+        "claude-opus-5-5": {"cost": {"input": bad, "output": 9}},
+        "claude-sonnet-5": {"cost": {"input": 1, "output": 2, "cache_read": bad}},
+        "claude-haiku-5": {"cost": {"input": 1, "output": 2}, "limit": {"context": -5}},
+    }
+    with pytest.raises(ValueError):
+        refresh("models.dev", out, fetcher=lambda url: {"a": {"models": models}})
+    assert out.read_text() == before
+    ll = {"claude-x": {"input_cost_per_token": bad, "output_cost_per_token": 1e-6}}
+    assert parse_litellm(ll) == {}
+
+
+def test_refresh_keeps_valid_rows_when_some_are_invalid(tmp_path):
+    out = tmp_path / "ref.json"
+    models = {
+        "claude-opus-5-5": {"cost": {"input": -1, "output": 9}},
+        "claude-sonnet-5": {"cost": {"input": 1, "output": 2}},
+    }
+    assert refresh("models.dev", out, fetcher=lambda url: {"a": {"models": models}}) == 1
+    assert list(__import__("json").loads(out.read_text())["models"]) == ["claude-sonnet-5"]
+
+
+def test_reselect_keeps_measured_guardrails(make_group):
+    class Wrong(MockClient):
+        def complete(self, model, prompt, max_tokens):
+            c = super().complete(model, prompt, max_tokens)
+            if prompt.startswith("Ground truth"):
+                c.text = json.dumps({"correct": False})
+            return c
+
+    s = _session()
+    plan = DeepPlan([("claude-opus-5-5", "main", s, 100_000, 12), ("claude-opus-5-5", "main", s, 300_000, 45)], 0.1)
+    res = deep_analyze(
+        plan, _result(make_group), Wrong(), model="claude-sonnet-5-5", judge_model="claude-haiku-5-5",
+        pricing=PricingTable.load(offline=True), budget_usd=5, confirm=True,
+    )  # fmt: skip
+    g = res["groups"][0]
+    assert g["profiles"]["balanced"]["threshold"] == 100_000
+    for profile in ("cost", "balanced", "time"):
+        reselect(res, profile)
+        assert g["profiles"][profile]["threshold"] == 100_000, profile
+        assert "deep_recall_below_floor" in g["profiles"][profile]["flags"]
+        assert g["recommendation"]["threshold"] == 100_000
+        assert g["comparison"][profile]["threshold"] == 100_000
+
+
+def test_deep_analyze_stops_when_a_call_overspends(make_group):
+    from compactlab.eval.deep import Completion
+
+    calls = []
+
+    class Overspender(MockClient):
+        def complete(self, model, prompt, max_tokens):
+            calls.append(model)
+            return Completion("x", 10, 1_000_000)
+
+    s = _session()
+    plan = DeepPlan([("claude-opus-5-5", "main", s, 100_000, 12), ("claude-opus-5-5", "main", s, 300_000, 45)], 0.1)
+    res = deep_analyze(
+        plan,
+        _result(make_group),
+        Overspender(),
+        model="claude-haiku-5-5",
+        judge_model="claude-sonnet-5-5",
+        pricing=PricingTable.load(offline=True),
+        budget_usd=0.05,
+        confirm=True,
+    )
+    assert len(calls) == 1 and "over cap" in res["deep"]["stopped"] and res["deep"]["spent_usd"] > 0.05

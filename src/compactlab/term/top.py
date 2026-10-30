@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..recommend import setting
 from .style import Line, Style, clip, cw, pad, width
 from .views import PGLYPH, PROFILES, figs, keep_reason, label, status, totals, verdict
 from .widgets import braille, chip, fmin, fpct, fusd, k, pack, was_now
@@ -145,9 +146,7 @@ def handle(st: TopState, key: str) -> str | None:
 
 def snippet(g: dict[str, Any], threshold: int) -> str:
     """The setting for one model, in the harness's own syntax (the report's Copy button gives the same)."""
-    if g["harness"] == "codex":
-        return f"model_auto_compact_token_limit = {threshold}"
-    return json.dumps({"modelSettings": {g["model"]: {"autoCompactWindow": threshold}}})
+    return setting(g, threshold)
 
 
 # ---------- the frame ----------

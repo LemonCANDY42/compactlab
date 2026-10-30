@@ -104,10 +104,14 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 
 `mods/compactlab-lens` 是一个可选的 Claude Code mod。它在输入框上方加一行,在桌面端加一个侧边面板,显示本会话的上下文和默认阈值、compactlab 阈值的位置,`simulate` 估算的每日节省,以及当前生效窗口和方案不一致时的 ⚠。它只读取 `simulate` 写出的 `~/.compactlab/lens.json`,不写设置、不调用模型、不联网;“复制”按钮会把 `/autocompact <n>` 放到剪贴板。安装:`/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`。详见 [docs/MOD.md](docs/MOD.md)。这是独立开源项目,与 Anthropic 无关。
 
+## 应用之后核对预测
+
+`compactlab verify` 以最近一次 `apply` 的时间为界拆分日志,按模型和角色比较改动前后每 1k 轮的日志成本与压缩次数,并与用*改动前*会话回放得到的预测对照(同时给出用*改动后*会话回放的结果,用来发现工作负载变了)。它还会检查压缩是否真的发生在新阈值附近,从而发现被项目配置、环境变量或命令行参数覆盖的情况。两侧各不足 3 个会话、2 个活跃日时只提示"太早"。成本是标价估算,不是账单;墙钟时间不做核对。
+
 ## 两种模式
 
 - **lite(默认)**:只用日志和价格表,离线、零成本:回放模拟、成本模型、找回惩罚、摘要事实核查启发式。
-- **deep(需显式开启)**:在 lite 基础上,通过 Claude Code 或 Codex 调用你选的模型,在候选阈值处重新生成摘要,用真实事实做探针,并用另一个模型当评审。先显示预估费用,需要 `--yes`,`--budget` 是硬上限。两套结果并排展示,不一致的地方会标出来。
+- **deep(需显式开启)**:在 lite 基础上,通过 Claude Code 或 Codex 调用你选的模型,在候选阈值处重新生成摘要,用真实事实做探针,并用另一个模型当评审。先显示预估费用,需要 `--yes`,`--budget` 是上限:每次调用前按预估检查、调用后按实际花费检查并立即停止(单次调用仍可能略超)。两套结果并排展示,不一致的地方会标出来。
 
 ## 复制推荐设置
 
@@ -118,6 +122,7 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 - 默认完全离线,不联网、不调用模型。
 - 报告和 `result.json` 只包含 token 数、模型名和会话 id,不包含对话内容和路径;`--redact` 可把 id 换成哈希。
 - `apply` 默认只出 dry-run diff;写入需要 `--write` 加预授权文件(或 `--i-authorize`),写入前自动备份,`revert` 只还原改过的键。
+- `compactlab share` 只生成一份匿名的预估节省记录(数字和模型名,不含 id、路径、时间戳),写到本地文件,由你自己决定是否贴到研究用的 Issue 表单;它不会发送任何东西。详见 [docs/SHARING.md](docs/SHARING.md)。
 - Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分)。
 
 ## 局限

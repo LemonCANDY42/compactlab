@@ -1,0 +1,34 @@
+name: Check shared records
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    if: contains(github.event.issue.labels.*.name, 'data-contribution') || startsWith(github.event.issue.title, '[data]')
+    runs-on: ubuntu-latest
+    steps:
+      # The default branch only: nothing from the issue is ever run, it is parsed as data.
+      - uses: actions/checkout@v4
+      - name: Validate the record
+        id: check
+        run: |
+          python3 scripts/check_share_issue.py "$GITHUB_EVENT_PATH" > report.md && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "ok=false" >> "$GITHUB_OUTPUT"
+      - name: Comment and label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          OK: ${{ steps.check.outputs.ok }}
+        run: |
+          gh label create data-contribution --repo "$GITHUB_REPOSITORY" --color 0e8a16 --force
+          gh label create valid-record --repo "$GITHUB_REPOSITORY" --color 1d76db --force
+          gh label create invalid-record --repo "$GITHUB_REPOSITORY" --color d93f0b --force
+          gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label data-contribution
+          if [ "$OK" = "true" ]; then
+            gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label valid-record --remove-label invalid-record
+          else
+            gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label invalid-record --remove-label valid-record
+          fi
+          gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file report.md --edit-last --create-if-none

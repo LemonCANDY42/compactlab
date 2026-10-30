@@ -7,7 +7,7 @@
 | Context growth per turn, idle gaps, outputs | your transcripts | measured |
 | Prices | `data/pricing.json` (models.dev snapshot, dated) → `pricing refresh` → `--pricing` | public list prices; provenance shown per row |
 | Summary size, base context | median observed, else 12k / 35k | measured if available, else prior |
-| Re-discovery penalty | repeated reads/searches and correction phrases in the 20 turns after a compaction, minus the rate in the 20 turns before | calibrated with ≥5 observed compactions, else prior (ρ = 0.04, 6k tokens, 0.3 correction turns) |
+| Re-discovery penalty | repeated reads/searches and correction phrases in the 20 turns after a compaction, minus the rate in the 20 turns before (only compactions with a full 20-turn window on both sides and no other compaction inside either) | calibrated with ≥5 observed compactions, else prior (ρ = 0.04, 6k tokens, 0.3 correction turns) |
 | Recall (lite) | context-rot table × summary-retention decay | **assumed**; placeholders you can replace |
 | Recall (deep) | probes answered from re-generated summaries, judged by a different model | measured on samples, with variance |
 
@@ -15,7 +15,9 @@ compactlab does not contain measured recall curves for Claude 5 or any other mod
 
 ## Replay
 
-A session becomes growth increments `g_t` (tokens added per turn), outputs `o_t` and idle gaps `Δt_t`.
+Sessions are grouped by harness, model and role (the same model name under two harnesses is two groups); a session
+that switched models belongs to its majority model's group, and each of its turns is priced at the model that served
+it. A session becomes growth increments `g_t` (tokens added per turn), outputs `o_t` and idle gaps `Δt_t`.
 Historical compactions are removed (growth across a boundary is set to 0). For threshold `T`, with context `c`:
 
 ```
@@ -54,6 +56,8 @@ compactlab fits wall-clock behaviour from your own timestamps, per model and rol
   sessions of the same harness when that one is `ok` (`source: pooled`); otherwise it uses a prior (`source: prior`):
   turn latency 8 s + 4 s per 100k, compaction latency 30 s + 0.3 s per 1k tokens (about 2 minutes at 300k). The
   compaction prior is deliberately pessimistic, so missing data biases toward fewer compactions, not more. The
+  The re-discovery step (median turn latency) follows the same rule: with `source: prior` it stays at the prior's
+  10 s however few samples exist. The
   result records `turn_source` / `compact_source` and the own sample counts, and the CLI and report print them.
 - **Re-discovery time**: (re-discovered tokens ÷ median tool-result size + correction turns) × median turn latency.
 
@@ -94,7 +98,8 @@ Score per threshold: `list-price replay cost + re-discovery penalty + value_of_t
 | `balanced` (default) | $250/h | 40% of the effective max window | ≤ 30 min/day (`--wait-cap`) |
 | `time` | $600/h | 50% of the effective max window | ≤ 30 min/day |
 
-Selection per profile: restrict the grid to `[minimum, min(effective max, --max-threshold)]`; for `balanced` and
+Selection per profile: restrict the grid to `[minimum, min(effective max, --max-threshold)]` (a cap below the grid's
+first point is an error, never answered with a larger threshold); for `balanced` and
 `time`, keep only thresholds whose added compaction + re-discovery wait vs the default is within the cap (if none
 is, the cap is dropped and flagged); then, among thresholds with recall ≥ floor (default 0.90), take the largest
 whose score is within 2% of the lowest (the rule earlier versions called **standard**, now applied per profile).
@@ -137,7 +142,8 @@ the turns before the cut; ground-truth probes (files accessed before the cut) ar
 a different judge model votes `repeats` times. Measured recall is reported next to the assumed value and flagged
 when they differ by more than 0.1. If measured recall at a profile's threshold falls below the floor, that profile is
 lowered to the largest smaller sampled threshold that meets it (or the smallest sampled one) and flagged
-`deep_recall_below_floor`.
+`deep_recall_below_floor`. The measured points stay with the group, so re-selecting a profile later (`--profile`,
+`--value-of-time`, the service) applies the same rule to the new pick.
 
 ## Known limits
 

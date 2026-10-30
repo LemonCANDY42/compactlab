@@ -229,6 +229,11 @@ def _opts(a: argparse.Namespace) -> SimOptions:
         lo, hi, st = (_k(x) for x in a.grid.split(":"))
     except (ValueError, argparse.ArgumentTypeError) as e:
         raise CLIError(f"--grid must look like 100k:1m:25k ({e})") from e
+    if a.max_threshold is not None and a.max_threshold < lo:
+        raise CLIError(
+            f"--max-threshold {a.max_threshold:,} is below the grid start {lo:,}: lower the grid start (--grid) or "
+            "raise the cap"
+        )
     return SimOptions(
         profile=a.profile or DEFAULT_PROFILE,
         value_of_time=a.value_of_time,
@@ -1065,7 +1070,16 @@ def _calibrator(a: argparse.Namespace):
 
     rules = Rules(min_days=a.min_days, min_turns=a.min_turns, max_step=a.max_step, cooldown_s=cooldown)
     lens = Path(a.lens_out).expanduser() if a.lens_out else None
-    return Calibrator(analyze, state, every, lens_out=lens, consent=consent, rules=rules, dry_run=a.dry_run)
+    return Calibrator(
+        analyze,
+        state,
+        every,
+        lens_out=lens,
+        consent=consent,
+        rules=rules,
+        dry_run=a.dry_run,
+        consent_path=state / "consent.json" if a.auto_apply else None,
+    )
 
 
 def _service_logging(state: Path) -> None:
@@ -1214,7 +1228,7 @@ def cmd_consent(a: argparse.Namespace) -> int:
         return 0
     if not (a.file and a.models):
         raise CLIError("consent set needs --file and --models")
-    c = Consent(a.harness, a.file, list(a.models), a.profile, expires=a.expires)
+    c = Consent(a.harness, str(ap._p(a.file)), list(a.models), a.profile, expires=a.expires)
     print(json.dumps(asdict(c), indent=2))
     if not a.yes and (not sys.stdin.isatty() or input("allow compactlab to change these keys unattended? [y/N] ")
                       .strip().lower() != "y"):  # fmt: skip
@@ -1225,6 +1239,84 @@ def cmd_consent(a: argparse.Namespace) -> int:
     except ap.ApplyError as e:
         raise CLIError(str(e)) from e
     print(f"stored {path}")
+    return 0
+
+
+def cmd_share(a: argparse.Namespace) -> int:
+    """Write an anonymous record of the estimated savings for people to post; never sends anything itself."""
+    from .. import share
+
+    if a.check:
+        try:
+            rec = share.parse_issue_body(Path(a.check).expanduser().read_text())
+        except (OSError, share.ShareError) as e:
+            raise CLIError(str(e)) from e
+        bad = share.validate(rec)
+        if bad:
+            print("not acceptable:\n  " + "\n  ".join(bad), file=sys.stderr)
+            return 1
+        print("ok: " + share.preview(rec))
+        return 0
+    res = _load_result(a.result) if a.result else run_analysis(a)
+    if res is None:
+        return 2
+    verification = None
+    if a.verify:
+        from .. import verify as vf
+
+        sessions = load_sessions(a)
+        try:
+            m = (
+                Path(a.state_dir).expanduser() / "manifests" / f"{a.id}.json"
+                if a.id
+                else ap.latest_manifest(Path(a.state_dir).expanduser())
+            )
+            manifest = json.loads(m.read_text())
+        except (ap.ApplyError, OSError, ValueError) as e:
+            raise CLIError(f"--verify needs a change made with compactlab apply: {e}") from e
+        verification = vf.verify(sessions, manifest, _pricing(a))
+        if not any(g["verdict"] != "no_data" for g in verification["groups"]):
+            raise CLIError("--verify: no sessions on both sides of the change yet; share without --verify")
+    try:
+        rec = share.build(res, verification=verification)
+    except share.ShareError as e:
+        raise CLIError(str(e)) from e
+    if verification and not any(g["verification"] for g in rec["groups"]):
+        raise CLIError("--verify: the verified models are not among the shared groups; share without --verify")
+    text = json.dumps(rec, indent=2, sort_keys=True)
+    out = Path(a.out).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text + "\n")
+    if a.json:
+        print(text)
+    else:
+        print(share.preview(rec))
+        print(f"\nwrote {out}: numbers and model names only; read it before you post it.")
+        print(f"It holds no session ids, paths, project names, timestamps or text. Post it at:\n  {share.ISSUE_URL}")
+    if a.copy:
+        if not shutil.which("pbcopy"):
+            raise CLIError("--copy needs pbcopy (macOS); open the file and copy it by hand")
+        subprocess.run(["pbcopy"], input=text, text=True, check=True)
+        print("copied the record to the clipboard", file=sys.stderr)
+    return 0
+
+
+def cmd_verify(a: argparse.Namespace) -> int:
+    """Compare what a change was predicted to do with what the logs show since it was applied."""
+    from .. import verify as vf
+
+    sd = Path(a.state_dir).expanduser()
+    try:
+        m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
+        manifest = json.loads(m.read_text())
+    except (ap.ApplyError, OSError, ValueError) as e:
+        raise CLIError(f"no usable apply manifest: {e}. Verify needs a change made with compactlab apply.") from e
+    sessions = load_sessions(a)
+    if not sessions:
+        raise CLIError("no sessions found; check `compactlab doctor`, or widen --since-days (0 = all)")
+    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days)
+    res["manifest"] = m.stem
+    _out(a, res, vf.render(res))
     return 0
 
 
@@ -1332,7 +1424,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _commands(sub: Any, fmt: Any) -> None:
-
     s = sub.add_parser("demo", help="build and open a report from bundled synthetic data", formatter_class=fmt)
     s.add_argument("--out", default="compactlab-demo")
     s.add_argument("--no-open", action="store_true", help="do not open the report")
@@ -1416,6 +1507,33 @@ def _commands(sub: Any, fmt: Any) -> None:
     s.add_argument("--check", action="store_true", help="flag snippets whose config keys are unverified or stale")
     s.add_argument("--max-age-days", type=int, default=90, help="with --check: max age of a key's verification")
     s.set_defaults(f=cmd_recommend)
+
+    s = sub.add_parser(
+        "verify", help="after apply: compare the predicted cost and compactions with what the logs show since"
+    )
+    _source(s)
+    s.set_defaults(since_days=60)
+    s.add_argument("--id", help="manifest id (default: the latest apply)")
+    s.add_argument("--state-dir", default=STATE, help="backups and manifests (default ~/.compactlab)")
+    s.add_argument("--pricing", help="pricing override JSON")
+    s.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices")
+    s.add_argument("--min-sessions", type=int, default=3, help="sessions needed on each side (default 3)")
+    s.add_argument("--min-days", type=int, default=2, help="active days needed on each side (default 2)")
+    s.set_defaults(f=cmd_verify)
+
+    s = sub.add_parser(
+        "share", help="anonymous record of your estimated savings to post for research (writes a file; sends nothing)"
+    )
+    _sim(s)
+    s.add_argument("--result", help="use a saved result.json instead of re-running")
+    s.add_argument("--out", default="compactlab-share.json", help="where to write the record")
+    s.add_argument("--copy", action="store_true", help="also copy the record to the macOS clipboard (pbcopy)")
+    s.add_argument("--check", metavar="FILE", help="validate a record (or an issue body) instead of building one")
+    s.add_argument("--verify", action="store_true",
+                   help="add what `compactlab verify` found since the last apply (predicted vs logged)")  # fmt: skip
+    s.add_argument("--id", help="with --verify: manifest id (default: the latest apply)")
+    s.add_argument("--state-dir", default=STATE, help="with --verify: backups and manifests (default ~/.compactlab)")
+    s.set_defaults(f=cmd_share)
 
     s = sub.add_parser("serve", help="localhost service: live report + JSON API, recalibrates on a schedule (lite)")
     _sim(s)

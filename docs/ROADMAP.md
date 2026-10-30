@@ -28,8 +28,10 @@ The tool's numbers are only as good as the replay. Before adding breadth, measur
   TTL and write price now come from the logs per group, with `--cache-ttl` as the override. It mattered: on the maintainer's history the balanced pick moves from 550k (−33%) to 625k (−22%) for Opus 5.5 and
   from 575k (−24%) to 650k (−15%) for Sonnet 5.5 once replayed with the 1-hour cache it actually used.
 
-- `compactlab verify`: after a threshold change, compare the cost and wait the replay predicted with what the logs
-  show for the days since (same model, same role, matched by active day). Report the error, not just the saving.
+- **`compactlab verify` — done for cost and compactions.** After a threshold change it compares what the replay
+  predicted with what the logs show since, per 1k turns, with an interval and a "setting in effect" check. Still to
+  do: wall-clock (needs a turn-latency comparison that survives tool and network time), and carrying predicted and
+  observed figures in `compactlab share` records — the latter is done (`share --verify`).
 - Run deep mode on a sample of real sessions to replace the lite recall proxy with measured recall, and publish
   the method and the result, whichever way it goes.
 
@@ -109,4 +111,5 @@ to the question compactlab answers, so the lens mod should work with them instea
 
 - Per-project and per-task-type thresholds where the harness allows it.
 - A lens view for harnesses with a plugin surface (DSH plugins, OpenCode).
-- Shared, anonymized calibration data (opt-in) so new users without much history get a better prior.
+- Shared, anonymized calibration data (opt-in) so new users without much history get a better prior. The record
+  and issue form exist (`compactlab share`, [SHARING.md](SHARING.md)); feeding priors from the pool does not yet.

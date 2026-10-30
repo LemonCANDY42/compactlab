@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ..model import Compaction, Session, Turn
-from .base import Adapter, Parser, env_roots, parse_ts, register
+from .base import Adapter, BadRecord, Parser, count, env_roots, parse_ts, register
 
 KNOWN_TYPES = {"session_meta", "turn_context", "event_msg", "response_item", "compacted"}
 KNOWN_EVENTS = {
@@ -149,16 +149,28 @@ class CodexParser(Parser):
         info = p.get("info")
         if not isinstance(info, dict):
             return
-        tot = info.get("total_token_usage") or {}
-        cur = [int(tot.get(k) or 0) for k in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")]
+        try:
+            tot = info.get("total_token_usage") or {}
+            last = info.get("last_token_usage")
+            if not isinstance(tot, dict) or not (last is None or isinstance(last, dict)):
+                raise BadRecord("usage is not an object")
+            cur = [count(tot.get(k)) for k in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")]
+            window = count(info.get("model_context_window"))
+            lastv = (
+                [count(last.get(k)) for k in ("input_tokens", "cached_input_tokens", "output_tokens")]
+                if last is not None
+                else None
+            )
+        except BadRecord:
+            s.parse_errors += 1
+            return
         if tot and cur == self.last_total:
             return  # identical re-emission
         prev, self.last_total = self.last_total, (cur if tot else self.last_total)
-        if info.get("model_context_window"):
-            s.context_window = int(info["model_context_window"])
-        last = info.get("last_token_usage")
-        if isinstance(last, dict):
-            inp, cached, out = (int(last.get(k) or 0) for k in ("input_tokens", "cached_input_tokens", "output_tokens"))
+        if window:
+            s.context_window = window
+        if lastv is not None:
+            inp, cached, out = lastv
         elif tot and prev:
             inp, cached, out = cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]
         else:

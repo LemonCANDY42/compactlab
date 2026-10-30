@@ -73,6 +73,10 @@ class Recommender(abc.ABC):
     formats: ClassVar[dict[str, tuple[str, ...]]] = {}  # scope -> supported formats
 
     @abc.abstractmethod
+    def setting(self, g: dict[str, Any], threshold: int) -> str:
+        """The bare setting for one group at one threshold, in this harness's own syntax (a quick copy)."""
+
+    @abc.abstractmethod
     def generate(
         self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str
     ) -> list[Snippet | Omitted]:
@@ -130,6 +134,14 @@ def safe_value(g: dict[str, Any], profile: str, result: dict[str, Any], lo: int,
     if v < lo or v > limit:
         return None, f"{g['model']} · {g['role']}: {v} outside allowed range [{lo}, {limit}]; not emitted"
     return v, ""
+
+
+def setting(g: dict[str, Any], threshold: int) -> str:
+    """The setting for one group at any threshold, from its harness's recommender (terminal `c`, report Copy)."""
+    cls = recommenders().get(g["harness"])
+    if cls is None:
+        return f"# no recommender for harness {g['harness']}; set the threshold to {threshold} by hand"
+    return cls().setting(g, threshold)
 
 
 def generate(

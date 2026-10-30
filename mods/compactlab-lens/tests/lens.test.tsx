@@ -44,6 +44,7 @@ function engine(on: On, seed: Seed = {}) {
   const copies: string[] = []
   mock.clock(on, { now: (seed.now ?? 1_800_000_000) * 1000 })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
   on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
   on('session.usage', () => ({
     value: {
@@ -295,4 +296,28 @@ test('the desktop pane keeps its SVG and fits a narrow pane', async ($, on) => {
   expect(JSON.stringify(tree)).toContain('"type":"Svg"')
   for (const r of drawnRows(tree)) expect(r.width).toBeLessThanOrEqual(34)
   await pane.unmount()
+})
+
+test('a recalibrated lens file is picked up on the next turn, for the same model', async ($, on) => {
+  const NOW = 1_800_000_000
+  const seed: Seed = { now: NOW, lens: { ...LENS, calibration: { at: NOW - 3 * 3600, every_s: 86400 } } }
+  engine(on, seed)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'fold' })
+  expect(await text(band)).toContain('┃500k')
+  expect(await text(band)).toContain('◴3.0h')
+  // `compactlab simulate` rewrites the file: new balanced threshold, fresh calibration; the model is unchanged
+  const g = LENS.groups[0]
+  seed.lens = {
+    ...LENS,
+    groups: [{ ...g, profiles: { ...g.profiles, balanced: { ...g.profiles.balanced, threshold: 450_000 } } }],
+    calibration: { at: NOW - 60, every_s: 86400 },
+  }
+  await $.turn.complete({ reason: 'answer', answer: '', durationMs: 1, isAborted: false, turnId: 't1' } as never)
+  const all = await text(band)
+  expect(all).toContain('┃450k')
+  expect(all).not.toContain('┃500k')
+  expect(all).not.toContain('◴3.0h')
+  await band.unmount()
 })

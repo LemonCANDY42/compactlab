@@ -706,7 +706,7 @@ function answer(u,m,vs,pc,pt){const zu=Math.abs(u)<.05,zm=Math.abs(m)<.05;if(zu&
   const sec=p?[zu?'':fsn(u),zm?'':fmn(m)].filter(Boolean).join(' · '):[zu?'':fpn(pc)+' '+t('wCost'),zm?'':fpn(pt)+' '+t('wTime')].filter(Boolean).join(' · ');
   return a.filter(Boolean).join(' · ')+` <small class="sc">${esc(sec)}</small> <span class="cap">${esc(vs)}</span>`}
 // the setting for this one model at threshold T, in the harness's own config syntax
-function snippet(g,T){return g.harness==='codex'?`model_auto_compact_token_limit = ${T}`:JSON.stringify({modelSettings:{[g.model]:{autoCompactWindow:T}}})}
+function snippet(g,T){return (g.settings||[])[g.grid.indexOf(T)]||''}
 async function copyStr(txt){try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(txt);return true}}catch(e){}
   try{const ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.append(ta);ta.select();const ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}}
 // "nice" round ticks covering [lo, hi]; ticksN keeps at least `min` of them
@@ -935,7 +935,7 @@ function pareto(){const g=G(),box=$('#fPareto'),sc=SC(g);figHead(box,t('pTitle')
   f.svg.append(el('text',{x:f.x1,y:f.y1+2,'text-anchor':'end'},t('lScore')+' @ '+t('vot',S.vot)));
   hover(f,(x,y)=>{let b=-1,bd=24*24;xs.forEach((v,i)=>{const d=(X(v)-x)**2+(Y(ys[i])-y)**2;if(d<bd){bd=d;b=i}});return b});
   box.append(f.svg)}
-function deepOf(g){return D.deep&&D.deep.groups.find(x=>x.model===g.model&&x.role===g.role)}
+function deepOf(g){return D.deep&&D.deep.groups.find(x=>x.model===g.model&&x.role===g.role&&(!x.harness||x.harness===g.harness))}
 function deepPanel(){const g=G(),b=$('#fDeep'),hy=deepOf(g);
   if(!D.deep){b.innerHTML='<div class="mi">'+ic('layers')+'<span>'+esc(t('dLiteShort'))+'</span>'+ib(t('dLite'))+'</div>';return}
   if(!hy){b.innerHTML='<p class="cap" style="margin:0">'+t('dNone')+'</p>';return}
@@ -980,9 +980,11 @@ function hist(){const g=G(),box=$('#fHist'),h=g.hist;figHead(box,t('hTitle'),t('
     {x:Math.min(f.x0+(ri+.5)*bw+6,f.x1-80),y:Y(h.share[ri])-6,text:t('hRead'),color:'var(--acc)',anchor:'start',bold:1},
     {x:Math.min(f.x0+(ti+.5)*bw+6,f.x1-80),y:Y(h.turns[ti])-6,text:t('hTurns'),color:'var(--ink2)',anchor:'start'}]);
   box.append(f.svg)}
-function simulate(sess,g,T){const out=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
-  for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.round(pp.rho*d+pp.fixed_tokens)}out.push(c)}return {out,k}}
-function sessList(){const g=G();return D.sessions.filter(s=>s.model===g.model&&s.role===g.role).sort((a,b)=>b.peak-a.peak).slice(0,30)}
+// replay at full resolution (growth has one entry per turn), then thin the line to the length of the actual curve
+function simulate(sess,g,T){const full=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
+  for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.floor(pp.rho*d+pp.fixed_tokens)}full.push(c)}
+  const n=sess.curve.length,st=full.length/n;return {out:full.length<=n?full:Array.from({length:n},(_,i)=>full[Math.floor(i*st)]),k}}
+function sessList(){const g=G();return D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)).sort((a,b)=>b.peak-a.peak).slice(0,30)}
 function sessPick(){const box=$('#fSess'),ss=sessList();
   const cur=S.sid&&ss.find(s=>s.id===S.sid)?S.sid:(ss[0]||{}).id;S.sid=cur;
   box.innerHTML=`<h3>${t('sTitle')}<span id="sInfo"></span></h3><select id="sp" aria-label="${t('colSession')}">${ss.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.id.slice(0,24))} · ${fk(s.peak)} · ${s.turns}</option>`).join('')}</select><div id="sChart"></div>`;

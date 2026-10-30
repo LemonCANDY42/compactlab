@@ -11,6 +11,8 @@ Supported sources:
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
 import urllib.request
 from collections.abc import Callable
@@ -23,6 +25,17 @@ SOURCES = {
     "litellm": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
 }
 KEEP = re.compile(r"^(claude-|gpt-|o\d|codex)", re.I)
+
+
+def _sane(row: dict[str, Any]) -> bool:
+    """Every rate finite and non-negative, every window a positive integer."""
+    rates = [v for k, v in row.items() if k not in ("max_window", "long_context", "source")]
+    lc = row.get("long_context") or {}
+    rates += [v for k, v in lc.items() if k != "above_tokens"]
+    windows = [w for w in (row.get("max_window"), lc.get("above_tokens")) if w is not None]
+    return all(isinstance(v, float) and math.isfinite(v) and v >= 0 for v in rates) and all(
+        isinstance(w, int) and w > 0 for w in windows
+    )
 
 
 def _row(cost: dict[str, Any], context: Any) -> dict[str, Any] | None:
@@ -64,14 +77,49 @@ def parse_models_dev(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
         for mid, m in (prov.get("models") or {}).items():
             if not isinstance(m, dict) or not KEEP.search(mid) or mid in out:
                 continue
-            row = _row(m.get("cost") or {}, (m.get("limit") or {}).get("context"))
-            if row:
+            try:
+                row = _row(m.get("cost") or {}, (m.get("limit") or {}).get("context"))
+            except (TypeError, ValueError, KeyError, OverflowError):
+                continue
+            if row and _sane(row):
                 out[mid.lower()] = row
     return out
 
 
 def _m(x: float) -> float:
     return round(x * 1e6, 6)
+
+
+def _litellm_row(m: dict[str, Any]) -> dict[str, Any] | None:
+    cost = {"input": _m(m["input_cost_per_token"]), "output": _m(m["output_cost_per_token"])}
+    if m.get("cache_read_input_token_cost") is not None:
+        cost["cache_read"] = _m(m["cache_read_input_token_cost"])
+    if m.get("cache_creation_input_token_cost") is not None:
+        cost["cache_write"] = _m(m["cache_creation_input_token_cost"])
+    row = _row(cost, m.get("max_input_tokens"))
+    if row and m.get("input_cost_per_token_above_200k_tokens") is not None:
+        row["long_context"] = {
+            "above_tokens": 200_000,
+            "input": _m(m["input_cost_per_token_above_200k_tokens"]),
+            "output": float((m.get("output_cost_per_token_above_200k_tokens") or m["output_cost_per_token"]) * 1e6),
+            "cache_write": float(
+                (
+                    m.get("cache_creation_input_token_cost_above_200k_tokens")
+                    or m.get("cache_creation_input_token_cost")
+                    or m["input_cost_per_token"]
+                )
+                * 1e6
+            ),
+            "cache_read": float(
+                (
+                    m.get("cache_read_input_token_cost_above_200k_tokens")
+                    or m.get("cache_read_input_token_cost")
+                    or m["input_cost_per_token"]
+                )
+                * 1e6
+            ),
+        }
+    return row
 
 
 def parse_litellm(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -81,31 +129,11 @@ def parse_litellm(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
             continue
         if m.get("input_cost_per_token") is None or m.get("output_cost_per_token") is None:
             continue
-        cost = {"input": _m(m["input_cost_per_token"]), "output": _m(m["output_cost_per_token"])}
-        if m.get("cache_read_input_token_cost") is not None:
-            cost["cache_read"] = _m(m["cache_read_input_token_cost"])
-        if m.get("cache_creation_input_token_cost") is not None:
-            cost["cache_write"] = _m(m["cache_creation_input_token_cost"])
-        row = _row(cost, m.get("max_input_tokens"))
-        if row and m.get("input_cost_per_token_above_200k_tokens") is not None:
-            row["long_context"] = {
-                "above_tokens": 200_000,
-                "input": _m(m["input_cost_per_token_above_200k_tokens"]),
-                "output": (m.get("output_cost_per_token_above_200k_tokens") or m["output_cost_per_token"]) * 1e6,
-                "cache_write": (
-                    m.get("cache_creation_input_token_cost_above_200k_tokens")
-                    or m.get("cache_creation_input_token_cost")
-                    or m["input_cost_per_token"]
-                )
-                * 1e6,
-                "cache_read": (
-                    m.get("cache_read_input_token_cost_above_200k_tokens")
-                    or m.get("cache_read_input_token_cost")
-                    or m["input_cost_per_token"]
-                )
-                * 1e6,
-            }
-        if row:
+        try:
+            row = _litellm_row(m)
+        except (TypeError, ValueError, KeyError, OverflowError):
+            continue
+        if row and _sane(row):
             out[mid.lower()] = row
     return out
 
@@ -134,11 +162,13 @@ def refresh(source: str, out: Path, url: str | None = None, fetcher: Callable[[s
         r["source"] = f"{source} {date.today().isoformat()}"
     out = out.expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        json.dumps(
-            {"version": 2, "retrieved": date.today().isoformat(), "source_url": url, "models": rows},
-            indent=1,
-            sort_keys=True,
-        )
+    body = json.dumps(
+        {"version": 2, "retrieved": date.today().isoformat(), "source_url": url, "models": rows},
+        indent=1,
+        sort_keys=True,
+        allow_nan=False,
     )
+    tmp = out.with_name(out.name + ".tmp")
+    tmp.write_text(body)
+    os.replace(tmp, out)  # the previous file stays intact until the new one is complete
     return len(rows)

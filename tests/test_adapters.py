@@ -35,3 +35,68 @@ def test_tolerates_garbage(tmp_path):
     p.write_text('not json\n{"type":"weird"}\n[1,2]\n{"message":5}\n')
     assert list(get_adapter("claude-code")(tmp_path).sessions()) == []
     assert list(get_adapter("codex")(tmp_path).sessions()) == []
+
+
+def _write(tmp_path, name, lines):
+    import json
+
+    (tmp_path / name).write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+
+
+def _claude_turn(mid, usage):
+    return {
+        "type": "assistant",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "requestId": "r" + mid,
+        "message": {"role": "assistant", "id": mid, "model": "claude-opus-4", "usage": usage, "content": []},
+    }
+
+
+def test_claude_malformed_usage_skips_record_not_scan(tmp_path):
+    _write(
+        tmp_path,
+        "s.jsonl",
+        [
+            _claude_turn("a", {"input_tokens": 100, "output_tokens": 5}),
+            _claude_turn("b", {"input_tokens": "oops"}),
+            _claude_turn("c", {"input_tokens": 10, "cache_creation": {"ephemeral_1h_input_tokens": -3}}),
+            _claude_turn("d", {"input_tokens": float("nan")}),
+            {"type": "system", "subtype": "compact_boundary", "compactMetadata": {"preTokens": "many"}},
+            _claude_turn("e", {"input_tokens": 200}),
+        ],
+    )
+    (s,) = get_adapter("claude-code")(tmp_path).sessions()
+    assert [t.ctx for t in s.turns] == [100, 200]
+    assert s.parse_errors == 4 and not s.compactions
+
+
+def test_codex_malformed_usage_skips_record_not_scan(tmp_path):
+    def tc(last, total=None, **info):
+        return {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {"last_token_usage": last, "total_token_usage": total, **info},
+            },
+        }
+
+    ok = {"input_tokens": 50, "cached_input_tokens": 0, "output_tokens": 2}
+    _write(
+        tmp_path,
+        "s.jsonl",
+        [
+            tc(ok, {"input_tokens": 50, "cached_input_tokens": 0, "output_tokens": 2, "total_tokens": 52}),
+            tc({"input_tokens": "lots", "output_tokens": 1}),
+            tc(ok, {"input_tokens": "x"}),
+            tc(ok, model_context_window="big"),
+            tc("nope"),
+            tc(
+                {**ok, "input_tokens": 80},
+                {"input_tokens": 130, "cached_input_tokens": 0, "output_tokens": 4, "total_tokens": 134},
+            ),
+        ],
+    )
+    (s,) = get_adapter("codex")(tmp_path).sessions()
+    assert [t.ctx for t in s.turns] == [50, 80]
+    assert s.parse_errors == 4

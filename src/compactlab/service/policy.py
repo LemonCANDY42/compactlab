@@ -7,6 +7,7 @@ write, manifest that `compactlab revert` understands).
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import date
@@ -47,6 +48,7 @@ def save_consent(path: Path, c: Consent) -> None:
         raise ap.ApplyError(f"consent: unknown profile {c.profile!r}")
     if not c.models:
         raise ap.ApplyError("consent: name at least one model")
+    c.file = str(ap._p(c.file))  # absolute now: a relative path would later resolve against the scheduler's cwd
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(c), indent=2))
     path.chmod(0o600)
@@ -55,16 +57,21 @@ def save_consent(path: Path, c: Consent) -> None:
 def load_consent(path: Path) -> Consent:
     if not path.exists():
         raise ap.ApplyError(f"no consent file at {path}; create one with: compactlab consent set ...")
-    d = json.loads(path.read_text())
-    if d.get("version") != CONSENT_VERSION:
-        raise ap.ApplyError("consent file: unsupported version")
-    c = Consent(
-        **{k: d[k] for k in ("harness", "file", "models", "profile", "created", "expires", "version") if k in d}
-    )
-    if c.expires and date.fromisoformat(c.expires) < date.today():
-        raise ap.ApplyError("consent file has expired")
+    try:
+        d = json.loads(path.read_text())
+        if d.get("version") != CONSENT_VERSION:
+            raise ap.ApplyError("consent file: unsupported version")
+        c = Consent(
+            **{k: d[k] for k in ("harness", "file", "models", "profile", "created", "expires", "version") if k in d}
+        )
+        if c.expires and date.fromisoformat(c.expires) < date.today():
+            raise ap.ApplyError("consent file has expired")
+    except (ValueError, TypeError, AttributeError, OSError) as e:
+        raise ap.ApplyError(f"consent file {path} is unreadable: {e}") from e
     if c.harness not in KEYS or c.profile not in PROFILE_NAMES:
         raise ap.ApplyError("consent file: unknown harness or profile")
+    if not isinstance(c.file, str) or not os.path.isabs(os.path.expanduser(c.file)):
+        raise ap.ApplyError(f"consent file: {c.file!r} is not an absolute path; set the consent again")
     return c
 
 
@@ -140,8 +147,14 @@ def decide(
         d.reason = f"within the dead-band ({cur_eff} -> {target})"
         return d
     # move at most max_step toward the target, on the grid
+    # (grid points beyond max_step, or on the wrong side, are not candidates: rounding must not overshoot the limit)
     move = max(-rules.max_step, min(rules.max_step, target - cur_eff))
-    value = grid[_idx(grid, cur_eff + move)]
+    sign = 1 if move > 0 else -1
+    reach = [x for x in grid if 0 < (x - cur_eff) * sign <= rules.max_step]
+    if not reach:
+        d.reason = f"no grid point within {rules.max_step} of {cur_eff} toward {target}"
+        return d
+    value = min(reach, key=lambda x: abs(x - (cur_eff + move)))
     i, j = grid.index(value), _idx(grid, cur_eff)
     days = max(float(g["days"]), 1.0)
     d_usd = (g["combined_cost"][j] - g["combined_cost"][i]) / days

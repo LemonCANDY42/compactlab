@@ -206,3 +206,19 @@ def test_recommend_snippet(dsh_result):
     g["profiles"]["balanced"]["threshold"] = 100_000  # ratio below retainRatio 0.16
     assert not [x for x in generate(r, harness="dsh", profile="balanced") if isinstance(x, Snippet)]
     assert not [x for x in generate(r, harness="dsh", scope="project") if isinstance(x, Snippet)]
+
+
+def test_quick_copy_is_the_harness_own_syntax(dsh_result):
+    from compactlab.report.html import render_html
+    from compactlab.term.top import snippet
+
+    g = dsh_result["groups"][0]
+    text = snippet(g, 550_000)
+    assert "modelSettings" not in text and "autoCompactWindow" not in text
+    assert "model: deepseek-v4-flash" in text and "thresholdRatio: 0.524" in text and "headroomTokens: 0" in text
+    assert snippet(g, 100_000).startswith("#")  # below retainRatio: a note, never a bogus setting
+    # the report's Copy button reads the same text for every slider position
+    page = render_html(dsh_result)
+    data = json.loads(page.split('<script id="data" type="application/json">', 1)[1].split("</script>", 1)[0])
+    dg = data["groups"][0]
+    assert dg["settings"][dg["grid"].index(550_000)] == text

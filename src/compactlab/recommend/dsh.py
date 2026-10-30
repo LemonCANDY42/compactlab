@@ -23,10 +23,27 @@ def ratio_for(v: int, window: int) -> float:
     return int(v / window * 1000) / 1000
 
 
+def policy_row(model: str, window: int, v: int) -> str:
+    """One modelPolicies entry that triggers at or just below v tokens."""
+    r = ratio_for(v, window)
+    return (
+        f"    - provider: {PROVIDER}\n      model: {model}\n"
+        f"      thresholdRatio: {r}   # ≈ {int(r * window) // 1000}k of {window:,}\n"
+        f"      headroomTokens: 0\n"
+        f"      maxTokens: {SUMMARY_MAX}   # summary cap; without it dsh derives 0 from headroomTokens"
+    )
+
+
 @register
 class DshRecommender(Recommender):
     harness = "dsh"
     formats: ClassVar[dict[str, tuple[str, ...]]] = {"global": ("yaml",), "project": ("yaml",), "agent": ("yaml",)}
+
+    def setting(self, g: dict[str, Any], threshold: int) -> str:
+        r = ratio_for(threshold, int(g["max_window"]))
+        if r <= RETAIN_RATIO:
+            return f"# {threshold}: ratio {r} is not above dsh's retainRatio {RETAIN_RATIO}; pick a larger threshold"
+        return "config:\n  modelPolicies:\n" + policy_row(g["model"], int(g["max_window"]), threshold)
 
     def generate(self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str) -> list:
         fmt = fmt or "yaml"
@@ -50,12 +67,7 @@ class DshRecommender(Recommender):
             if r <= RETAIN_RATIO:
                 out.append(Omitted(self.harness, f"{g['model']}: ratio {r} is not above retainRatio {RETAIN_RATIO}"))
                 continue
-            rows.append(
-                f"    - provider: {PROVIDER}\n      model: {g['model']}\n"
-                f"      thresholdRatio: {r}   # ≈ {int(r * g['max_window']) // 1000}k of {g['max_window']:,}\n"
-                f"      headroomTokens: 0\n"
-                f"      maxTokens: {SUMMARY_MAX}   # summary cap; without it dsh derives 0 from headroomTokens"
-            )
+            rows.append(policy_row(g["model"], int(g["max_window"]), v))
             ev.append(evidence(g, profile))
         if not rows:
             return out or [Omitted(self.harness, "no dsh main sessions in this history")]

@@ -12,8 +12,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .. import apply as ap
 from ..lens import summarize
-from .policy import Consent, Rules, load_applied, run_auto_apply
+from .policy import Consent, Rules, load_applied, load_consent, run_auto_apply
 from .schedule import next_due
 
 log = logging.getLogger("compactlab.service")
@@ -28,11 +29,15 @@ class Calibrator:
 
     def __init__(self, analyze: Callable[[], dict[str, Any]], state_dir: Path, every: float | None,
                  lens_out: Path | None = None, consent: Consent | None = None, rules: Rules | None = None,
-                 dry_run: bool = False, clock: Callable[[], float] = time.time) -> None:  # fmt: skip
+                 dry_run: bool = False, clock: Callable[[], float] = time.time,
+                 consent_path: Path | None = None) -> None:  # fmt: skip
         self.analyze, self.every, self.clock = analyze, every, clock
         self.dir = state_dir / "service"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.lens_out, self.consent, self.rules, self.dry_run = lens_out, consent, rules or Rules(), dry_run
+        # with a consent file, the consent is re-read before every auto-apply: clearing or expiring it takes effect
+        self.consent_path = consent_path
+        self.auto_apply = consent is not None or consent_path is not None
         self._lock = threading.Lock()
         self.result: dict[str, Any] | None = None
         st = self._read("state.json") or {}
@@ -82,7 +87,7 @@ class Calibrator:
             "next_calibration": self.next_due(),
             "failures": self.failures,
             "last_error": self.last_error,
-            "auto_apply": bool(self.consent),
+            "auto_apply": self.auto_apply and self.consent is not None,
             "last_apply": self.last_apply,
             "applied": {k.split("::", 1)[1]: v for k, v in load_applied(self.dir / "applied.json").items()},
         }
@@ -122,12 +127,16 @@ class Calibrator:
             tmp.write_text(json.dumps(lens, sort_keys=True))
             tmp.replace(self.lens_out)
         out: dict[str, Any] = {"status": "ok", "took_s": res["calibration"]["took_s"]}
-        if self.consent:
-            applied = run_auto_apply(res, self.consent, self.dir.parent, self.rules, now, dry_run=self.dry_run)
-            for d in applied["decisions"]:
-                log.info("auto-apply %s: %s (%s)", d["model"], d["action"], d["reason"])
-            if applied.get("manifest"):
-                log.info("auto-apply wrote %s; undo with compactlab revert", applied["manifest"])
+        if self.auto_apply:
+            try:
+                applied = self._auto_apply(res, now)
+            except Exception as e:  # e.g. a malformed settings file: back off like a failed analysis
+                self.failures += 1
+                self.last_error = f"auto-apply: {type(e).__name__}: {e}"[:500]
+                log.error("auto-apply failed (%d in a row): %s", self.failures, self.last_error)
+                self.last_apply = {"at": now, "error": self.last_error}
+                self._save_state()
+                return {"status": "error", "error": self.last_error}
             self.last_apply = {"at": now, **applied}
             out["auto_apply"] = applied
         self._save_state()
@@ -135,6 +144,24 @@ class Calibrator:
                  res["calibration"]["took_s"], scan.get("files", "?"), scan.get("cached", "?"), scan.get("parsed", "?"),
                  len(res.get("groups", [])), self.next_text())  # fmt: skip
         return out
+
+    def _auto_apply(self, res: dict[str, Any], now: float) -> dict[str, Any]:
+        if self.consent_path is not None:
+            try:
+                self.consent = load_consent(self.consent_path)
+            except ap.ApplyError as e:  # cleared, expired or unreadable: stop applying, keep calibrating
+                self.consent = None
+                log.warning("auto-apply is off: %s", e)
+                return {"decisions": [], "dry_run": self.dry_run, "diff": "", "manifest": None, "error": str(e)}
+        if self.consent is None:
+            return {"decisions": [], "dry_run": self.dry_run, "diff": "", "manifest": None,
+                    "error": "no consent"}  # fmt: skip
+        applied = run_auto_apply(res, self.consent, self.dir.parent, self.rules, now, dry_run=self.dry_run)
+        for d in applied["decisions"]:
+            log.info("auto-apply %s: %s (%s)", d["model"], d["action"], d["reason"])
+        if applied.get("manifest"):
+            log.info("auto-apply wrote %s; undo with compactlab revert", applied["manifest"])
+        return applied
 
     def _save_state(self) -> None:
         keys = ("last_ok", "last_attempt", "failures", "last_error", "last_apply")

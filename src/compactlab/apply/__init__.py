@@ -15,6 +15,7 @@ import os
 import re
 import tempfile
 import time
+import tomllib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -51,6 +52,14 @@ def _p(x) -> Path:
     return Path(os.path.expanduser(str(x))).resolve()
 
 
+def _pct(x) -> float | None:
+    if x is None:
+        return None
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or x < 0:
+        raise ApplyError(f"preauth max_change_pct must be a number >= 0, got {x!r}")
+    return float(x)
+
+
 def load_preauth(path: str | Path) -> Preauth:
     d = json.loads(Path(path).read_text())
     if d.get("version") != 1:
@@ -70,7 +79,7 @@ def load_preauth(path: str | Path) -> Preauth:
                 list(t["models"]),
                 int(t["min"]),
                 int(t["max"]),
-                t.get("max_change_pct"),
+                _pct(t.get("max_change_pct")),
             )
         )
     if not ts:
@@ -120,8 +129,15 @@ def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str
             rejected.append(f"{key}: value {v} outside authorized bounds [{lo}, {hi}]")
             continue
         old = _read_current(tgt.file, r["harness"], r["model"])
-        if tgt.max_change_pct and isinstance(old, int) and old > 0 and abs(v - old) / old * 100 > tgt.max_change_pct:
-            rejected.append(f"{key}: change {old}->{v} exceeds max_change_pct {tgt.max_change_pct}")
+        # the limit applies to what is in force now, which may be a top-level setting the model key inherits
+        prev = old if old is not None else _effective_value(tgt.file, r["harness"], r["model"])
+        if (
+            tgt.max_change_pct is not None
+            and isinstance(prev, int)
+            and prev > 0
+            and abs(v - prev) / prev * 100 > tgt.max_change_pct
+        ):
+            rejected.append(f"{key}: change {prev}->{v} exceeds max_change_pct {tgt.max_change_pct:g}")
             continue
         if old == v:
             continue
@@ -160,8 +176,8 @@ def _read_current(file: Path, harness: str, model: str):
             if isinstance(d.get("modelSettings", {}).get(model, {}), dict)
             else None
         )
-    m = _toml_top_re().search(_toml_top(text))
-    return int(m.group(2).replace("_", "")) if m else None
+    v = _load_toml(text, file).get(CODEX_KEY)
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
 
 
 def _load_json(text: str, file: Path) -> dict:
@@ -183,31 +199,151 @@ def _dump_json(d: dict, original: str) -> str:
     return s + ("\n" if original.endswith("\n") or not original else "")
 
 
-def _toml_top(text: str) -> str:
-    m = re.search(r"^[ \t]*\[", text, re.M)
-    return text[: m.start()] if m else text
+def _load_toml(text: str, file: Path | str = "config.toml") -> dict:
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise ApplyError(f"{file} is not valid TOML ({e}); refusing to touch it") from e
 
 
-def _toml_top_re():
-    return re.compile(rf"^([ \t]*{CODEX_KEY}[ \t]*=[ \t]*)([\d_]+)([ \t]*(#.*)?)$", re.M)
+def _toml_string_end(text: str, i: int) -> int:
+    """text[i] is a quote that opens a TOML string; the index just past its closing quote."""
+    q = text[i]
+    triple = text.startswith(q * 3, i)
+    j = i + (3 if triple else 1)
+    while j < len(text):
+        c = text[j]
+        if q == '"' and c == "\\":
+            j += 2
+        elif triple and text.startswith(q * 3, j):
+            j += 3
+            while j < len(text) and text[j] == q:  # up to two quotes before the closer belong to the string
+                j += 1
+            return j
+        elif not triple and c == q:
+            return j + 1
+        elif not triple and c == "\n":
+            break
+        else:
+            j += 1
+    raise ApplyError("unterminated TOML string; refusing to edit")
+
+
+_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+
+
+@dataclass
+class _TomlStmt:
+    key: list[str]
+    start: int  # start of the line
+    vstart: int
+    vend: int  # value text is text[vstart:vend], no trailing space or comment
+    end: int  # just past the line break that ends the statement
+
+
+def _toml_top_statements(text: str) -> tuple[list[_TomlStmt], int]:
+    """The `key = value` statements before the first [table], and where that table starts (len(text) if none).
+    Quoted keys, multi-line strings and multi-line arrays are skipped over, not mistaken for lines."""
+    n = len(text)
+    out: list[_TomlStmt] = []
+
+    def ws(i: int) -> int:
+        while i < n and text[i] in " \t":
+            i += 1
+        return i
+
+    i = 0
+    while i < n:
+        j = ws(i)
+        if j >= n:
+            break
+        if text[j] in "\r\n":
+            i = j + 1
+            continue
+        if text[j] == "#":
+            k = text.find("\n", j)
+            i = n if k < 0 else k + 1
+            continue
+        if text[j] == "[":
+            return out, i
+        key: list[str] = []
+        while True:
+            j = ws(j)
+            if j < n and text[j] in "\"'":
+                e = _toml_string_end(text, j)
+                try:
+                    key.append(next(iter(tomllib.loads(f"{text[j:e]} = 0"))))
+                except (tomllib.TOMLDecodeError, StopIteration) as ex:
+                    raise ApplyError("unreadable quoted TOML key; refusing to edit") from ex
+                j = e
+            else:
+                m = _BARE_KEY.match(text, j)
+                if not m:
+                    raise ApplyError("unreadable TOML key; refusing to edit")
+                key.append(m.group())
+                j = m.end()
+            j = ws(j)
+            if j < n and text[j] == ".":
+                j += 1
+                continue
+            break
+        if j >= n or text[j] != "=":
+            raise ApplyError("unreadable TOML line; refusing to edit")
+        vstart = ws(j + 1)
+        k, depth, vend = vstart, 0, vstart
+        while k < n:
+            c = text[k]
+            if c in "\"'":
+                k = _toml_string_end(text, k)
+                vend = k
+                continue
+            if c == "#":
+                e = text.find("\n", k)
+                k = n if e < 0 else e
+                continue
+            if c in "[{":
+                depth += 1
+            elif c in "]}":
+                depth -= 1
+            elif c == "\n" and depth <= 0:
+                break
+            if c not in " \t\r\n":
+                vend = k + 1
+            k += 1
+        out.append(_TomlStmt(key, i, vstart, vend, min(k + 1, n)))
+        i = min(k + 1, n)
+    return out, n
 
 
 def _set_toml(text: str, value: int | None) -> str:
-    rx = _toml_top_re()
-    top = _toml_top(text)
-    rest = text[len(top) :]
-    if value is None:
-        top = re.sub(rf"^[ \t]*{CODEX_KEY}[ \t]*=[ \t]*[\d_]+[ \t]*(#.*)?\n", "", top, count=1, flags=re.M)
-        return top + rest
-    if rx.search(top):
-        top = rx.sub(lambda m: f"{m.group(1)}{value}{m.group(3)}", top, count=1)
+    """Set (or, with None, remove) the top-level Codex key. Parses before and after and refuses on any surprise."""
+    before = _load_toml(text)
+    stmts, top_end = _toml_top_statements(text)
+    hit = [s for s in stmts if s.key == [CODEX_KEY]]
+    if hit:
+        s = hit[0]
+        if not re.fullmatch(r"[+-]?\d[\d_]*", text[s.vstart : s.vend]):
+            raise ApplyError(f"{CODEX_KEY} is not a plain integer in the file; refusing to edit it")
+        if value is None:
+            new = text[: s.start] + text[s.end :]
+        else:
+            new = text[: s.vstart] + str(value) + text[s.vend :]
+    elif value is None:
+        new = text
     else:
+        top, rest = text[:top_end], text[top_end:]
         body = top.rstrip("\n")
         trailing = top[len(body) :]
         top = (body + "\n" if body else "") + f"{CODEX_KEY} = {value}" + (trailing or "\n")
         if rest and not trailing:
             top += "\n"
-    return top + rest
+        new = top + rest
+    expect = {k: v for k, v in before.items() if k != CODEX_KEY or value is not None}
+    if value is not None:
+        expect[CODEX_KEY] = value
+    if _load_toml(new) != expect:
+        raise ApplyError("the TOML edit would change more than the one key; refusing to write it")
+    return new
 
 
 def _set_path(d: dict, path: list[str], value) -> int:
@@ -288,15 +424,40 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _write_private(path: Path, text: str) -> None:
+    """Create `path` readable by the owner only, whatever the umask."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write(text)
+
+
+def _effective_value(file: Path, harness: str, model: str) -> int | None:
+    """The threshold in force now, including a top-level setting the model key inherits."""
+    from ..sim.baseline import read_current
+
+    try:
+        return read_current(harness, model, file)[0]
+    except (OSError, ValueError):
+        return None
+
+
+def _effective_old(ch: Change) -> int | None:
+    """The threshold in force before this change."""
+    return _effective_value(ch.file, ch.harness, ch.model)
+
+
 def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
     rendered = render(changes)
     mid = time.strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}"
     bdir = state_dir / "backups" / mid
     bdir.mkdir(parents=True, exist_ok=True)
+    for d in (bdir.parent, bdir):  # backups hold whole harness configs, which can contain secrets
+        d.chmod(0o700)
     entries: list[dict[str, Any]] = []
     for f, (old_text, new_text) in rendered.items():
         bak = bdir / f"{len(entries)}-{f.name}.bak"
-        bak.write_text(old_text)
+        _write_private(bak, old_text)
         ents = []
         for ch in changes:
             if ch.file != f:
@@ -314,6 +475,7 @@ def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
                     "key": ch.key,
                     "model": ch.model,
                     "old": ch.old,
+                    "old_effective": _effective_old(ch),  # what applied before: the key, else an inherited setting
                     "new": ch.new,
                     "created_depth": depth,
                 }

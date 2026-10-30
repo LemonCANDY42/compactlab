@@ -21,6 +21,48 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **Replay model and presentation fixes** (from an independent review of the simulator, selection and report):
+  - sessions are grouped by harness, model and role, so one model name under two harnesses is two groups; a session
+    that switched models is still replayed with every turn priced at the model that served it (and its logged cost
+    likewise);
+  - `--max-threshold` below the grid start is an error (`InfeasibleCap`) instead of recommending the last grid point
+    above the cap (`50k` used to select `350k`);
+  - re-selecting a profile (`--profile`, `--value-of-time`, the service) keeps deep mode's measured recall
+    guardrail: the lowered pick and the `deep_recall_below_floor` flag no longer revert to the lite choice;
+  - a time model on the prior also uses the prior's re-discovery step; one 600-second sample no longer moves it;
+  - re-discovery calibration only uses compactions with a full 20-turn window before and after and no other
+    compaction inside (a boundary at turn 10 sliced backwards: constant-repeat work gave rho 0.377, now 0);
+  - the report's per-session replay runs on every turn and thins the drawn line afterwards (it stepped through 160
+    growth bins and counted 160 compactions against the engine's 266); the session picker lists the group's own
+    harness only;
+  - the terminal `c` copy and the report's Copy button use the harness's recommender, so a DeepSeek Harness
+    threshold copies a `modelPolicies` entry instead of Claude's `modelSettings` JSON.
+- **Config-writing and service safety fixes** (from an independent review of `apply` and `serve`):
+  - a running service re-reads and validates the consent file before every auto-apply, so `consent clear` or a
+    passed `expires` stops writes without a restart (the reason shows under `last_apply`);
+  - backups under `~/.compactlab/backups` are created 0700 / 0600 instead of the process umask;
+  - `consent set` stores the settings file as an absolute path, and a stored relative path is refused;
+  - Codex `config.toml` edits are string-aware (quoted keys, signed values, `key = ...` lines inside multi-line
+    strings) and parsed before writing; invalid TOML or a non-integer value is refused;
+  - `max_change_pct` compares with the value in force, including an inherited top-level `autoCompactWindow`, and
+    `0` is a real limit;
+  - auto-apply picks only grid points within `--max-step`, so rounding can no longer exceed it (960k → 850k);
+  - an error in the auto-apply phase (e.g. a malformed settings file) backs off and shows in status instead of
+    killing the scheduler thread.
+- **Input parsing, pricing, deep-mode and lens-mod fixes** (from an independent review):
+  - a recognized Claude Code or Codex record with a non-numeric, negative or non-finite token count (e.g.
+    `"input_tokens":"oops"`) is skipped and counted in `parse_errors` instead of aborting the whole scan;
+  - refreshed or overridden prices re-scale the carried 1-hour cache-write and long-context tiers to the new base
+    prices, so a refreshed Opus input no longer keeps the old 1-hour write price;
+  - `pricing refresh` drops rows with negative, NaN/infinite or non-numeric rates or invalid windows (and fails
+    if none are left), and replaces the cached file atomically, so a bad fetch cannot clobber good prices;
+  - deep mode: `--budget` now also stops the run as soon as the measured spend after a call exceeds the cap (it
+    used to check only the estimate before a call), and the Claude Code executor passes `max_tokens` as
+    `CLAUDE_CODE_MAX_OUTPUT_TOKENS`. Codex has no per-call output limit, so there one call can still overshoot;
+  - deep mode probes no longer put the expected file path in the question (an empty summary scored 100%): every
+    probe asks the same open question, answered once and scored against each file;
+  - the Claude Code lens mod re-reads the lens file after every turn, so a recalibration shows up in a running
+    session even for the same model.
 - **Cache TTL and write price from the logs.** The replay assumed a 5-minute prompt cache priced at the 5-minute
   write tier, but Claude Code on a subscription caches the main session for 1 hour, billed at 2× the input price.
   The Claude Code parser now keeps each request's 1-hour share (`usage.cache_creation.ephemeral_1h_input_tokens`,
@@ -31,6 +73,23 @@ versioning: [SemVer](https://semver.org/).
   (−22%) for Opus 5.5 and from 575k (−24%) to 650k (−15%) for Sonnet 5.5. Parser version 4 re-parses cached files.
 
 ### Added
+- **`share --verify` and schema `compactlab.share/2`.** A record can carry a per-group `verification` block with
+  what `verify` found (predicted vs logged cost and compactions per 1k turns, interval, whether the setting was in
+  effect, sample sizes). The checker accepts `/1` and `/2`; `aggregate_shares.py` adds the median prediction error.
+- **`compactlab verify`: check a change against the logs.** Splits sessions at the last `apply` (manifest time; `--id`
+  for another) and compares, per model and role, logged cost and compactions per 1k turns before vs after, with an
+  80% bootstrap interval over sessions, against a replay of the before sessions at the old and new threshold (no data
+  from after) and a replay of the after sessions (shows a changed workload). Reports whether compactions land near
+  the new threshold (a setting overridden elsewhere shows as "far"), says "too early" below 3 sessions / 2 active days
+  per side, and drops sessions that span the change. Cost only; wall-clock is not verified.
+- **`compactlab share`: an anonymous, opt-in record of the estimated savings.** Writes `compactlab-share.json`
+  with, per harness / model / role, the thresholds compared and the estimated change per day (each profile vs the
+  harness default and vs your current setting, and your current setting vs the default), plus trust markers
+  (history length, time-model source, replay cost over logged cost). Figures are rounded; no session ids, paths,
+  timestamps, curves or text; unknown model names become `other`; demo data is refused. `share --check FILE`
+  validates a record against an allow-list schema (`compactlab.share/1`). New "Share my estimated savings" issue
+  form, a workflow that validates and labels submitted records, and `scripts/aggregate_shares.py` for medians per
+  group. Nothing is sent by the tool. See `docs/SHARING.md`.
 - **DeepSeek Harness (`dsh`) adapter, experimental.** Reads `$DSH_HOME/sessions` (default `~/.dsh/sessions`): the
   newest `session[.vN].jsonl[.zstd]` per session, zstd via the standard library on Python 3.14+ or the `zstd`
   command (a torn last frame is dropped), disjoint usage counts, `compaction/*` events (failed ones dropped),

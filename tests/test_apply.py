@@ -1,4 +1,8 @@
 import json
+import os
+import stat
+import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -133,3 +137,87 @@ def test_expired_preauth(tmp_path):
     p.write_text(json.dumps({"version": 1, "expires": "2020-01-01", "targets": []}))
     with pytest.raises(ap.ApplyError):
         ap.load_preauth(p)
+
+
+def test_max_change_pct_uses_the_inherited_top_level_value(tmp_path):
+    f, pre_ = pre(tmp_path, max_change_pct=60)
+    f.write_text('{"autoCompactWindow": 200000}\n')  # no per-model key: the model inherits 200k
+    ch, rej = ap.plan_changes([{"harness": "claude-code", "model": "claude-opus-5-5", "value": 600000}], pre_)
+    assert rej and not ch and "200000->600000" in rej[0]
+    ch, rej = ap.plan_changes([{"harness": "claude-code", "model": "claude-opus-5-5", "value": 300000}], pre_)
+    assert ch and not rej
+
+
+def test_max_change_pct_zero_is_a_real_limit(tmp_path):
+    f, pre_ = pre(tmp_path, max_change_pct=0)
+    f.write_text(SETTINGS.replace('"effortLevel": "high"', '"effortLevel": "high", "autoCompactWindow": 200000'))
+    ch, rej = ap.plan_changes([{"harness": "claude-code", "model": "claude-opus-5-5", "value": 200001}], pre_)
+    assert rej and not ch
+    with pytest.raises(ap.ApplyError):
+        pre(tmp_path, max_change_pct=-5)
+
+
+def test_backups_are_private(tmp_path):
+    f, pre_ = pre(tmp_path)
+    f.write_text(SETTINGS)
+    old_umask = os.umask(0o022)
+    try:
+        ch, _ = ap.plan_changes([{"harness": "claude-code", "model": "claude-opus-5-5", "value": 300000}], pre_)
+        m = ap.write_changes(ch, tmp_path / "state", pre_)
+    finally:
+        os.umask(old_umask)
+    entry = json.loads(m.read_text())["entries"][0]
+    bak = Path(entry["backup"])
+    assert bak.read_text() == SETTINGS
+    assert stat.S_IMODE(bak.stat().st_mode) == 0o600
+    assert stat.S_IMODE(bak.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(bak.parent.parent.stat().st_mode) == 0o700
+
+
+def _codex(tmp_path, text, value=300000):
+    f = tmp_path / "config.toml"
+    f.write_text(text)
+    pre_ = ap.explicit_preauth({"codex": f}, ["gpt-5-codex"], 100000, 900000)
+    ch, rej = ap.plan_changes([{"harness": "codex", "model": "gpt-5-codex", "value": value}], pre_)
+    return f, ch, rej
+
+
+def test_toml_quoted_key_is_edited_in_place(tmp_path):
+    text = '"model_auto_compact_token_limit" = 200000  # keep\nmodel = "x"\n'
+    f, ch, _ = _codex(tmp_path, text)
+    assert ch[0].old == 200000
+    new = ap.render(ch)[f][1]
+    assert new == '"model_auto_compact_token_limit" = 300000  # keep\nmodel = "x"\n'
+    assert tomllib.loads(new)["model_auto_compact_token_limit"] == 300000
+
+
+def test_toml_signed_value_is_replaced_not_duplicated(tmp_path):
+    f, ch, _ = _codex(tmp_path, "model_auto_compact_token_limit = +200000\n")
+    new = ap.render(ch)[f][1]
+    assert new == "model_auto_compact_token_limit = 300000\n"
+
+
+def test_toml_lookalike_lines_inside_strings_are_left_alone(tmp_path):
+    text = (
+        'notes = """\nmodel_auto_compact_token_limit = 1\n[not_a_table]\n"""\n'
+        "model_auto_compact_token_limit = 200000\n"
+        "[profiles.x]\nmodel_auto_compact_token_limit = 2\n"
+    )
+    f, ch, _ = _codex(tmp_path, text)
+    new = ap.render(ch)[f][1]
+    assert new == text.replace("= 200000", "= 300000")
+    # no top-level key yet, and a fake table header inside a string: insert before the real table
+    text2 = 'notes = """\n[not_a_table]\n"""\n[profiles.x]\nk = 1\n'
+    f2, ch2, _ = _codex(tmp_path, text2)
+    new2 = ap.render(ch2)[f2][1]
+    assert new2.startswith('notes = """\n[not_a_table]\n"""\nmodel_auto_compact_token_limit = 300000\n[profiles.x]')
+    assert tomllib.loads(new2)["notes"] == tomllib.loads(text2)["notes"]
+
+
+def test_toml_refuses_rather_than_guesses(tmp_path):
+    with pytest.raises(ap.ApplyError):  # invalid TOML
+        _codex(tmp_path, "model_auto_compact_token_limit = 1\nmodel_auto_compact_token_limit = 2\n")
+    f, ch, _ = _codex(tmp_path, "model_auto_compact_token_limit = 0x10\n")
+    with pytest.raises(ap.ApplyError):  # not a plain decimal integer
+        ap.render(ch)
+    assert f.read_text() == "model_auto_compact_token_limit = 0x10\n"
