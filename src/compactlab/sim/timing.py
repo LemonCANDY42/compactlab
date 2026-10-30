@@ -130,4 +130,5 @@ def fit(sessions: list[Session], fallback: TimeModel | None = None) -> TimeModel
         m.median_turn_s = fallback.median_turn_s
     else:
         m.xs, m.ys = [], []  # a thin curve must not drive the choice either
+        m.median_turn_s = TimeModel.median_turn_s  # nor may a handful of samples set the re-discovery step
     return m

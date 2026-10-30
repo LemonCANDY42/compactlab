@@ -15,9 +15,11 @@ def render_html(result: dict, redact: bool = False) -> str:
     data = json.loads(json.dumps(result))
     ts = data.get("data_through")
     data["generated"] = ("data through " + datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")) if ts else ""
-    from ..recommend import generate_all
+    from ..recommend import generate_all, setting
 
     data["recommendations"] = generate_all(data)
+    for g in data["groups"]:  # the Copy button's text for every slider position, from the harness's recommender
+        g["settings"] = [setting(g, T) for T in g["grid"]]
     if redact:
         for s in data.get("sessions", []):
             s["id"] = "s-" + hashlib.sha256(s["id"].encode()).hexdigest()[:10]

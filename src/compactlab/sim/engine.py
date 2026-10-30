@@ -10,13 +10,14 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..model import Session
+from ..model import Session, Turn
 from ..pricing import Price, PricingTable
 from .baseline import default_note_zh, default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate
-from .select import DEFAULT_PROFILE, WAIT_CAP_MIN_PER_DAY, compare, pareto, point, score, select_all
+from .select import DEFAULT_PROFILE, WAIT_CAP_MIN_PER_DAY, InfeasibleCap, compare, pareto, point, score, select_all
 from .timing import TimeModel, fit
 
+SESSIONS_SHOWN = 30  # per group in the report's session picker (keep in step with report/template.html sessList)
 DEFAULT_ROT = [(0, 1.0), (100_000, 0.98), (200_000, 0.95), (400_000, 0.90), (600_000, 0.84), (1_000_000, 0.75)]
 
 
@@ -47,6 +48,7 @@ class Trace:
     o: list[int]  # output tokens this turn
     gap: list[float]  # idle seconds before this turn
     boundaries: set[int]
+    models: list[str] | None = None  # per-turn model when the session switched models (else the group's price)
 
 
 def make_trace(s: Session, base: int) -> Trace:
@@ -59,7 +61,8 @@ def make_trace(s: Session, base: int) -> Trace:
         o.append(t.output)
         gap.append(max(t.ts - prev_ts, 0.0) if (t.ts and prev_ts) else 0.0)
         prev, prev_ts = t.ctx, t.ts or prev_ts
-    return Trace(g, o, gap, bset)
+    models = [t.model for t in s.turns]
+    return Trace(g, o, gap, bset, models if len(set(models)) > 1 else None)
 
 
 def rot_fn(table: list[tuple[int, float]]):
@@ -112,7 +115,21 @@ class Ctx:
     step_tokens: int
     rot: Any
     opts: SimOptions
+    prices: dict[str, Price] | None = None  # model -> price at the group's TTL, for sessions that switched models
     _tabs: Any = None
+    _rates: Any = None
+
+    def rate_tab(self, model: str | None) -> tuple[Any, int, Any]:
+        """(short-context rates, long-context threshold, long-context rates) for a model; the group's by default."""
+        if self._rates is None:
+            self._rates = {}
+        price = (self.prices or {}).get(model) if model else None
+        key = model if price else None
+        if key not in self._rates:
+            p = price or self.price
+            la = p.long_above if p.long_above is not None else 10**12
+            self._rates[key] = (p.rates(0), la, p.rates(la + 1) if p.long_above is not None else p.rates(0))
+        return self._rates[key]
 
     def tables(self) -> tuple[list[float], list[float], list[float], int]:
         """Lookup tables at 1k-token resolution (turn latency, recall rot) and the retention decay by turn."""
@@ -128,11 +145,10 @@ class Ctx:
 
 def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
     """Replay one trace at threshold T. Penalty cost/time are tracked separately from base cost."""
-    price, base, summ = c.price, c.base, c.summ
+    base, summ = c.base, c.summ
     lat, rot, dec, top = c.tables()
-    short = price.rates(0)
-    long_above = price.long_above if price.long_above is not None else 10**12
-    long_ = price.rates(long_above + 1) if price.long_above is not None else short
+    short, long_above, long_ = c.rate_tab(None)
+    models = tr.models
     ttl, rho, fixed, corr = c.ttl, c.pen.rho, c.pen.fixed_tokens, c.pen.correction_turns
     step_tokens, med_turn = max(c.step_tokens, 1), c.tm.median_turn_s
     ndec = len(dec)
@@ -145,6 +161,8 @@ def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
     gs, os_, gaps = tr.g, tr.o, tr.gap
     avg_out = (sum(os_) / len(os_)) if os_ else 0
     for i in range(len(gs)):
+        if models is not None:  # price each turn at the model that served it
+            short, long_above, long_ = c.rate_tab(models[i])
         g = gs[i] + extra
         prev = ctx
         ctx += g
@@ -236,6 +254,7 @@ def select_group(g: dict[str, Any], opts: dict[str, Any]) -> None:
     g["default"]["combined"] = d["combined_cost"] + d["time_s"] / 3600 * main["value_of_time"]
     if cur:
         cur["combined"] = cur["combined_cost"] + cur["time_s"] / 3600 * main["value_of_time"]
+    apply_measured(g)  # selection works from the lite proxy; deep-mode measurements still bind
 
 
 def _comparison(g: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
@@ -269,6 +288,28 @@ def override_profile(g: dict[str, Any], name: str, threshold: int, flag: str) ->
     g["comparison"][name] = _comparison(g, p)
 
 
+def apply_measured(g: dict[str, Any]) -> dict[str, int]:
+    """Lower every profile whose pick has a measured recall (`g["measured"]`, from deep mode) below the floor to the
+    highest measured threshold under it that clears the floor (else the lowest measured one). Returns the
+    {profile: new threshold} moves. Called by select_group, so a reselected result keeps its measured guardrails."""
+    pts = g.get("measured")
+    if not pts:
+        return {}
+    floor = g["recommendation"]["recall_floor"]
+    adjusted: dict[str, int] = {}
+    for name, prof in g["profiles"].items():
+        thr = prof["threshold"]
+        hp = next((p for p in pts if p["threshold"] == thr), None)
+        if hp and hp["measured_recall"] < floor:
+            ok_pts = [p["threshold"] for p in pts if p["threshold"] < thr and p["measured_recall"] >= floor]
+            adjusted[name] = max(ok_pts) if ok_pts else min(p["threshold"] for p in pts)
+    for name, thr in adjusted.items():
+        override_profile(g, name, thr, "deep_recall_below_floor")
+    if g["profile"] in adjusted:
+        g["recommendation"] = dict(g["recommendation"], threshold=adjusted[g["profile"]])
+    return adjusted
+
+
 def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: float | None = None) -> dict:
     """Re-run profile selection on a stored result (no replay). Mutates and returns `result`."""
     opts = result.setdefault("options", {})
@@ -290,20 +331,26 @@ def analyze(
 ) -> dict:
     """`current` maps (harness, model) -> (configured threshold or None, description), read from config."""
     opts = opts or SimOptions()
+    if opts.max_threshold is not None and opts.max_threshold < opts.grid_start:
+        raise InfeasibleCap(
+            f"--max-threshold {opts.max_threshold:,} is below the grid start {opts.grid_start:,}: "
+            "lower the grid start (--grid) or raise the cap"
+        )
     default_ttl = pricing.default_ttl
     rot = rot_fn(opts.rot_table)
     opt_d = {k: (v if k != "penalty" else (v.to_dict() if v else None)) for k, v in opts.__dict__.items()}
-    groups: dict[tuple[str, str], list[Session]] = defaultdict(list)
+    groups: dict[tuple[str, str, str], list[Session]] = defaultdict(list)
     by_harness: dict[str, list[Session]] = defaultdict(list)
     for s in sessions:
-        groups[(s.model, s.role)].append(s)
+        groups[(s.harness, s.model, s.role)].append(s)  # the same model name under two harnesses is two groups
         by_harness[s.harness].append(s)
     pooled = {h: fit(ss) for h, ss in by_harness.items()}
     out_groups = []
-    for gi, ((model, role), ss) in enumerate(sorted(groups.items()), 1):
+    base_of: dict[int, int] = {}  # id(session) -> its group's base tokens
+    shown: set[int] = set()  # sessions the report can list (the group's SESSIONS_SHOWN largest): full-resolution growth
+    for gi, ((harness, model, role), ss) in enumerate(sorted(groups.items()), 1):
         if progress:
             progress(gi, len(groups), f"{model} · {role} ({len(ss)} sessions)")
-        harness = max({s.harness for s in ss}, key=lambda h: sum(x.harness == h for x in ss))
         list_price = pricing.lookup(model)
         ttl, ttl_source = group_ttl(ss, opts.ttl_seconds, default_ttl)
         price = list_price.for_ttl(ttl)
@@ -316,8 +363,12 @@ def analyze(
         pen = opts.penalty or calibrate(ss, base, summ)
         tm = fit(ss, pooled.get(harness))
         step_tokens = _median([x for s in ss for t in s.turns for x in t.tool_result_tokens], 2000) or 2000
-        c = Ctx(price, base, summ, ttl, pen, tm, step_tokens, rot, opts)
+        turn_models = {t.model for s in ss for t in s.turns}
+        prices = {m: pricing.lookup(m).for_ttl(ttl) for m in turn_models} if len(turn_models) > 1 else None
+        c = Ctx(price, base, summ, ttl, pen, tm, step_tokens, rot, opts, prices)
         traces = [make_trace(s, base) for s in ss]
+        base_of.update({id(s): base for s in ss})
+        shown.update(id(s) for s in sorted(sorted(ss, key=lambda s: s.id), key=lambda s: -s.peak)[:SESSIONS_SHOWN])
         grid = grid_for(opts, cap)
         n_turns = sum(len(t.g) for t in traces)
         pts = [_point(run_all(traces, T, c), T, n_turns) for T in grid]
@@ -372,7 +423,7 @@ def analyze(
             "grid": grid,
             **rows,
             "baseline_cost": run_all(traces, math.inf, c).cost,
-            "actual_cost": sum(_actual_cost(s, list_price) for s in ss),
+            "actual_cost": sum(_session_actual_cost(s, pricing) for s in ss),
             "default": default,
             "current": cur,
             "current_note": cur_desc,
@@ -405,7 +456,8 @@ def analyze(
                 "peak": s.peak,
                 "compactions": len(s.compactions),
                 "curve": _downsample([t.ctx for t in s.turns], 160),
-                "growth": _bin_growth(make_trace(s, 35_000).g, 160),
+                # the in-browser replay needs every turn: binned growth would count bins as turns
+                "growth": make_trace(s, base_of[id(s)]).g if id(s) in shown else [],
                 "unknown_events": s.unknown_events,
                 "skipped_inherited": s.skipped_inherited,
             }
@@ -421,13 +473,6 @@ def _downsample(xs: list[int], n: int) -> list[int]:
     return [xs[int(i * step)] for i in range(n)]
 
 
-def _bin_growth(g: list[int], n: int) -> list[int]:
-    if len(g) <= n:
-        return list(g)
-    size = len(g) / n
-    return [sum(g[int(i * size) : int((i + 1) * size)]) for i in range(n)]
-
-
 def group_ttl(ss: list[Session], override: int | None, default: int) -> tuple[int, str]:
     """Cache TTL to replay a group with: the override, else the tier most cache-write tokens were billed at."""
     if override:
@@ -437,6 +482,17 @@ def group_ttl(ss: list[Session], override: int | None, default: int) -> tuple[in
     if not hour:
         return default, "pricing default"
     return (3600 if hour * 2 >= written else default), f"logs: {hour / written:.0%} of cache writes at the 1-hour tier"
+
+
+def _session_actual_cost(s: Session, pricing: PricingTable) -> float:
+    """`_actual_cost` with every turn at its own model's price (a session may switch models)."""
+    by_model: dict[str, list[Turn]] = defaultdict(list)
+    for t in s.turns:
+        by_model[t.model].append(t)
+    return sum(
+        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m))
+        for m, ts in by_model.items()
+    )
 
 
 def _actual_cost(s: Session, price: Price) -> float:

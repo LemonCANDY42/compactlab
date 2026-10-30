@@ -31,6 +31,9 @@ class CodexRecommender(Recommender):
         "agent": ("toml",),
     }
 
+    def setting(self, g: dict[str, Any], threshold: int) -> str:
+        return f"{KEY} = {threshold}"
+
     def generate(self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str) -> list:
         fmt = fmt or self.formats[scope][0]
         if fmt not in self.formats.get(scope, ()):

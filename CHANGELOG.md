@@ -21,6 +21,22 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **Replay model and presentation fixes** (from an independent review of the simulator, selection and report):
+  - sessions are grouped by harness, model and role, so one model name under two harnesses is two groups; a session
+    that switched models is still replayed with every turn priced at the model that served it (and its logged cost
+    likewise);
+  - `--max-threshold` below the grid start is an error (`InfeasibleCap`) instead of recommending the last grid point
+    above the cap (`50k` used to select `350k`);
+  - re-selecting a profile (`--profile`, `--value-of-time`, the service) keeps deep mode's measured recall
+    guardrail: the lowered pick and the `deep_recall_below_floor` flag no longer revert to the lite choice;
+  - a time model on the prior also uses the prior's re-discovery step; one 600-second sample no longer moves it;
+  - re-discovery calibration only uses compactions with a full 20-turn window before and after and no other
+    compaction inside (a boundary at turn 10 sliced backwards: constant-repeat work gave rho 0.377, now 0);
+  - the report's per-session replay runs on every turn and thins the drawn line afterwards (it stepped through 160
+    growth bins and counted 160 compactions against the engine's 266); the session picker lists the group's own
+    harness only;
+  - the terminal `c` copy and the report's Copy button use the harness's recommender, so a DeepSeek Harness
+    threshold copies a `modelPolicies` entry instead of Claude's `modelSettings` JSON.
 - **Config-writing and service safety fixes** (from an independent review of `apply` and `serve`):
   - a running service re-reads and validates the consent file before every auto-apply, so `consent clear` or a
     passed `expires` stops writes without a restart (the reason shows under `last_apply`);

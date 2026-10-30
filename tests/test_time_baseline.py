@@ -31,6 +31,14 @@ def test_thin_time_data_falls_back_to_prior():
     assert tm2.turn_source == "prior" and not tm2.xs  # a thin curve is not used
 
 
+def test_prior_fallback_ignores_thin_samples_for_the_rediscovery_step():
+    prior = fit([])
+    one = Session("z", "claude-code", "main", "p", turns=[Turn(ts=700.0, start_ts=100.0, ctx=1000)])  # one 600 s turn
+    tm = fit([one])
+    assert tm.n_turn_samples == 1 and tm.turn_source == "prior"
+    assert tm.median_turn_s == prior.median_turn_s
+
+
 def test_low_confidence_compaction_fit_falls_back(claude_root):
     ss = [s for s in get_adapter("claude-code")(claude_root).sessions() if s.role == "main"]
     pool = fit(ss)

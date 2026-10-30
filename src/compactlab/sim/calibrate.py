@@ -60,9 +60,12 @@ def calibrate(sessions: list[Session], base_tokens: int, summary_tokens: int) ->
     dropped: list[float] = []
     excess_corr: list[float] = []
     for s in sessions:
+        bounds = [c.turn_index for c in s.compactions]
         for c in s.compactions:
             a = c.turn_index
-            if a < WINDOW // 2 or a + WINDOW // 2 > len(s.turns):
+            # a full window of history before (so "repeated" can be told from "first seen") and after, and no other
+            # compaction inside either window: before and after must describe the same kind of work
+            if a <= WINDOW or a + WINDOW > len(s.turns) or any(0 < abs(b - a) < WINDOW for b in bounds):
                 continue
             _, after_t, after_c = repeat_stats(s, a, a + WINDOW)
             _, before_t, before_c = repeat_stats(s, a - WINDOW, a)

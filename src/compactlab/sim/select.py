@@ -22,9 +22,15 @@ PROFILES: dict[str, dict[str, Any]] = {
     "time": {"value_of_time": 600.0, "min_fraction": 0.50, "enforce_wait_cap": True},
 }
 PROFILE_NAMES = tuple(PROFILES)
+
+
 DEFAULT_PROFILE = "balanced"
 WARN_FRACTION = 0.25  # any profile below this share of the max window gets a warning
 WAIT_CAP_MIN_PER_DAY = 30.0  # added compaction + re-discovery wait vs the harness default
+
+
+class InfeasibleCap(ValueError):
+    """The threshold cap leaves no grid point to recommend."""
 
 
 def recommend(
@@ -175,10 +181,16 @@ def select_profile(
     step = (grid[1] - grid[0]) if len(grid) > 1 else 1
     min_thr = math.ceil(emax * spec["min_fraction"] / step) * step if spec["min_fraction"] else 0
     limit = min(x for x in (cap, emax, grid[-1]) if x is not None)
+    if grid[0] > limit:  # never answer with a threshold above the cap
+        raise InfeasibleCap(
+            f"no grid threshold is at or below {limit:,} tokens (the grid starts at {grid[0]:,}"
+            + (f"; --max-threshold is {cap:,}" if cap is not None and cap == limit else "")
+            + "): lower the grid start or raise the cap"
+        )
     in_range = [i for i, T in enumerate(grid) if min_thr <= T <= limit]
     flags: list[str] = []
     if not in_range:  # the grid does not reach the minimum: use the largest allowed threshold
-        in_range = [max((i for i, T in enumerate(grid) if limit >= T), default=len(grid) - 1)]
+        in_range = [max(i for i, T in enumerate(grid) if limit >= T)]
         flags.append("min_window_unreachable")
 
     def wait(i: int) -> float:

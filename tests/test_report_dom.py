@@ -11,9 +11,12 @@ from pathlib import Path
 import pytest
 
 from compactlab.adapters import get_adapter
+from compactlab.model import Session, Turn
 from compactlab.pricing import PricingTable
 from compactlab.report.html import render_html
-from compactlab.sim.engine import analyze
+from compactlab.sim.calibrate import PenaltyParams
+from compactlab.sim.engine import DEFAULT_ROT, Ctx, SimOptions, analyze, make_trace, replay, rot_fn
+from compactlab.sim.timing import TimeModel
 
 CANDIDATES = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -32,6 +35,13 @@ CHECK = """
     const L=G();ok(S.view==='group'&&!L.no_action_needed,'landed on a no-change group');
     D.groups.forEach(x=>{if(!x.no_action_needed)ok(Math.abs(usdOf(L))>=Math.abs(usdOf(x))-1e-9,'landing is not the largest impact: '+x.model+' '+x.role)});
     ok(location.hash.startsWith('#g='),'hash not set');
+    // the Copy button's text comes from the harness's recommender, never Claude syntax for another harness
+    D.groups.forEach(x=>{const sn=snippet(x,x.grid[1]);ok(sn&&(x.harness!=='codex'||/^model_auto_compact_token_limit = \\d+$/.test(sn))&&(x.harness!=='claude-code'||sn.includes('modelSettings')),'copy text for '+x.harness+': '+sn)});
+    // the in-browser replay runs on every turn: 700 turns must not be counted as 160 growth bins
+    {const ls=D.sessions.find(x=>x.id==='long-replay'),lg=D.groups.find(x=>x.harness===ls.harness&&x.model===ls.model&&x.role===ls.role);
+      ok(ls.growth.length===ls.turns&&ls.turns>160,'growth is not one entry per turn: '+ls.growth.length+' / '+ls.turns);
+      const sm=simulate(ls,lg,__T__);ok(sm.k===__K__,'in-browser replay compacted '+sm.k+' times, the engine '+__K__);
+      ok(sm.out.length===ls.curve.length,'replayed line is not as long as the actual curve')}
     // display names: date suffix only in the tooltip
     ok(label('claude-haiku-4-5-20251001')==='Haiku 4.5'&&family('claude-haiku-4-5-20251001')==='Haiku','claude label');
     ok(label('claude-opus-5-5')==='Opus 5.5'&&label('gpt-5-codex')==='GPT-5-codex','labels');
@@ -212,6 +222,28 @@ CHECK = """
 """
 
 
+def _long_session() -> Session:
+    s = Session("long-replay", "claude-code", "main", "p")
+    ctx = 30_000
+    for i in range(700):
+        ctx = 30_000 + (ctx - 30_000 + 20_000) % 190_000  # grows 20k a turn and falls back, like a compacted session
+        s.turns.append(Turn(ts=1_700_000_000 + i * 20.0, ctx=ctx, output=300, model="claude-opus-5-5"))
+    return s
+
+
+def _page(res: dict, ss: list[Session], check: str = "") -> str:
+    g = next(g for g in res["groups"] if g["model"] == "claude-opus-5-5" and g["role"] == "main")
+    ls = next(s for s in ss if s.id == "long-replay")
+    pen = PenaltyParams(**g["penalty_params"])
+    c = Ctx(PricingTable.load(offline=True).lookup(g["model"]), g["base_tokens"], g["summary_tokens"], 300, pen,
+            TimeModel(), 2000, rot_fn(DEFAULT_ROT), SimOptions())  # fmt: skip
+    k = replay(make_trace(ls, g["base_tokens"]), g["grid"][0], c).compactions
+    assert k > 160  # more compactions than the 160 growth bins the old replay stepped through
+    return render_html(res).replace(
+        "</body>", check.replace("__T__", str(g["grid"][0])).replace("__K__", str(k)) + "</body>"
+    )
+
+
 def _chrome() -> str | None:
     for c in CANDIDATES:
         p = shutil.which(c) or (c if Path(c).exists() else None)
@@ -225,9 +257,10 @@ def test_slider_survives_input_events(tmp_path, claude_root, codex_root):
     chrome = _chrome()
     assert chrome
     ss = list(get_adapter("claude-code")(claude_root).sessions()) + list(get_adapter("codex")(codex_root).sessions())
+    ss.append(_long_session())
     res = analyze(ss, PricingTable.load(offline=True), current={("claude-code", "claude-opus-5-5"): (600_000, "t")})
     page = tmp_path / "r.html"
-    page.write_text(render_html(res).replace("</body>", CHECK + "</body>"))
+    page.write_text(_page(res, ss, CHECK))
     out = subprocess.run(
         [chrome, "--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "--no-first-run",
          f"--user-data-dir={tmp_path / 'prof'}",

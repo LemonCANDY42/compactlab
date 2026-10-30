@@ -229,6 +229,11 @@ def _opts(a: argparse.Namespace) -> SimOptions:
         lo, hi, st = (_k(x) for x in a.grid.split(":"))
     except (ValueError, argparse.ArgumentTypeError) as e:
         raise CLIError(f"--grid must look like 100k:1m:25k ({e})") from e
+    if a.max_threshold is not None and a.max_threshold < lo:
+        raise CLIError(
+            f"--max-threshold {a.max_threshold:,} is below the grid start {lo:,}: lower the grid start (--grid) or "
+            "raise the cap"
+        )
     return SimOptions(
         profile=a.profile or DEFAULT_PROFILE,
         value_of_time=a.value_of_time,
