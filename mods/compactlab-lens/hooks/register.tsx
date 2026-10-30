@@ -86,9 +86,9 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
-    const before = (await read($, live))?.model
-    const model = await measure($, true)
-    if (model !== before) await load($, lensPath, model)
+    // Re-read every turn, not only when the model changes: `compactlab service` / `simulate` rewrite the file
+    // (new calibration, new thresholds) while the session runs. It is one small local file, read only.
+    await load($, lensPath, await measure($, true))
     return done
   })
 

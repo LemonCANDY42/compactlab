@@ -48,6 +48,37 @@ class Price:
         return (r[0] / 1e6, r[1] / 1e6, r[2] / 1e6, r[3] / 1e6)
 
 
+def _base(r: dict[str, Any], k: str) -> float:
+    return float(r.get(k, r["input"]))
+
+
+def _scaled(v: float, old: float, new: float) -> float:
+    """A tier price that was a fixed multiple of `old`, re-expressed against the new base price."""
+    return round(v * new / old, 6) if old else v
+
+
+def _merge_row(prev: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    """`row` over the same model's previous row. Tiers the new row omits are carried from `prev` but re-scaled
+    to the new base prices, so a refreshed input/cache price never keeps a stale 1-hour or long-context price."""
+    out = {**({"match": prev["match"]} if "match" in prev else {}), **row}
+    if "input" not in prev or "input" not in row:
+        return out
+    ratio = {k: (_base(prev, k), _base(row, k)) for k in ("input", "output", "cache_write", "cache_read")}
+    if "cache_write_1h" not in row and "cache_write_1h" in prev:
+        out["cache_write_1h"] = _scaled(prev["cache_write_1h"], *ratio["cache_write"])
+    plc, nlc = prev.get("long_context"), row.get("long_context")
+    if isinstance(plc, dict):
+        if nlc is None:  # no long-context tier in the refresh: keep the old one, moved with the base prices
+            out["long_context"] = {
+                k: (v if k == "above_tokens" else _scaled(v, *ratio["cache_write" if k == "cache_write_1h" else k]))
+                for k, v in plc.items()
+            }
+        elif isinstance(nlc, dict) and "cache_write_1h" not in nlc and "cache_write_1h" in plc:
+            old, new = _base(plc, "cache_write"), _base(nlc, "cache_write")
+            out["long_context"] = {**nlc, "cache_write_1h": _scaled(plc["cache_write_1h"], old, new)}
+    return out
+
+
 class PricingTable:
     def __init__(self, data: dict[str, Any]):
         if data.get("version") not in (1, 2):
@@ -78,7 +109,7 @@ class PricingTable:
             user = json.loads(path.read_text())
             for k, row in user.get("models", {}).items():
                 prev = base["models"].get(k, {})
-                row = {**{x: prev[x] for x in ("match", "long_context", "cache_write_1h") if x in prev}, **row}
+                row = _merge_row(prev, row)
                 row.setdefault("source", f"{label}: {path.name} {user.get('retrieved', '')}".strip())
                 base["models"][k] = row
             for k in ("fallback", "default_ttl_seconds", "note"):

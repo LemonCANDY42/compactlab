@@ -49,6 +49,20 @@ versioning: [SemVer](https://semver.org/).
   - auto-apply picks only grid points within `--max-step`, so rounding can no longer exceed it (960k → 850k);
   - an error in the auto-apply phase (e.g. a malformed settings file) backs off and shows in status instead of
     killing the scheduler thread.
+- **Input parsing, pricing, deep-mode and lens-mod fixes** (from an independent review):
+  - a recognized Claude Code or Codex record with a non-numeric, negative or non-finite token count (e.g.
+    `"input_tokens":"oops"`) is skipped and counted in `parse_errors` instead of aborting the whole scan;
+  - refreshed or overridden prices re-scale the carried 1-hour cache-write and long-context tiers to the new base
+    prices, so a refreshed Opus input no longer keeps the old 1-hour write price;
+  - `pricing refresh` drops rows with negative, NaN/infinite or non-numeric rates or invalid windows (and fails
+    if none are left), and replaces the cached file atomically, so a bad fetch cannot clobber good prices;
+  - deep mode: `--budget` now also stops the run as soon as the measured spend after a call exceeds the cap (it
+    used to check only the estimate before a call), and the Claude Code executor passes `max_tokens` as
+    `CLAUDE_CODE_MAX_OUTPUT_TOKENS`. Codex has no per-call output limit, so there one call can still overshoot;
+  - deep mode probes no longer put the expected file path in the question (an empty summary scored 100%): every
+    probe asks the same open question, answered once and scored against each file;
+  - the Claude Code lens mod re-reads the lens file after every turn, so a recalibration shows up in a running
+    session even for the same model.
 - **Cache TTL and write price from the logs.** The replay assumed a 5-minute prompt cache priced at the 5-minute
   write tier, but Claude Code on a subscription caches the main session for 1 hour, billed at 2× the input price.
   The Claude Code parser now keeps each request's 1-hour share (`usage.cache_creation.ephemeral_1h_input_tokens`,

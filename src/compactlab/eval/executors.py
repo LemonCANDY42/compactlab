@@ -9,19 +9,28 @@ estimated from text length (marked `estimated`).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from .deep import Completion, EvalError
 
-Runner = Callable[[Sequence[str], str, str], str]
+Runner = Callable[..., str]  # (cmd, prompt, cwd) -> stdout; also takes env= when the executor sets one
 
 
-def _run(cmd: Sequence[str], prompt: str, cwd: str) -> str:
+def _run(cmd: Sequence[str], prompt: str, cwd: str, env: Mapping[str, str] | None = None) -> str:
     try:
-        r = subprocess.run(list(cmd), input=prompt, capture_output=True, text=True, cwd=cwd, timeout=600)
+        r = subprocess.run(
+            list(cmd),
+            input=prompt,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=600,
+            env={**os.environ, **env} if env else None,
+        )
     except FileNotFoundError as e:
         raise EvalError(f"executor not found: {cmd[0]} (is it installed and on PATH?)") from e
     except subprocess.TimeoutExpired as e:
@@ -39,7 +48,12 @@ class ClaudeCodeExecutor:
 
     def complete(self, model: str, prompt: str, max_tokens: int) -> Completion:
         with tempfile.TemporaryDirectory(prefix="compactlab-deep-") as d:
-            out = self.runner([self.binary, "-p", "--model", model, "--output-format", "json"], prompt, d)
+            out = self.runner(
+                [self.binary, "-p", "--model", model, "--output-format", "json"],
+                prompt,
+                d,
+                env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(max(int(max_tokens), 1))},
+            )
         try:
             j: dict[str, Any] = json.loads(out)
         except ValueError:

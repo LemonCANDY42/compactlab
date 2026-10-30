@@ -137,6 +137,23 @@ def _bump_error(parser: Parser | None) -> None:
         s.parse_errors += 1
 
 
+class BadRecord(ValueError):
+    """A recognized record whose fields are unusable; the parser skips it and counts a parse error."""
+
+
+def count(v: Any) -> int:
+    """A non-negative integer token count; absent/null is 0. Strings, bools, NaN and negatives are bad."""
+    if v is None:
+        return 0
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise BadRecord(f"not a number: {v!r}")
+    if isinstance(v, float) and (v != v or v in (float("inf"), float("-inf"))):
+        raise BadRecord(f"not finite: {v!r}")
+    if v < 0:
+        raise BadRecord(f"negative: {v!r}")
+    return int(v)
+
+
 def iter_jsonl(path: Path, parser: Parser | None = None) -> Iterator[dict[str, Any]]:
     with open(path, "rb") as f:
         yield from parse_lines(iter(f), parser)

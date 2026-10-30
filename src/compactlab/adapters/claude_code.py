@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..model import Compaction, Session, Turn
-from .base import Adapter, Parser, env_roots, parse_ts, register
+from .base import Adapter, BadRecord, Parser, count, env_roots, parse_ts, register
 
 KNOWN_TYPES = {"user", "assistant", "system", "summary", "file-history-snapshot", "attachment", "progress"}
 
@@ -25,7 +25,8 @@ def _text_of(content: Any) -> str:
 
 
 def _tool_key(block: dict[str, Any]) -> str:
-    inp = block.get("input") or {}
+    inp = block.get("input")
+    inp = inp if isinstance(inp, dict) else {}
     arg = inp.get("file_path") or inp.get("path") or inp.get("pattern") or inp.get("command") or inp.get("query") or ""
     return f"{block.get('name', '?')}:{str(arg)[:200]}"
 
@@ -50,12 +51,18 @@ class ClaudeParser(Parser):
             s.parent_id = str(d["parentSessionId"])
         ts = parse_ts(d.get("timestamp"))
         if typ == "system" and d.get("subtype") == "compact_boundary":
-            meta = d.get("compactMetadata") or {}
+            meta = d.get("compactMetadata")
+            meta = meta if isinstance(meta, dict) else {}
+            try:
+                pre = count(meta.get("preTokens")) if meta.get("preTokens") is not None else None
+            except BadRecord:
+                s.parse_errors += 1
+                return
             dur = (ts - self.last_input_ts) if (ts and self.last_input_ts) else None
             s.compactions.append(
                 Compaction(
                     turn_index=len(s.turns),
-                    pre_tokens=meta.get("preTokens"),
+                    pre_tokens=pre,
                     ts=ts,
                     duration_s=dur if dur is not None and 0 < dur <= 900 else None,
                 )
@@ -95,19 +102,25 @@ class ClaudeParser(Parser):
     def _assistant(self, d: dict[str, Any], m: dict[str, Any]) -> None:
         s = self.session
         mid = m.get("id")
-        if mid:
-            # Streaming writes the same API response several times; message id (+ request id) identifies it.
-            key = f"{mid}:{d.get('requestId', '')}"
-            if key in self.seen:
-                return
+        key = f"{mid}:{d.get('requestId', '')}" if mid else ""
+        # Streaming writes the same API response several times; message id (+ request id) identifies it.
+        if key and key in self.seen:
+            return
+        u = m.get("usage")
+        u = u if isinstance(u, dict) else {}
+        try:
+            cr = count(u.get("cache_read_input_tokens"))
+            cw = count(u.get("cache_creation_input_tokens"))
+            tiers = u.get("cache_creation")
+            tiers = tiers if isinstance(tiers, dict) else {}
+            cw_1h = min(count(tiers.get("ephemeral_1h_input_tokens")), cw)
+            ctx = count(u.get("input_tokens")) + cr + cw
+            out = count(u.get("output_tokens"))
+        except BadRecord:
+            s.parse_errors += 1  # skipped; a clean re-emission of the same message may still count
+            return
+        if key:
             self.seen.add(key)
-        u = m.get("usage") or {}
-        cr = int(u.get("cache_read_input_tokens") or 0)
-        cw = int(u.get("cache_creation_input_tokens") or 0)
-        tiers = u.get("cache_creation")
-        tiers = tiers if isinstance(tiers, dict) else {}
-        cw_1h = min(int(tiers.get("ephemeral_1h_input_tokens") or 0), cw)
-        ctx = int(u.get("input_tokens") or 0) + cr + cw
         if ctx == 0:
             return
         t = Turn(
@@ -116,7 +129,7 @@ class ClaudeParser(Parser):
             cache_read=cr,
             cache_write=cw,
             cache_write_1h=cw_1h,
-            output=int(u.get("output_tokens") or 0),
+            output=out,
             start_ts=self.last_input_ts,
             model=str(m.get("model") or "unknown"),
             user_text=self.pending_user,

@@ -1,7 +1,10 @@
 """Deep mode: opt-in, agent-driven evaluation layered on top of lite.
 
-Never runs by default. The CLI prints an estimated cost, requires `--yes`, and enforces `--budget`
-as a hard cap. Network or harness access happens only inside an `LLMClient` (see executors.py).
+Never runs by default. The CLI prints an estimated cost, requires `--yes`, and enforces `--budget`:
+a call is refused when its estimate would cross the cap, and the run stops as soon as the measured spend
+after a call exceeds it. A single call can still overshoot by what the executor actually used, since a
+CLI that exposes no output limit (Codex) cannot be capped provider-side. Network or harness access happens
+only inside an `LLMClient` (see executors.py).
 
 Two pieces:
   run_eval()        probes + LLM judge on summaries that already exist in your history.
@@ -97,7 +100,15 @@ class BudgetGuard:
         out = client.complete(model, prompt, max_tokens)
         self.spent += self.cost(model, out.input_tokens, out.output_tokens)
         self.calls += 1
+        if self.spent > self.cap:  # the estimate was wrong (or the executor ignored max_tokens): stop here
+            raise BudgetExceeded(f"spent ${self.spent:.4f}, over cap ${self.cap:.2f}; stopped after {self.calls} calls")
         return out
+
+
+FILE_QUESTION = (
+    "List the exact file paths that were being worked on before the context was compacted, "
+    "one per line, as far as this summary lets you tell. Say 'unknown' if it does not say."
+)
 
 
 def make_probes(s: Session, c: Compaction, limit: int = 5) -> list[Probe]:
@@ -108,16 +119,9 @@ def make_probes(s: Session, c: Compaction, limit: int = 5) -> list[Probe]:
             _name, _, arg = k.partition(":")
             if arg.startswith("/") and arg not in seen:
                 seen.append(arg)
-    probes = [
-        Probe(
-            "file",
-            f"The file {p!r} was accessed before the context was compacted. "
-            f"Answer with its exact path if you remember it being worked on, else say 'unknown'.",
-            [p],
-        )
-        for p in seen[:limit]
-    ]
-    return probes
+    # The question must not contain the answer: every probe asks the same open question and is scored
+    # against its own file, so a summary that dropped the path scores 0.
+    return [Probe("file", FILE_QUESTION, [p]) for p in seen[:limit]]
 
 
 def estimate_cost(
@@ -133,6 +137,15 @@ def estimate_cost(
     a = BudgetGuard(1.0, pricing).cost(answer_model, in_a, max_tokens)
     j = BudgetGuard(1.0, pricing).cost(judge_model, in_a // 2 + 300, max_tokens) * repeats
     return n_probes * (a + j)
+
+
+def _answer(
+    guard: BudgetGuard, client: LLMClient, model: str, summary: str, question: str, cache: dict[str, str]
+) -> str:
+    """Probes that share a question share one answer call."""
+    if question not in cache:
+        cache[question] = guard.call(client, model, f"Context summary:\n{summary}\n\nQuestion: {question}", 200).text
+    return cache[question]
 
 
 def _norm(x: str) -> str:
@@ -159,11 +172,10 @@ def run_eval(
     guard = BudgetGuard(budget_usd, pricing)
     rep = EvalReport()
     rep.flags = check_summary(s, c)
+    answers: dict[str, str] = {}
     try:
         for p in probes if probes is not None else make_probes(s, c):
-            ans = guard.call(
-                client, answer_model, f"Context summary:\n{c.summary_text}\n\nQuestion: {p.question}", 200
-            ).text
+            ans = _answer(guard, client, answer_model, c.summary_text, p.question, answers)
             exact = any(_norm(t) in _norm(ans) for t in p.truth)
             votes = []
             for _ in range(max(repeats, 1)):
@@ -194,8 +206,9 @@ class MockClient:
             ok = any(p in ans for p in paths) if not self.known else any(k in ans for k in self.known)
             text = json.dumps({"correct": ok})
         else:
-            m = re.search(r"'(/[^']+)'", prompt)
-            text = m.group(1) if m and (not self.known or m.group(1) in self.known) else "unknown"
+            summary = prompt.partition("Question:")[0]  # answer only from the summary, never from the question
+            paths = [p for p in re.findall(r"(?<![\w.])(/[\w./-]*\w)", summary) if not self.known or p in self.known]
+            text = "\n".join(dict.fromkeys(paths)) or "unknown"
         return Completion(text, len(prompt) // 4 + 1, max(len(text) // 4, 1))
 
 
@@ -261,10 +274,10 @@ def plan_deep(
 ) -> DeepPlan:
     pairs = []
     est = 0.0
-    g_by = {(g["model"], g["role"]): g for g in result["groups"]}
-    for (m, role), g in sorted(g_by.items()):
+    g_by = {(g["harness"], g["model"], g["role"]): g for g in result["groups"]}
+    for (h, m, role), g in sorted(g_by.items()):
         cands = sorted({p["threshold"] for p in g["profiles"].values()})
-        ss = sorted((s for s in sessions if s.model == m and s.role == role), key=lambda s: -s.peak)
+        ss = sorted((s for s in sessions if (s.harness, s.model, s.role) == (h, m, role)), key=lambda s: -s.peak)
         for s in ss[:sessions_per_group]:
             for T in cands:
                 cut = cut_index(s, T, g["base_tokens"])
@@ -294,10 +307,10 @@ def deep_analyze(
         raise EvalError(f"deep mode calls an LLM and costs money; pass {CONFIRM_FLAG} after reviewing the estimate")
     if model == judge_model:
         raise EvalError("judge model must differ from the summarizing/answering model")
-    from ..sim.engine import override_profile
+    from ..sim.engine import apply_measured
 
     guard = BudgetGuard(budget_usd, pricing)
-    measured: dict[tuple[str, str, int], list[float]] = {}
+    measured: dict[tuple[str, str, str, int], list[float]] = {}
     stopped = ""
     try:
         for m, role, s, T, cut in plan.pairs:
@@ -307,8 +320,9 @@ def deep_analyze(
             if not ps:
                 continue
             ok = 0
+            answers: dict[str, str] = {}
             for p in ps:
-                ans = guard.call(client, model, f"Context summary:\n{summ}\n\nQuestion: {p.question}", 200).text
+                ans = _answer(guard, client, model, summ, p.question, answers)
                 votes = []
                 for _ in range(max(repeats, 1)):
                     raw = guard.call(
@@ -322,14 +336,14 @@ def deep_analyze(
                     except (ValueError, AttributeError):
                         votes.append(False)
                 ok += sum(votes) * 2 > len(votes)
-            measured.setdefault((m, role, T), []).append(ok / len(ps))
+            measured.setdefault((s.harness, m, role, T), []).append(ok / len(ps))
     except BudgetExceeded as e:
         stopped = str(e)
     out_groups = []
     for g in result["groups"]:
         pts: list[dict[str, Any]] = []
-        for (m, role, T), vals in sorted(measured.items()):
-            if (m, role) != (g["model"], g["role"]):
+        for (h, m, role, T), vals in sorted(measured.items()):
+            if (h, m, role) != (g["harness"], g["model"], g["role"]):
                 continue
             assumed = g["recall"][g["grid"].index(T)] if T in g["grid"] else None
             pts.append(
@@ -342,19 +356,14 @@ def deep_analyze(
             )
         if not pts:
             continue
-        floor = g["recommendation"]["recall_floor"]
         dis = [
             p for p in pts if p["assumed_recall"] is not None and abs(p["measured_recall"] - p["assumed_recall"]) > 0.1
         ]
-        adjusted: dict[str, int] = {}
-        for name, prof in g["profiles"].items():
-            thr = prof["threshold"]
-            hp = next((p for p in pts if p["threshold"] == thr), None)
-            if hp and hp["measured_recall"] < floor:
-                ok_pts = [p["threshold"] for p in pts if p["threshold"] < thr and p["measured_recall"] >= floor]
-                adjusted[name] = max(ok_pts) if ok_pts else min(p["threshold"] for p in pts)
+        g["measured"] = pts  # kept on the group: a later reselect applies the same guardrail
+        adjusted = apply_measured(g)
         out_groups.append(
             {
+                "harness": g["harness"],
                 "model": g["model"],
                 "role": g["role"],
                 "points": pts,
@@ -362,10 +371,6 @@ def deep_analyze(
                 "adjusted": adjusted,
             }
         )
-        for name, thr in adjusted.items():
-            override_profile(g, name, thr, "deep_recall_below_floor")
-        if g["profile"] in adjusted:
-            g["recommendation"] = dict(g["recommendation"], threshold=adjusted[g["profile"]])
     result["mode"] = "deep"
     result["deep"] = {
         "model": model,

@@ -229,7 +229,7 @@ See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, n
 | Inputs | your logs + price table | lite + a model you choose, via Claude Code or Codex |
 | Does | replay simulation, cost model, re-discovery penalty, summary fact-check heuristics | re-summarizes sampled sessions at candidate thresholds, probes them for ground-truth facts, LLM judge on a different model |
 | Recall | assumed proxy | measured on samples; disagreements with lite are shown |
-| Cost | $0, offline | shows an estimate first, needs `--yes`, stops at `--budget` |
+| Cost | $0, offline | shows an estimate first, needs `--yes`, stops at `--budget` (checked before each call and against measured spend after it; one call can overshoot the cap) |
 
 ```bash
 compactlab simulate --mode deep --executor claude-code --model claude-sonnet-5-5 \
