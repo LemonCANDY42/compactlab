@@ -24,16 +24,26 @@ from .adapters import adapter_names
 from .pricing import PricingTable
 from .sim.select import PROFILE_NAMES, compare
 
-SCHEMA = "compactlab.share/1"
+SCHEMA_V1 = "compactlab.share/1"
+SCHEMA = "compactlab.share/2"  # /2 adds the optional per-group `verification` block
+SCHEMAS = (SCHEMA_V1, SCHEMA)
 ISSUE_URL = "https://github.com/LemonCANDY42/compactlab/issues/new?template=share_estimates.yml"
 ROLES = ("main", "subagent")
 CHANGING = ("set", "change")
 ACTIONS = (*CHANGING, "keep default", "no action needed")
 MODES = ("lite", "deep")
+VERDICTS = ("too_early", "unclear", "consistent", "less", "more")
+IN_EFFECT = ("yes", "no", "none seen", "n/a")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,47}$")
-VERSION = re.compile(r"^\d+\.\d+\.\d+[A-Za-z0-9.+-]{0,16}$")
+VERSION = re.compile(r"^\d+\.\d+\.\d+((a|b|rc)\d+)?(\.dev\d+)?$")
 MAX_GROUPS = 32
 MAX_RECORD_BYTES = 64_000
+MAX_BODY_CHARS = 200_000
+# Free text never reaches a record: every string is one of these words (or "other").
+FLAGS = ("min_window_unreachable", "wait_cap_unreachable", "guardrail_applied", "recall_floor_not_met",
+         "below_quarter_window", "wait_over_cap", "deep_recall_below_floor")  # fmt: skip
+TIME_SOURCES = ("own", "pooled", "prior")
+PENALTY_SOURCES = ("observed", "prior")
 
 
 class ShareError(Exception):
@@ -63,9 +73,8 @@ def _metrics(c: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _slug(s: str, default: str = "other") -> str:
-    s = re.sub(r"[^a-z0-9_.-]+", "-", (s or "").lower()).strip("-")
-    return s[:48] if SLUG.match(s[:48] or "!") else default
+def _vocab(s: Any, allowed: tuple[str, ...]) -> str:
+    return s if s in allowed else "other"
 
 
 def _ttl_source(s: str) -> str:
@@ -87,7 +96,7 @@ def _group(g: dict[str, Any], public_models: set[str]) -> dict[str, Any]:
         profiles[n] = {
             "threshold": int(cm["threshold"]),
             "action": cm["action"],
-            "flags": [_slug(f) for f in g["profiles"][n].get("flags", [])][:8],
+            "flags": [_vocab(f, FLAGS) for f in g["profiles"][n].get("flags", [])][:8],
             "vs_default": _metrics(cm["vs_default"]),
             "vs_current": _metrics(cm["vs_current"]) if cm.get("vs_current") else None,
         }
@@ -107,9 +116,9 @@ def _group(g: dict[str, Any], public_models: set[str]) -> dict[str, Any]:
         "cache_ttl_s": int(g["cache_ttl"]),
         "cache_ttl_source": _ttl_source(g.get("cache_ttl_source", "")),
         "price_source": _price_source(g.get("price_source", "")),
-        "turn_source": _slug(tm.get("turn_source", "")),
-        "compact_source": _slug(tm.get("compact_source", "")),
-        "penalty_source": _slug(pen.get("source", "")),
+        "turn_source": _vocab(tm.get("turn_source"), TIME_SOURCES),
+        "compact_source": _vocab(tm.get("compact_source"), TIME_SOURCES),
+        "penalty_source": _vocab(pen.get("source"), PENALTY_SOURCES),
         "no_action_needed": bool(g["no_action_needed"]),
         # replay of the historical behaviour over what the logs priced at list price: how far to trust the replay
         "replay_over_logged": _sig(hist["cost"] / g["actual_cost"]) if hist and g.get("actual_cost") else None,
@@ -118,12 +127,56 @@ def _group(g: dict[str, Any], public_models: set[str]) -> dict[str, Any]:
     }
 
 
-def build(result: dict[str, Any], *, allow_demo: bool = False) -> dict[str, Any]:
-    """The shareable record for a saved result. Refuses synthetic demo data (it would pollute the pool)."""
+def _verification(v: dict[str, Any]) -> dict[str, Any]:
+    """One `verify` group as flat, rounded figures: what was predicted, what the logs showed, and how much data."""
+    o, p, r = v["observed"], v["predicted"], v.get("replay_after") or {}
+    iv = o["cost_pct_interval"] or [None, None]
+    return {
+        "old_threshold": v["old"],  # None = the harness default
+        "new_threshold": int(v["new"]),
+        "before_sessions": int(_sig(v["before"]["sessions"], 2) or 0),
+        "after_sessions": int(_sig(v["after"]["sessions"], 2) or 0),
+        "before_active_days": v["before"]["active_days"],
+        "after_active_days": v["after"]["active_days"],
+        "verdict": v["verdict"],
+        "in_effect": v["in_effect"],
+        "observed_cost_pct": _sig(o["cost_pct"]),
+        "observed_cost_pct_low": _sig(iv[0]),
+        "observed_cost_pct_high": _sig(iv[1]),
+        "observed_compactions_per_kturn": _sig(o["compactions_per_kturn"]),
+        "predicted_cost_pct": _sig(p["cost_pct"]),
+        "predicted_compactions_per_kturn": _sig(p["compactions_per_kturn"]),
+        "replay_after_cost_pct": _sig(r.get("cost_pct")),
+        "replay_after_compactions_per_kturn": _sig(r.get("compactions_per_kturn")),
+    }
+
+
+def build(
+    result: dict[str, Any], *, allow_demo: bool = False, verification: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The shareable record for a saved result. Refuses synthetic demo data (it would pollute the pool).
+    `verification` is a `verify.verify` result; each of its groups is attached to the matching result group."""
     if result.get("demo") and not allow_demo:
         raise ShareError("this result is synthetic demo data; run compactlab simulate on your own history")
     public = set(PricingTable.bundled()["models"])
-    groups = [_group(g, public) for g in result["groups"]]
+    pairs = [(_group(rg, public), rg) for rg in result["groups"]]
+    for g, rg in pairs:
+        g["verification"] = None
+        for v in (verification or {}).get("groups", []):
+            if v["verdict"] != "no_data" and (v["harness"], v["model"], v["role"]) == (
+                rg["harness"],
+                rg["model"],
+                rg["role"],
+            ):
+                g["verification"] = _verification(v)
+    # Two raw model names (say a dated and an undated id) can share one public name; a record holds one group
+    # per harness, model and role, so the one with the most turns stands for them.
+    best: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for g, _ in pairs:
+        ident = (g["harness"], g["model"], g["role"])
+        if ident not in best or g["turns"] > best[ident]["turns"]:
+            best[ident] = g
+    groups = list(best.values())
     if not groups:
         raise ShareError("the result has no groups to share")
     rec = {
@@ -145,10 +198,20 @@ _Check = Callable[[Any], bool]
 
 
 def _num(lo: float, hi: float, nullable: bool = False) -> _Check:
-    return lambda x: (
-        (x is None and nullable)
-        or (isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) and lo <= x <= hi)
-    )
+    def ok(x: Any) -> bool:
+        if x is None:
+            return nullable
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            return False
+        # compare before any float conversion: a 400-digit integer must be refused, not raise
+        return (isinstance(x, int) or math.isfinite(x)) and lo <= x <= hi
+
+    return ok
+
+
+def _rounded(check: _Check, digits: int) -> _Check:
+    """`check`, and the value is already rounded to `digits` significant figures (as `build` writes it)."""
+    return lambda x: check(x) and (x is None or _sig(x, digits) == x)
 
 
 def _int(lo: int, hi: int, nullable: bool = False) -> _Check:
@@ -172,18 +235,18 @@ def _any(_: Any) -> bool:
 
 
 _METRIC_FIELDS: dict[str, _Check] = {
-    "usd_per_day": _num(-1e7, 1e7),
-    "cost_pct": _num(-1000, 1000),
-    "minutes_per_day": _num(-1e5, 1e5),
-    "wait_minutes_per_day": _num(-1e5, 1e5),
-    "compactions_per_day": _num(0, 1e5),
-    "ref_compactions_per_day": _num(0, 1e5),
-    "recall_delta": _num(-1, 1),
+    "usd_per_day": _rounded(_num(-1e7, 1e7), 3),
+    "cost_pct": _rounded(_num(-1000, 1000), 3),
+    "minutes_per_day": _rounded(_num(-1e5, 1e5), 3),
+    "wait_minutes_per_day": _rounded(_num(-1e5, 1e5), 3),
+    "compactions_per_day": _rounded(_num(0, 1e5), 3),
+    "ref_compactions_per_day": _rounded(_num(0, 1e5), 3),
+    "recall_delta": _rounded(_num(-1, 1), 3),
 }
 _PROFILE_FIELDS: dict[str, _Check] = {
     "threshold": _int(1_000, 100_000_000),
     "action": _enum(*ACTIONS),
-    "flags": lambda x: isinstance(x, list) and len(x) <= 8 and all(_slug_ok(f) for f in x),
+    "flags": lambda x: isinstance(x, list) and len(x) <= 8 and all(f in (*FLAGS, "other") for f in x),
 }
 
 
@@ -193,7 +256,7 @@ def _check_fields(path: str, obj: Any, spec: dict[str, _Check], out: list[str], 
         return
     extra = sorted(set(obj) - set(spec))
     if extra:
-        out.append(f"{path}: unexpected field(s) {', '.join(_clean(k) for k in extra[:5])}")
+        out.append(f"{path}: {len(extra)} unexpected field(s)")  # never repeat what was submitted
     for k, ok in spec.items():
         if k not in obj:
             if k not in optional:
@@ -202,38 +265,55 @@ def _check_fields(path: str, obj: Any, spec: dict[str, _Check], out: list[str], 
             out.append(f"{path}.{k}: value not allowed")
 
 
-def _clean(s: Any) -> str:
-    return re.sub(r"[^A-Za-z0-9_.\[\]-]", "?", str(s))[:40]
-
-
 def _issues(path: str, obj: Any, spec: dict[str, _Check]) -> list[str]:
     out: list[str] = []
     _check_fields(path, obj, spec, out)
     return out
 
 
+_PCT = _rounded(_num(-1000, 1000, nullable=True), 3)
+_PER_KTURN = _rounded(_num(-1e5, 1e5, nullable=True), 3)
+_VERIFY_FIELDS: dict[str, _Check] = {
+    "old_threshold": _int(1_000, 100_000_000, nullable=True),
+    "new_threshold": _int(1_000, 100_000_000),
+    "before_sessions": _rounded(_int(0, 10_000_000), 2),
+    "after_sessions": _rounded(_int(0, 10_000_000), 2),
+    "before_active_days": _int(0, 3650),
+    "after_active_days": _int(0, 3650),
+    "verdict": _enum(*VERDICTS),
+    "in_effect": _enum(*IN_EFFECT),
+    "observed_cost_pct": _PCT,
+    "observed_cost_pct_low": _PCT,
+    "observed_cost_pct_high": _PCT,
+    "observed_compactions_per_kturn": _PER_KTURN,
+    "predicted_cost_pct": _PCT,
+    "predicted_compactions_per_kturn": _PER_KTURN,
+    "replay_after_cost_pct": _PCT,
+    "replay_after_compactions_per_kturn": _PER_KTURN,
+}
 _GROUP_FIELDS: dict[str, _Check] = {
     "harness": _enum(*adapter_names()),
     "model": lambda x: _slug_ok(x) and (x == "other" or x in PricingTable.bundled()["models"]),
     "role": _enum(*ROLES),
-    "sessions": _int(1, 10_000_000),
-    "turns": _int(1, 1_000_000_000),
-    "days": _num(0, 3650),
-    "active_days": _num(0, 3650, nullable=True),
-    "observed_compactions": _int(0, 100_000_000),
+    "sessions": _rounded(_int(1, 10_000_000), 2),
+    "turns": _rounded(_int(1, 1_000_000_000), 2),
+    "days": _rounded(_num(0, 3650), 2),
+    "active_days": _rounded(_num(0, 3650, nullable=True), 2),
+    "observed_compactions": _rounded(_int(0, 100_000_000), 2),
     "window": _int(10_000, 100_000_000),
     "default_threshold": _int(1_000, 100_000_000),
     "current_threshold": _int(1_000, 100_000_000, nullable=True),
     "cache_ttl_s": _int(0, 86_400),
     "cache_ttl_source": _enum("default", "logs", "override"),
     "price_source": _enum("bundled", "refreshed", "user", "other"),
-    "turn_source": _slug_ok,
-    "compact_source": _slug_ok,
-    "penalty_source": _slug_ok,
+    "turn_source": _enum(*TIME_SOURCES, "other"),
+    "compact_source": _enum(*TIME_SOURCES, "other"),
+    "penalty_source": _enum(*PENALTY_SOURCES, "other"),
     "no_action_needed": _bool,
-    "replay_over_logged": _num(0, 1000, nullable=True),
+    "replay_over_logged": _rounded(_num(0, 1000, nullable=True), 3),
     "current_vs_default": lambda x: x is None or isinstance(x, dict),  # fields checked in validate()
     "profiles": _any,  # checked in validate()
+    "verification": lambda x: x is None or isinstance(x, dict),  # /2 only; fields checked in validate()
 }
 
 
@@ -243,7 +323,7 @@ def validate(rec: Any) -> list[str]:
     if not isinstance(rec, dict):
         return ["record: expected a JSON object"]
     top: dict[str, _Check] = {
-        "schema": _enum(SCHEMA),
+        "schema": _enum(*SCHEMAS),
         "compactlab": lambda x: isinstance(x, str) and bool(VERSION.match(x)),
         "estimated": lambda x: x is True,
         "mode": _enum(*MODES),
@@ -253,11 +333,22 @@ def validate(rec: Any) -> list[str]:
     groups = rec.get("groups")
     if not isinstance(groups, list):
         return out
+    seen: set[tuple[Any, Any, Any]] = set()
     for i, g in enumerate(groups[:MAX_GROUPS]):
         p = f"groups[{i}]"
-        _check_fields(p, g, _GROUP_FIELDS, out)
+        if isinstance(g, dict):
+            ident = (g.get("harness"), g.get("model"), g.get("role"))
+            if all(isinstance(x, str) for x in ident):  # never hash an unvetted object; wrong types are reported below
+                if ident in seen:
+                    out.append(f"{p}: the same harness, model and role appears twice")
+                seen.add(ident)
+        _check_fields(p, g, _GROUP_FIELDS, out, optional=("verification",))
         if not isinstance(g, dict):
             continue
+        if isinstance(g.get("verification"), dict):
+            if rec.get("schema") == SCHEMA_V1:
+                out.append(f"{p}.verification: not part of schema 1")
+            out += _issues(f"{p}.verification", g["verification"], _VERIFY_FIELDS)
         if isinstance(g.get("current_vs_default"), dict):
             out += _issues(f"{p}.current_vs_default", g["current_vs_default"], _METRIC_FIELDS)
         profs = g.get("profiles")
@@ -282,17 +373,41 @@ def validate(rec: Any) -> list[str]:
 _FENCE = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.S)
 
 
+def _no_dupes(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError("duplicate key")
+        out[k] = v
+    return out
+
+
+def loads(text: str) -> Any:
+    """Strict JSON: bounded size, and a field that appears twice is an error (the first value would hide)."""
+    if len(text) > MAX_BODY_CHARS:
+        raise ShareError("the record is too large")
+    try:
+        return json.loads(text, object_pairs_hook=_no_dupes)
+    except (ValueError, RecursionError) as e:
+        raise ShareError("not valid JSON, or a field appears twice") from e
+
+
 def parse_issue_body(body: str) -> Any:
     """The JSON record in a GitHub issue-form body (the textarea arrives in a fenced block), or raise ShareError."""
-    for m in _FENCE.finditer(body or ""):
+    body = body or ""
+    if len(body) > MAX_BODY_CHARS:
+        raise ShareError("the record is too large")
+    err: ShareError | None = None
+    for m in _FENCE.finditer(body):
         try:
-            return json.loads(m.group(1))
-        except ValueError:
-            continue
+            return loads(m.group(1))
+        except ShareError as e:
+            err = e
     try:
-        return json.loads(body)
-    except (TypeError, ValueError) as e:
-        raise ShareError("no JSON record found; paste the whole content of the file compactlab share wrote") from e
+        return loads(body)
+    except ShareError:
+        msg = "no JSON record found; paste the whole content of the file compactlab share wrote"
+        raise err or ShareError(msg) from None
 
 
 # ---------- aggregation ----------
@@ -314,13 +429,13 @@ def aggregate(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
             cells.setdefault((g["harness"], g["model"], g["role"]), []).append(g)
     rows = []
     for (h, m, r), gs in sorted(cells.items()):
-        act = [g for g in gs if not g["no_action_needed"]]
+        act = gs  # a group with nothing to change saves nothing: it stays in the medians as zero
         row: dict[str, Any] = {
             "harness": h,
             "model": m,
             "role": r,
             "groups": len(gs),
-            "no_action_needed": len(gs) - len(act),
+            "no_action_needed": sum(g["no_action_needed"] for g in gs),
             "median_days": _median([g["days"] for g in gs]),
             "median_replay_over_logged": _median([g["replay_over_logged"] for g in gs if g["replay_over_logged"]]),
             "profiles": {},
@@ -329,7 +444,7 @@ def aggregate(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
             # "keep default" means the user changes nothing: that group saves nothing, whatever the profile's pick said
             vs = [
                 g["profiles"][p]["vs_default"]
-                if g["profiles"][p]["action"] in CHANGING
+                if g["profiles"][p]["action"] in CHANGING and not g["no_action_needed"]
                 else dict.fromkeys(_METRIC_FIELDS, 0.0)
                 for g in act
             ]
@@ -350,6 +465,23 @@ def aggregate(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
             "median_cost_pct": _median([c["cost_pct"] for c in cur]),
             "median_usd_per_day": _median([c["usd_per_day"] for c in cur]),
             "median_minutes_per_day": _median([c["minutes_per_day"] for c in cur]),
+        }
+        ver = [
+            v
+            for g in gs
+            if (v := g.get("verification"))
+            and v["verdict"] in ("consistent", "less", "more")
+            and v["observed_cost_pct"] is not None
+            and v["predicted_cost_pct"] is not None
+        ]
+        row["verification"] = {
+            "groups": len(ver),
+            "consistent": sum(v["verdict"] == "consistent" for v in ver),
+            "not_in_effect": sum(v["in_effect"] == "no" for v in ver),
+            "median_observed_cost_pct": _median([v["observed_cost_pct"] for v in ver]),
+            "median_predicted_cost_pct": _median([v["predicted_cost_pct"] for v in ver]),
+            # observed minus predicted, in percentage points: positive = saved less than the replay said
+            "median_error_pts": _median([v["observed_cost_pct"] - v["predicted_cost_pct"] for v in ver]),
         }
         rows.append(row)
     return {"records": n, "cells": rows}
@@ -376,6 +508,21 @@ def aggregate_text(agg: dict[str, Any], profile: str = "balanced") -> str:
             f" {f(p['median_minutes_per_day'], '+.1f'):>8} {f(c['median_cost_pct'], '+.1f'):>10}"
             f" {f(r['median_replay_over_logged'], '.2f'):>14}"
         )
+    checked = [r for r in agg["cells"] if r["verification"]["groups"]]
+    if checked:
+        lines += [
+            "",
+            "checked against the logs after the change (cost per 1k turns; error = observed - predicted, points):",
+            f"{'harness':12} {'model':20} {'role':9} {'n':>3} {'observed%':>10} {'predicted%':>11} {'error pts':>10}"
+            f" {'consistent':>11} {'not applied':>12}",
+        ]
+        for r in checked:
+            v = r["verification"]
+            lines.append(
+                f"{r['harness']:12} {r['model']:20} {r['role']:9} {v['groups']:>3}"
+                f" {f(v['median_observed_cost_pct'], '+.1f'):>10} {f(v['median_predicted_cost_pct'], '+.1f'):>11}"
+                f" {f(v['median_error_pts'], '+.1f'):>10} {v['consistent']:>11} {v['not_in_effect']:>12}"
+            )
     return "\n".join(lines)
 
 
@@ -395,4 +542,10 @@ def preview(rec: dict[str, Any]) -> str:
                 f"{v['minutes_per_day']:+.1f} min/day wall-clock vs default"
             )
         out.append(f"  {g['harness']} · {g['model']} · {g['role']} · {g['sessions']} sessions: {what}")
+        if x := g.get("verification"):
+            pct = lambda v: "-" if v is None else f"{v:+.1f}%"  # noqa: E731
+            out.append(
+                f"    checked after the change ({x['verdict']}, setting in effect: {x['in_effect']}): "
+                f"cost {pct(x['observed_cost_pct'])} observed vs {pct(x['predicted_cost_pct'])} predicted"
+            )
     return "\n".join(out)

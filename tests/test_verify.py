@@ -107,3 +107,50 @@ def test_cli_runs_on_synthetic_logs(tmp_path, claude_root, codex_root, capsys):
                "--since-days", "0", "--no-cache", "--json"])  # fmt: skip
     assert rc == 0
     assert "groups" in json.loads(capsys.readouterr().out)
+
+
+# ---- regressions from the Codex review ----
+
+
+def test_inherited_setting_is_the_baseline_when_the_manifest_records_it():
+    m = _manifest(old=None)
+    m["entries"][0]["changes"][0]["old_effective"] = 500_000  # a top-level autoCompactWindow governed this model
+    (c,) = verify.changes_from_manifest(m)
+    assert c.old == 500_000
+    g = verify.verify(_sessions(), m, PricingTable.load(offline=True))["groups"][0]
+    assert g["old_effective"] == 500_000 or g["old"] == 500_000
+
+
+def test_a_global_key_is_one_setting_for_every_model():
+    key = "model_auto_compact_token_limit"
+    ch = lambda model, old, new: {"harness": "codex", "key": key, "model": model, "old": old, "new": new}  # noqa: E731
+    m = {"created": T0, "entries": [{"changes": [ch("gpt-a", 100_000, 200_000), ch("gpt-b", 100_000, 300_000)]}]}
+    (c,) = verify.changes_from_manifest(m)
+    assert (c.model, c.old, c.new) == ("", 100_000, 300_000)
+
+
+def test_mixed_model_sessions_are_priced_per_turn():
+    pricing = PricingTable.load(offline=True)
+    s = _session("m", T0, turns=3)
+    s.turns[2].model = "claude-sonnet-5-5"
+    cheaper = verify.observe([s], pricing)["cost"]
+    s.turns[2].model = MODEL
+    assert cheaper != verify.observe([s], pricing)["cost"]
+
+
+def test_in_effect_uses_the_threshold_the_harness_honours():
+    base = {"after": {"median_compaction_tokens": 304_000}, "new": 1_000_000, "new_effective": 300_000,
+            "expected_compactions_after": 3}  # fmt: skip
+    assert verify._in_effect(base) == "yes"  # configured 1M, clamped to 300k
+    none = {**base, "after": {"median_compaction_tokens": None}}
+    assert verify._in_effect(none) == "none seen"
+    assert verify._in_effect({**none, "expected_compactions_after": 0}) == "n/a"
+
+
+def test_apply_records_the_inherited_setting(tmp_path):
+    from compactlab.apply import Change, _effective_old
+
+    f = tmp_path / "settings.json"
+    f.write_text(json.dumps({"autoCompactWindow": 500000}))
+    ch = Change("claude-code", f, f"modelSettings.{MODEL}.autoCompactWindow", MODEL, None, 300000)
+    assert _effective_old(ch) == 500_000  # the model key is absent, but a top-level setting governed it

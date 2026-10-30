@@ -30,11 +30,27 @@ Per harness / model / role group, with figures rounded to 2–3 significant digi
 
 Not in a record, by construction: session ids, file or project paths, timestamps and dates, context curves,
 histograms, transcript text, settings file contents, user or machine names. The checker is an allow-list: any extra
-field, any string outside a fixed vocabulary, or a non-finite number rejects the whole record rather than being
-scrubbed. Dollar figures reveal scale (your spend per day), so skim them before you post; the file is plain JSON.
+field, any string outside a fixed vocabulary, a number with more digits than `share` writes, a repeated JSON field, a
+repeated group or a non-finite number rejects the whole record rather than being scrubbed. A rejection message
+never repeats what was submitted. Dollar figures reveal scale (your spend per day), so skim them before you post; the file is plain JSON.
 
 "Your current vs default" is the nearest thing to "what applying it saved": it compares the threshold you run
 (read from your settings) with the harness default on the same history. It is still a counterfactual replay.
+
+## Adding what happened afterwards
+
+```bash
+compactlab share --result result.json --verify     # needs a change made with compactlab apply
+```
+
+`--verify` runs `compactlab verify` on your logs and adds a `verification` block to each group it could
+check: the old and new threshold, how many sessions and active days it had on each side, the verdict, whether
+compactions really landed near the threshold the harness honours, and three pairs of figures: the change in cost
+per 1k turns (percent) that the replay predicted, that the logs showed (with an 80% interval) and that a replay of
+the later sessions gives, and the same three for the change in compactions per 1k turns. These are changes, not
+absolute costs. Rounded like the rest; no dates. This is the schema `compactlab.share/2`; the checker still accepts
+`/1` records. The pool then shows, per model and role, the median prediction error in percentage points and how
+many applied settings were not in effect.
 
 ## Reading the pool
 
@@ -48,10 +64,10 @@ saving. The output is medians per harness / model / role, with the count `n`. Tr
 
 ## What this cannot tell you
 
-Self-selected, public, and the replay is the only source of "saved". It shows spread and replay error, not the true
-effect of a change. The better check is local: after applying a threshold, `compactlab verify` compares the cost and
-compactions the replay predicted with what the logs show since (cost only, not wall-clock). A later schema version
-could carry its predicted *and* observed figures in a record.
+Self-selected and public. Without `--verify` the replay is the only source of "saved", so the pool shows spread and
+replay error, not the true effect of a change. With it, a record carries logged cost per 1k turns before and after a
+real change, which is still observational: the work you did may differ between the two periods, which is what the
+interval and the replay-on-later-sessions figure are there to show. Cost and compactions only, not wall-clock.
 
 ## Why an issue form
 

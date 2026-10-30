@@ -1246,10 +1246,29 @@ def cmd_share(a: argparse.Namespace) -> int:
     res = _load_result(a.result) if a.result else run_analysis(a)
     if res is None:
         return 2
+    verification = None
+    if a.verify:
+        from .. import verify as vf
+
+        sessions = load_sessions(a)
+        try:
+            m = (
+                Path(a.state_dir).expanduser() / "manifests" / f"{a.id}.json"
+                if a.id
+                else ap.latest_manifest(Path(a.state_dir).expanduser())
+            )
+            manifest = json.loads(m.read_text())
+        except (ap.ApplyError, OSError, ValueError) as e:
+            raise CLIError(f"--verify needs a change made with compactlab apply: {e}") from e
+        verification = vf.verify(sessions, manifest, _pricing(a))
+        if not any(g["verdict"] != "no_data" for g in verification["groups"]):
+            raise CLIError("--verify: no sessions on both sides of the change yet; share without --verify")
     try:
-        rec = share.build(res)
+        rec = share.build(res, verification=verification)
     except share.ShareError as e:
         raise CLIError(str(e)) from e
+    if verification and not any(g["verification"] for g in rec["groups"]):
+        raise CLIError("--verify: the verified models are not among the shared groups; share without --verify")
     text = json.dumps(rec, indent=2, sort_keys=True)
     out = Path(a.out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1496,6 +1515,10 @@ def _commands(sub: Any, fmt: Any) -> None:
     s.add_argument("--out", default="compactlab-share.json", help="where to write the record")
     s.add_argument("--copy", action="store_true", help="also copy the record to the macOS clipboard (pbcopy)")
     s.add_argument("--check", metavar="FILE", help="validate a record (or an issue body) instead of building one")
+    s.add_argument("--verify", action="store_true",
+                   help="add what `compactlab verify` found since the last apply (predicted vs logged)")  # fmt: skip
+    s.add_argument("--id", help="with --verify: manifest id (default: the latest apply)")
+    s.add_argument("--state-dir", default=STATE, help="with --verify: backups and manifests (default ~/.compactlab)")
     s.set_defaults(f=cmd_share)
 
     s = sub.add_parser("serve", help="localhost service: live report + JSON API, recalibrates on a schedule (lite)")

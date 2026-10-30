@@ -104,3 +104,184 @@ def test_cli_share_writes_checks_and_refuses_demo(tmp_path, claude_root, codex_r
     d.write_text(json.dumps(demo))
     assert main(["share", "--result", str(d), "--out", str(tmp_path / "x.json")]) == 2
     assert not (tmp_path / "x.json").exists()
+
+
+def _verification(result):
+    g = result["groups"][0]
+    from compactlab import verify
+
+    ver = {
+        "groups": [
+            {
+                "harness": g["harness"], "model": g["model"], "role": g["role"], "old": None, "new": 300_000,
+                "before": {"sessions": 12, "active_days": 8}, "after": {"sessions": 9, "active_days": 5},
+                "verdict": "consistent", "in_effect": "yes",
+                "observed": {"cost_pct": -21.84, "cost_pct_interval": [-35.2, -8.1], "compactions_per_kturn": 1.234},
+                "predicted": {"cost_pct": -19.9, "compactions_per_kturn": 1.3},
+                "replay_after": {"cost_pct": -20.5, "compactions_per_kturn": 1.1},
+            }
+        ]
+    }  # fmt: skip
+    assert verify  # the shape above is what verify.verify returns
+    return ver
+
+
+def test_verification_is_attached_to_its_group_and_valid(result):
+    rec = share.build(result, verification=_verification(result))
+    assert rec["schema"] == share.SCHEMA == "compactlab.share/2"
+    assert share.validate(rec) == []
+    v = rec["groups"][0]["verification"]
+    assert v["observed_cost_pct"] == -21.8 and v["predicted_cost_pct"] == -19.9 and v["old_threshold"] is None
+    assert all(g["verification"] is None for g in rec["groups"][1:])
+    assert "checked after the change" in share.preview(rec)
+
+
+def test_verification_with_no_data_is_left_out(result):
+    ver = _verification(result)
+    ver["groups"][0]["verdict"] = "no_data"
+    assert all(g["verification"] is None for g in share.build(result, verification=ver)["groups"])
+
+
+def test_validate_rejects_bad_verification_and_v1_with_verification(result):
+    rec = share.build(result, verification=_verification(result))
+    bad = copy.deepcopy(rec)
+    bad["groups"][0]["verification"]["note"] = "hi"
+    bad["groups"][0]["verification"]["verdict"] = "great"
+    bad["groups"][0]["verification"]["observed_cost_pct"] = "-3"
+    assert len(share.validate(bad)) == 3
+    v1 = copy.deepcopy(rec)
+    v1["schema"] = share.SCHEMA_V1
+    assert any("not part of schema 1" in p for p in share.validate(v1))
+    v1["groups"][0]["verification"] = None
+    assert share.validate(v1) == []
+
+
+def test_aggregate_reports_the_prediction_error(result):
+    rec = share.build(result, verification=_verification(result))
+    agg = share.aggregate([rec])
+    row = next(r for r in agg["cells"] if r["verification"]["groups"])
+    v = row["verification"]
+    assert (
+        v["consistent"] == 1 and v["median_observed_cost_pct"] == -21.8 and v["median_error_pts"] == pytest.approx(-1.9)
+    )
+    assert "checked against the logs" in share.aggregate_text(agg)
+
+
+def test_cli_share_verify_needs_a_manifest_and_both_sides(tmp_path, claude_root, codex_root, capsys):
+    r = sim(tmp_path, claude_root, codex_root)
+    base = ["share", "--result", str(r), "--out", str(tmp_path / "s.json"), "--verify", "--no-cache",
+            "--claude-root", str(claude_root), "--codex-root", str(codex_root), "--since-days", "0"]  # fmt: skip
+    assert main([*base, "--state-dir", str(tmp_path / "none")]) == 2
+    assert "apply" in capsys.readouterr().err
+    sd = tmp_path / "state"
+    (sd / "manifests").mkdir(parents=True)
+    # applied after every synthetic session: nothing on the after side
+    (sd / "manifests" / "m1.json").write_text(
+        json.dumps({"id": "m1", "created": 4_000_000_000, "entries": [{"changes": [
+            {"harness": "claude-code", "model": "x", "key": "k", "old": None, "new": 300000}]}]}))  # fmt: skip
+    assert main([*base, "--state-dir", str(sd)]) == 2
+    assert "both sides" in capsys.readouterr().err
+
+
+# ---- regressions from the Codex review ----
+
+
+def test_free_text_in_vocabulary_fields_is_refused(result):
+    rec = share.build(result)
+    for mutate in (
+        lambda r: r["groups"][0].update(turn_source="acme-secret-project"),
+        lambda r: r["groups"][0]["profiles"]["balanced"].update(flags=["acme-secret-project"]),
+        lambda r: r.update(compactlab="0.1.0+kenny-macbook"),
+    ):
+        r = copy.deepcopy(rec)
+        mutate(r)
+        assert share.validate(r)
+
+
+def test_rejection_never_repeats_submitted_keys(result):
+    rec = share.build(result)
+    rec["acme-secret-project"] = 1
+    rec["groups"][0]["acme-secret-project"] = 1
+    assert "acme" not in " ".join(share.validate(rec))
+
+
+def test_strict_json_duplicates_size_and_overflow(result):
+    rec = share.build(result)
+    text = json.dumps(rec)
+    dup = text.replace('"role": "main"', '"role": "main", "role": "subagent"', 1)
+    with pytest.raises(share.ShareError):
+        share.parse_issue_body(dup)
+    with pytest.raises(share.ShareError):
+        share.parse_issue_body(" " * 300_000 + text)
+    huge = copy.deepcopy(rec)
+    huge["groups"][0]["days"] = 10**400
+    assert share.validate(huge)  # a clean rejection, not OverflowError
+    precise = copy.deepcopy(rec)
+    precise["groups"][0]["profiles"]["balanced"]["vs_default"]["usd_per_day"] = -12.3456789
+    precise["groups"][0]["turns"] = 1308
+    assert len(share.validate(precise)) == 2
+
+
+def test_the_same_group_twice_is_refused(result):
+    rec = share.build(result)
+    rec["groups"].append(copy.deepcopy(rec["groups"][0]))
+    assert any("twice" in p for p in share.validate(rec))
+
+
+def test_no_action_groups_count_as_zero_saving(result):
+    rec = share.build(result)
+    a = copy.deepcopy(rec["groups"][0])
+    b = copy.deepcopy(a)
+    for g, pct, na in ((a, -50.0, False), (b, -50.0, True)):
+        g["no_action_needed"] = na
+        for p in g["profiles"].values():
+            p["action"] = "no action needed" if na else "set"
+            p["vs_default"]["cost_pct"] = pct
+    rec["groups"] = [a]
+    one = share.aggregate([rec])
+    rec2 = copy.deepcopy(rec)
+    rec2["groups"] = [b]
+    both = share.aggregate([rec, rec2])
+    cell = lambda agg: next(r for r in agg["cells"] if r["role"] == a["role"] and r["model"] == a["model"])  # noqa: E731
+    assert cell(one)["profiles"]["balanced"]["median_cost_pct"] == -50.0
+    assert cell(both)["profiles"]["balanced"]["median_cost_pct"] == -25.0
+    assert cell(both)["profiles"]["balanced"]["share_changing"] == 0.5
+
+
+def test_share_verify_must_attach_to_a_shared_group(tmp_path, claude_root, codex_root, capsys):
+    r = sim(tmp_path, claude_root, codex_root)
+    res = json.loads(r.read_text())
+    only_codex = tmp_path / "codex_only.json"
+    res["groups"] = [g for g in res["groups"] if g["harness"] == "codex"]
+    only_codex.write_text(json.dumps(res))
+    sd = tmp_path / "state"
+    (sd / "manifests").mkdir(parents=True)
+    # applied in the middle of the synthetic history, to a Claude model only
+    import time
+
+    (sd / "manifests" / "m1.json").write_text(
+        json.dumps({"id": "m1", "created": time.time() - 86400 * 3, "entries": [{"changes": [
+            {"harness": "claude-code", "key": "modelSettings.claude-opus-5-5.autoCompactWindow",
+             "model": "claude-opus-5-5", "old": None, "new": 300000}]}]}))  # fmt: skip
+    rc = main(["share", "--result", str(only_codex), "--out", str(tmp_path / "s.json"), "--verify", "--no-cache",
+               "--state-dir", str(sd), "--claude-root", str(claude_root), "--codex-root", str(codex_root),
+               "--since-days", "0"])  # fmt: skip
+    assert rc == 2
+
+
+def test_unhashable_identity_is_a_rejection_not_a_crash(result):
+    rec = share.build(result)
+    rec["groups"][0]["harness"] = []
+    rec["groups"][0]["role"] = {"a": 1}
+    assert share.validate(rec)
+
+
+def test_aliases_of_one_public_model_collapse_to_the_largest_group(result):
+    opus = next(g for g in result["groups"] if g["price_key"] == "claude-opus-5-5" and g["role"] == "main")
+    twin = copy.deepcopy(opus)
+    twin["model"], twin["n_turns"] = "claude-opus-5-5-20251001", opus["n_turns"] + 500
+    result["groups"].append(twin)
+    rec = share.build(result)
+    same = [g for g in rec["groups"] if (g["model"], g["role"]) == ("claude-opus-5-5", "main")]
+    assert len(same) == 1 and same[0]["turns"] >= share._sig(twin["n_turns"], 2)
+    assert share.validate(rec) == []

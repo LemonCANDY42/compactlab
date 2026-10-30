@@ -18,10 +18,11 @@ from __future__ import annotations
 import random
 import statistics
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from .model import Session
+from .model import Session, Turn
 from .pricing import PricingTable
 from .sim.engine import SimOptions, _actual_cost, analyze
 
@@ -34,8 +35,9 @@ NEAR = (0.8, 1.05)  # median size at compaction vs the new threshold: "setting i
 @dataclass
 class Change:
     harness: str
-    model: str  # "" = any model of the harness (Codex has one global key)
-    old: int | None  # None = was unset, i.e. the harness default
+    model: str  # "" = every model of the harness (a global key, e.g. Codex's)
+    key: str
+    old: int | None  # the threshold in force before (None = the harness default)
     new: int
 
 
@@ -43,16 +45,31 @@ def changes_from_manifest(manifest: dict[str, Any]) -> list[Change]:
     out = []
     for ent in manifest.get("entries", []):
         for ch in ent.get("changes", []):
-            old = ch.get("old")
+            old = ch.get("old_effective", ch.get("old"))  # manifests before old_effective only know the key itself
             out.append(
                 Change(
                     ch["harness"],
                     ch.get("model") or "",
+                    str(ch.get("key", "")),
                     old if isinstance(old, int) and not isinstance(old, bool) else None,
                     int(ch["new"]),
                 )
             )
-    return out
+    return resolve(out)
+
+
+def resolve(changes: list[Change]) -> list[Change]:
+    """One change per setting that really exists. A per-model key stays per model; a global key (Codex's) is one
+    setting for every model, so its first old value and last new value stand for all of them."""
+    out: list[Change] = []
+    glob: dict[tuple[str, str], Change] = {}
+    for c in changes:
+        if c.key.startswith("modelSettings."):
+            out.append(c)
+            continue
+        first = glob.get((c.harness, c.key))
+        glob[(c.harness, c.key)] = Change(c.harness, "", c.key, first.old if first else c.old, c.new)
+    return out + list(glob.values())
 
 
 def split(sessions: list[Session], t: float) -> tuple[list[Session], list[Session], int]:
@@ -75,13 +92,23 @@ def _active_days(ss: list[Session]) -> int:
     return len({time.strftime("%Y-%m-%d", time.localtime(x.ts)) for s in ss for x in s.turns if x.ts})
 
 
+def _logged_cost(s: Session, pricing: PricingTable) -> float:
+    """Each turn at its own model's list price: a session that switched models is not priced as its majority."""
+    by_model: dict[str, list[Turn]] = defaultdict(list)
+    for t in s.turns:
+        by_model[t.model].append(t)
+    return sum(
+        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m))
+        for m, ts in by_model.items()
+    )
+
+
 def observe(ss: list[Session], pricing: PricingTable) -> dict[str, Any]:
     """Logged figures for one period of one group."""
     if not ss:
         return {"sessions": 0, "turns": 0, "active_days": 0, "cost": 0.0, "compactions": 0, "per_session": [],
                 "median_compaction_tokens": None}  # fmt: skip
-    price = pricing.lookup(ss[0].model)
-    per = [(_actual_cost(s, price), len(s.turns), len(s.compactions)) for s in ss]
+    per = [(_logged_cost(s, pricing), len(s.turns), len(s.compactions)) for s in ss]
     pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
     return {
         "sessions": len(ss),
@@ -209,6 +236,8 @@ def verify(
                     "old": ch.old,
                     "old_effective": pb[role]["old_threshold"],
                     "new": ch.new,
+                    "new_effective": pb[role]["new"]["threshold"],  # what the harness honours (clamped to its window)
+                    "expected_compactions_after": pa[role]["new"]["compactions"] if role in pa else 0,
                     "before": {k: v for k, v in ob.items() if k != "per_session"},
                     "after": {k: v for k, v in oa.items() if k != "per_session"},
                     "predicted": _predicted(pb[role]),
@@ -241,11 +270,12 @@ def _empty(ch: Change, model: str, t: float, has_before: bool) -> dict[str, Any]
 
 
 def _in_effect(g: dict[str, Any]) -> str:
-    """Did compactions after the change happen near the new threshold? 'yes' / 'no' / 'none seen'."""
-    med, new = g["after"]["median_compaction_tokens"], g["new"]
+    """Did compactions after the change happen near the threshold the harness honours?
+    'yes' / 'no', 'none seen' when the replay says the after sessions should have compacted, else 'n/a'."""
+    med, eff = g["after"]["median_compaction_tokens"], g["new_effective"]
     if med is None:
-        return "none seen" if (g["predicted"]["compactions_per_kturn"] or 0) > 0 else "n/a"
-    return "yes" if NEAR[0] * new <= med <= NEAR[1] * new else "no"
+        return "none seen" if g["expected_compactions_after"] > 0 else "n/a"
+    return "yes" if NEAR[0] * eff <= med <= NEAR[1] * eff else "no"
 
 
 # ---------- text ----------
@@ -288,9 +318,13 @@ def render(res: dict[str, Any]) -> str:
             f"{_fmt(p['compactions_per_kturn'], '+.2f'):>10}{_fmt(r.get('compactions_per_kturn'), '+.2f'):>17}",
         ]
         med = a["median_compaction_tokens"]
-        eff = {"yes": f"✓ near {_k(g['new'])}", "no": f"✗ far from {_k(g['new'])}: the setting may be overridden "
-               "(project settings, env vars, CLI flags)", "none seen": "no compaction after the change",
-               "n/a": "-"}[g["in_effect"]]  # fmt: skip
+        near = _k(g["new_effective"])
+        eff = {
+            "yes": f"✓ near {near}",
+            "no": f"✗ far from {near}: the setting may be overridden (project settings, env vars, CLI flags)",
+            "none seen": "no compaction after the change",
+            "n/a": "-",
+        }[g["in_effect"]]
         before_med = f"{b['median_compaction_tokens'] // 1000}k" if b["median_compaction_tokens"] else "-"
         after_med = f"{med // 1000}k" if med else "-"
         lines.append(f"  {'median size at compaction':26}{before_med:>9}{after_med:>9}   {eff}")

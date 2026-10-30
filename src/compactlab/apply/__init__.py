@@ -288,6 +288,16 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _effective_old(ch: Change) -> int | None:
+    """The threshold in force before this change, including a top-level setting the model key inherited."""
+    from ..sim.baseline import read_current
+
+    try:
+        return read_current(ch.harness, ch.model, ch.file)[0]
+    except (OSError, ValueError):
+        return None
+
+
 def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
     rendered = render(changes)
     mid = time.strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}"
@@ -314,6 +324,7 @@ def write_changes(changes: list[Change], state_dir: Path, pre: Preauth) -> Path:
                     "key": ch.key,
                     "model": ch.model,
                     "old": ch.old,
+                    "old_effective": _effective_old(ch),  # what applied before: the key, else an inherited setting
                     "new": ch.new,
                     "created_depth": depth,
                 }

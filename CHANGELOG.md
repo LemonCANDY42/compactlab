@@ -31,6 +31,9 @@ versioning: [SemVer](https://semver.org/).
   (−22%) for Opus 5.5 and from 575k (−24%) to 650k (−15%) for Sonnet 5.5. Parser version 4 re-parses cached files.
 
 ### Added
+- **`share --verify` and schema `compactlab.share/2`.** A record can carry a per-group `verification` block with
+  what `verify` found (predicted vs logged cost and compactions per 1k turns, interval, whether the setting was in
+  effect, sample sizes). The checker accepts `/1` and `/2`; `aggregate_shares.py` adds the median prediction error.
 - **`compactlab verify`: check a change against the logs.** Splits sessions at the last `apply` (manifest time; `--id`
   for another) and compares, per model and role, logged cost and compactions per 1k turns before vs after, with an
   80% bootstrap interval over sessions, against a replay of the before sessions at the old and new threshold (no data

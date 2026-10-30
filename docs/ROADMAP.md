@@ -31,7 +31,7 @@ The tool's numbers are only as good as the replay. Before adding breadth, measur
 - **`compactlab verify` — done for cost and compactions.** After a threshold change it compares what the replay
   predicted with what the logs show since, per 1k turns, with an interval and a "setting in effect" check. Still to
   do: wall-clock (needs a turn-latency comparison that survives tool and network time), and carrying predicted and
-  observed figures in `compactlab share` records.
+  observed figures in `compactlab share` records — the latter is done (`share --verify`).
 - Run deep mode on a sample of real sessions to replace the lite recall proxy with measured recall, and publish
   the method and the result, whichever way it goes.
 

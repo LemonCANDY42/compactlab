@@ -9,7 +9,8 @@ body:
         Thanks. This issue is **public**. The record holds numbers and model names only: no session ids, paths,
         project names, timestamps or text. `compactlab share` wrote it on your machine and sent nothing.
 
-        1. Run `compactlab simulate --out result.json`, then `compactlab share --result result.json`.
+        1. Run `compactlab simulate --out result.json`, then `compactlab share --result result.json`
+           (add `--verify` if you applied a change at least a few days ago).
         2. Open the file it wrote and read it.
         3. Paste the whole file below. A check runs when you submit and tells you if the record is rejected.
 
