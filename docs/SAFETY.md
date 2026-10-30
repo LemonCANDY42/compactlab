@@ -45,7 +45,7 @@
 | `targets[].keys` | glob patterns of dotted keys that may change; anything else is untouched |
 | `targets[].models` | models whose value may change |
 | `min` / `max` | allowed value range (Claude Code's own range 100000–1000000 also applies) |
-| `max_change_pct` | optional cap on relative change vs the current value |
+| `max_change_pct` | optional cap on relative change vs the value in force now, including a top-level `autoCompactWindow` the model key inherits; `0` allows no change at all |
 
 Codex target: `"harness": "codex"`, `"file": "~/.codex/config.toml"`, `"keys": ["model_auto_compact_token_limit"]`.
 Codex has one global key, so list the single model you want it to follow.
@@ -55,8 +55,11 @@ Codex has one global key, so list the single model you want it to follow.
 1. Refuses non-strict JSON (comments, trailing commas) instead of guessing.
 2. Changes only the allowed key, creating parent objects if needed; keeps other keys and their order.
    If the file's formatting differs from `json.dumps(indent=N)`, the dry-run says it will be normalized.
-3. For TOML, edits or inserts the top-level line only, before the first `[table]`; tables are untouched.
-4. Writes a backup and a manifest under `~/.compactlab/` (`--state-dir`), then writes atomically.
+3. For TOML, edits or inserts the top-level line only, before the first `[table]`; tables are untouched. The edit is
+   string-aware (quoted keys, multi-line strings and arrays are not mistaken for lines) and the result is parsed back;
+   a file that is not valid TOML, or a value that is not a plain integer, is refused rather than guessed at.
+4. Writes a backup and a manifest under `~/.compactlab/` (`--state-dir`), then writes atomically. Backups hold your
+   whole config, which can contain secrets, so the backup directories are mode 0700 and the files 0600.
 
 ## Revert
 

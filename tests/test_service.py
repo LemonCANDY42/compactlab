@@ -410,3 +410,84 @@ def test_service_logs_one_summary_line_with_scan_counts(tmp_path, caplog):
     assert "next calibration: 2" in msgs[-1]  # a local date, an hour from now
     assert "scan" not in json.loads((tmp_path / "service" / "result.json").read_text())
     assert Calibrator(analyze, tmp_path / "m", None).next_text() == "manual only"
+
+
+# ---------- review fixes: consent reload, absolute path, step cap, scheduler survival ----------
+
+
+def _consented_calibrator(tmp_path, make_group, **kw):
+    settings = tmp_path / "settings.json"
+    settings.write_text("{}\n")
+    cpath = tmp_path / "consent.json"
+    save_consent(cpath, Consent("claude-code", str(settings), ["claude-opus-5-5"], "balanced"))
+    res = {"groups": [_group(make_group)], "sessions": []}
+    cal = Calibrator(lambda: json.loads(json.dumps(res)), tmp_path, 3600.0, consent=load_consent(cpath),
+                     consent_path=cpath, rules=Rules(cooldown_s=0), **kw)  # fmt: skip
+    return cal, settings, cpath
+
+
+def test_running_service_honours_a_cleared_or_expired_consent(tmp_path, make_group):
+    cal, settings, cpath = _consented_calibrator(tmp_path, make_group)
+    cpath.unlink()  # `compactlab consent clear` while the service runs
+    out = cal.recalibrate()
+    assert out["status"] == "ok" and json.loads(settings.read_text()) == {}
+    assert "consent" in out["auto_apply"]["error"] and cal.status()["auto_apply"] is False
+    # an expired consent is refused too
+    save_consent(cpath, Consent("claude-code", str(settings), ["claude-opus-5-5"], "balanced", expires="2001-01-01"))
+    assert cal.recalibrate()["auto_apply"]["error"] and json.loads(settings.read_text()) == {}
+    # a fresh valid consent switches it back on without a restart
+    save_consent(cpath, Consent("claude-code", str(settings), ["claude-opus-5-5"], "balanced"))
+    out = cal.recalibrate()
+    assert out["auto_apply"]["manifest"] and "autoCompactWindow" in json.loads(settings.read_text())["modelSettings"][
+        "claude-opus-5-5"]  # fmt: skip
+
+
+def test_consent_stores_an_absolute_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cpath = tmp_path / "state" / "consent.json"
+    save_consent(cpath, Consent("claude-code", "settings.json", ["claude-opus-5-5"]))
+    assert load_consent(cpath).file == str(tmp_path.resolve() / "settings.json")
+    monkeypatch.chdir("/")
+    assert load_consent(cpath).preauth().targets[0].file == tmp_path.resolve() / "settings.json"
+    # a consent file written by an older version with a relative path is refused, not resolved against the cwd
+    d = json.loads(cpath.read_text())
+    d["file"] = "settings.json"
+    cpath.write_text(json.dumps(d))
+    with pytest.raises(ap.ApplyError):
+        load_consent(cpath)
+    # and the CLI stores it absolute
+    monkeypatch.chdir(tmp_path)
+    args = ["consent", "--state-dir", str(tmp_path / "s2"), "set", "--file", "rel.json", "--models", "m", "--yes"]
+    assert main(args) == 0
+    assert load_consent(tmp_path / "s2" / "consent.json").file == str(tmp_path.resolve() / "rel.json")
+
+
+def test_auto_apply_never_exceeds_max_step_after_rounding(make_group):
+    g = _group(make_group)
+    r = Rules()
+    for cur in (960_000, 962_000, 987_000, 931_000):  # off-grid values: nearest-grid rounding used to overshoot
+        d = decide(g, "balanced", cur, None, None, now=0, rules=r)
+        assert d.action == "apply" and abs((d.value or 0) - cur) <= r.max_step and d.value in GRID
+    tiny = decide(g, "balanced", 960_000, None, None, now=0, rules=Rules(max_step=5_000))
+    assert tiny.action == "skip" and "no grid point" in tiny.reason
+
+
+def test_malformed_consented_config_backs_off_instead_of_killing_the_scheduler(tmp_path, make_group):
+    clock = [1000.0]
+    cal, settings, _ = _consented_calibrator(tmp_path, make_group, clock=lambda: clock[0])
+    settings.write_text('{"broken": ')
+    out = cal.recalibrate()
+    assert out["status"] == "error" and "settings.json" in out["error"]
+    assert cal.failures == 1 and cal.next_due() == clock[0] + 300
+    assert cal.status()["last_error"] and cal.status()["last_apply"]["error"]
+    stop = threading.Event()
+    th = threading.Thread(target=cal.loop, args=(stop, 0.05))
+    th.start()
+    time.sleep(0.2)
+    alive = th.is_alive()
+    stop.set()
+    th.join(5)
+    assert alive  # the loop is still waiting out the backoff
+    settings.write_text("{}\n")  # fixed: the next due run applies and clears the error
+    clock[0] += 400
+    assert cal.recalibrate()["status"] == "ok" and cal.failures == 0 and cal.last_error is None

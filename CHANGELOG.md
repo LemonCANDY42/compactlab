@@ -21,6 +21,18 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **Config-writing and service safety fixes** (from an independent review of `apply` and `serve`):
+  - a running service re-reads and validates the consent file before every auto-apply, so `consent clear` or a
+    passed `expires` stops writes without a restart (the reason shows under `last_apply`);
+  - backups under `~/.compactlab/backups` are created 0700 / 0600 instead of the process umask;
+  - `consent set` stores the settings file as an absolute path, and a stored relative path is refused;
+  - Codex `config.toml` edits are string-aware (quoted keys, signed values, `key = ...` lines inside multi-line
+    strings) and parsed before writing; invalid TOML or a non-integer value is refused;
+  - `max_change_pct` compares with the value in force, including an inherited top-level `autoCompactWindow`, and
+    `0` is a real limit;
+  - auto-apply picks only grid points within `--max-step`, so rounding can no longer exceed it (960k → 850k);
+  - an error in the auto-apply phase (e.g. a malformed settings file) backs off and shows in status instead of
+    killing the scheduler thread.
 - **Cache TTL and write price from the logs.** The replay assumed a 5-minute prompt cache priced at the 5-minute
   write tier, but Claude Code on a subscription caches the main session for 1 hour, billed at 2× the input price.
   The Claude Code parser now keeps each request's 1-hour share (`usage.cache_creation.ephemeral_1h_input_tokens`,

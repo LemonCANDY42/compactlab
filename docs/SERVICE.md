@@ -37,7 +37,7 @@ compactlab consent set --file ~/.claude/settings.json --models claude-opus-5-5 c
 compactlab serve --auto-apply             # or: compactlab recalibrate --auto-apply --dry-run
 ```
 
-The consent names one settings file, the models whose key may change, and the profile; `--expires` is optional. Only
+The consent names one settings file (stored as an absolute path, resolved when you run `consent set`), the models whose key may change, and the profile; `--expires` is optional. Only
 that harness's auto-compact key (`modelSettings.<model>.autoCompactWindow`, or Codex's
 `model_auto_compact_token_limit`) is touched, through the same code as `compactlab apply`. That code keeps a backup,
 writes atomically and records a manifest; `compactlab revert` undoes it, key by key. Every change is also appended to
@@ -53,10 +53,16 @@ A model's setting changes only when all of these hold:
 - the value in the file is still the one compactlab last wrote. If someone edited it, the run logs a `notify` line and
   leaves it alone.
 
-Each run moves at most `--max-step` (100k) toward the target, on the grid. A step stays inside the profile's
+The consent file is re-read before every auto-apply, so `consent clear`, an `expires` that has passed, or an
+unreadable file turns auto-apply off in a running service at its next run (calibration continues; `/api/health` shows
+the reason under `last_apply`). Each run moves at most `--max-step` (100k) toward the target, on the grid: only grid
+points within that distance are candidates, so rounding never overshoots it. A step stays inside the profile's
 guardrails (minimum window, wait cap, recall floor). The one exception is a setting that starts outside them: a step
 may then still be outside, as long as it is strictly closer than where it started. `--dry-run` prints the decision and
 the diff and writes nothing.
+
+If the apply phase itself fails (for example the settings file is malformed), the run counts as a failure and backs off
+like a failed analysis, the error shows in `/api/health`, and the scheduler keeps running.
 
 ## Threat model
 

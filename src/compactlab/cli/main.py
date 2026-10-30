@@ -1065,7 +1065,16 @@ def _calibrator(a: argparse.Namespace):
 
     rules = Rules(min_days=a.min_days, min_turns=a.min_turns, max_step=a.max_step, cooldown_s=cooldown)
     lens = Path(a.lens_out).expanduser() if a.lens_out else None
-    return Calibrator(analyze, state, every, lens_out=lens, consent=consent, rules=rules, dry_run=a.dry_run)
+    return Calibrator(
+        analyze,
+        state,
+        every,
+        lens_out=lens,
+        consent=consent,
+        rules=rules,
+        dry_run=a.dry_run,
+        consent_path=state / "consent.json" if a.auto_apply else None,
+    )
 
 
 def _service_logging(state: Path) -> None:
@@ -1214,7 +1223,7 @@ def cmd_consent(a: argparse.Namespace) -> int:
         return 0
     if not (a.file and a.models):
         raise CLIError("consent set needs --file and --models")
-    c = Consent(a.harness, a.file, list(a.models), a.profile, expires=a.expires)
+    c = Consent(a.harness, str(ap._p(a.file)), list(a.models), a.profile, expires=a.expires)
     print(json.dumps(asdict(c), indent=2))
     if not a.yes and (not sys.stdin.isatty() or input("allow compactlab to change these keys unattended? [y/N] ")
                       .strip().lower() != "y"):  # fmt: skip
