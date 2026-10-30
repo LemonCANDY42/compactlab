@@ -20,6 +20,7 @@ import statistics
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from .model import Session, Turn
@@ -70,6 +71,26 @@ def resolve(changes: list[Change]) -> list[Change]:
         first = glob.get((c.harness, c.key))
         glob[(c.harness, c.key)] = Change(c.harness, "", c.key, first.old if first else c.old, c.new)
     return out + list(glob.values())
+
+
+def parse_when(text: str) -> float:
+    """Epoch seconds for an ISO date or datetime; one without a zone is local time."""
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError as e:
+        raise ValueError(f"cannot read {text!r} as a date; use 2026-10-29 or 2026-10-29T21:05") from e
+
+
+def manual_manifest(applied_at: float, harness: str, model: str, new: int, old: int | None = None) -> dict[str, Any]:
+    """A manifest for a change made by hand: the time, model and values come from the user, not from `apply`."""
+    if harness == "claude-code":
+        key, who = f"modelSettings.{model}.autoCompactWindow", model
+    elif harness == "codex":
+        key, who = "model_auto_compact_token_limit", ""
+    else:
+        raise ValueError(f"verifying a manual change is not supported for {harness}")
+    change = {"harness": harness, "key": key, "model": who, "old": old, "new": new}
+    return {"id": "manual", "created": applied_at, "entries": [{"changes": [change]}]}
 
 
 def split(sessions: list[Session], t: float) -> tuple[list[Session], list[Session], int]:
@@ -184,6 +205,11 @@ def _predicted(r: dict[str, Any]) -> dict[str, float | None]:
 
 def _verdict(g: dict[str, Any], min_sessions: int, min_days: int) -> tuple[str, str]:
     b, a = g["before"], g["after"]
+    if g["already_in_effect"]:
+        return "already", (
+            "the sessions before this date already compacted near the new threshold, so it took effect earlier "
+            "than the time given: use an earlier --applied-at (the settings file's modification time is not it)"
+        )
     if min(b["sessions"], a["sessions"]) < min_sessions or min(b["active_days"], a["active_days"]) < min_days:
         return "too_early", (
             f"too early: need {min_sessions}+ sessions and {min_days}+ active days on each side "
@@ -258,6 +284,7 @@ def verify(
                     },
                 }
                 g["in_effect"] = _in_effect(g)
+                g["already_in_effect"] = _near(g["before"]["median_compaction_tokens"], g["new_effective"])
                 g["verdict"], g["summary"] = _verdict(g, min_sessions, min_days)
                 groups.append(g)
     return {"applied_at": t, "groups": groups, "dropped_sessions": dropped_total}
@@ -275,7 +302,11 @@ def _in_effect(g: dict[str, Any]) -> str:
     med, eff = g["after"]["median_compaction_tokens"], g["new_effective"]
     if med is None:
         return "none seen" if g["expected_compactions_after"] > 0 else "n/a"
-    return "yes" if NEAR[0] * eff <= med <= NEAR[1] * eff else "no"
+    return "yes" if _near(med, eff) else "no"
+
+
+def _near(median_tokens: int | None, threshold: int) -> bool:
+    return median_tokens is not None and NEAR[0] * threshold <= median_tokens <= NEAR[1] * threshold
 
 
 # ---------- text ----------
@@ -296,6 +327,8 @@ def _k(n: int | None) -> str:
 def render(res: dict[str, Any]) -> str:
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(res["applied_at"]))
     lines = [f"Verification of the change applied {when}"]
+    if res.get("note"):
+        lines.append(res["note"])
     for g in res["groups"]:
         lines.append("")
         if g["verdict"] == "no_data":

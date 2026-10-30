@@ -73,6 +73,10 @@ versioning: [SemVer](https://semver.org/).
   (−22%) for Opus 5.5 and from 575k (−24%) to 650k (−15%) for Sonnet 5.5. Parser version 4 re-parses cached files.
 
 ### Added
+- **`verify` for a change made by hand.** `compactlab verify --applied-at WHEN --model M --new 625k [--old N]`
+  builds the manifest from what you give (Codex: no `--model`), since `apply` was not used. The output notes that the
+  time and old value are yours, and a new `already` verdict says when the sessions before that time already compacted
+  near the new threshold (the settings file's modification time is not when a setting took effect).
 - **`share --verify` and schema `compactlab.share/2`.** A record can carry a per-group `verification` block with
   what `verify` found (predicted vs logged cost and compactions per 1k turns, interval, whether the setting was in
   effect, sample sizes). The checker accepts `/1` and `/2`; `aggregate_shares.py` adds the median prediction error.
