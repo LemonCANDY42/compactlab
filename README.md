@@ -175,7 +175,10 @@ and compactions per 1k turns before and after with what a replay of the *before*
 of the *after* sessions, to show when the workload changed). It also checks that compactions really happen near the
 new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
 each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
-verified. Use `--id` for an older apply.
+verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
+`compactlab verify --applied-at 2026-10-29T21:05 --model claude-opus-5-5 --new 625k [--old 967k]` (the time and old
+value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
+too-late date).
 
 ## Run as a service
 

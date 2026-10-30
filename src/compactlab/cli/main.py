@@ -1305,17 +1305,46 @@ def cmd_verify(a: argparse.Namespace) -> int:
     """Compare what a change was predicted to do with what the logs show since it was applied."""
     from .. import verify as vf
 
-    sd = Path(a.state_dir).expanduser()
-    try:
-        m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
-        manifest = json.loads(m.read_text())
-    except (ap.ApplyError, OSError, ValueError) as e:
-        raise CLIError(f"no usable apply manifest: {e}. Verify needs a change made with compactlab apply.") from e
+    note = None
+    if a.applied_at:
+        if a.id or a.new is None:
+            raise CLIError(
+                "--applied-at describes a change made by hand: give --new (and --model for Claude Code), not --id"
+            )
+        harness = a.harness[0] if a.harness and len(a.harness) == 1 else "claude-code"
+        if harness == "claude-code" and not a.model:
+            raise CLIError("--model is needed for a Claude Code change (the key is per model)")
+        try:
+            manifest = vf.manual_manifest(vf.parse_when(a.applied_at), harness, a.model or "", a.new, a.old)
+        except ValueError as e:
+            raise CLIError(str(e)) from e
+        m = Path("manual")
+        note = (
+            "Change made by hand: the time and the old value are as given"
+            + (
+                f" (old {a.old // 1000}k)"
+                if a.old
+                else " (old = the harness default; pass --old if it was something else)"
+            )
+            + "."
+        )
+    else:
+        sd = Path(a.state_dir).expanduser()
+        try:
+            m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
+            manifest = json.loads(m.read_text())
+        except (ap.ApplyError, OSError, ValueError) as e:
+            raise CLIError(
+                f"no usable apply manifest: {e}. Verify needs a change made with compactlab apply, "
+                "or describe a manual one with --applied-at, --model and --new."
+            ) from e
     sessions = load_sessions(a)
     if not sessions:
         raise CLIError("no sessions found; check `compactlab doctor`, or widen --since-days (0 = all)")
     res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days)
     res["manifest"] = m.stem
+    if note:
+        res["note"] = note
     _out(a, res, vf.render(res))
     return 0
 
@@ -1515,6 +1544,13 @@ def _commands(sub: Any, fmt: Any) -> None:
     s.set_defaults(since_days=60)
     s.add_argument("--id", help="manifest id (default: the latest apply)")
     s.add_argument("--state-dir", default=STATE, help="backups and manifests (default ~/.compactlab)")
+    h = s.add_argument_group("a change made by hand (instead of an apply manifest)")
+    h.add_argument(
+        "--applied-at", metavar="WHEN", help="when it took effect: 2026-10-29 or 2026-10-29T21:05 (local time)"
+    )
+    h.add_argument("--model", help="Claude Code: the model whose modelSettings key you set")
+    h.add_argument("--new", type=_k, help="the threshold you set, e.g. 625k")
+    h.add_argument("--old", type=_k, help="the threshold before (default: the harness default)")
     s.add_argument("--pricing", help="pricing override JSON")
     s.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices")
     s.add_argument("--min-sessions", type=int, default=3, help="sessions needed on each side (default 3)")

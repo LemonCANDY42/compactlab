@@ -154,3 +154,38 @@ def test_apply_records_the_inherited_setting(tmp_path):
     f.write_text(json.dumps({"autoCompactWindow": 500000}))
     ch = Change("claude-code", f, f"modelSettings.{MODEL}.autoCompactWindow", MODEL, None, 300000)
     assert _effective_old(ch) == 500_000  # the model key is absent, but a top-level setting governed it
+
+
+def test_manual_change_builds_a_manifest_and_verifies():
+    assert verify.parse_when("2026-10-29T21:05") == pytest.approx(time.mktime((2026, 10, 29, 21, 5, 0, 0, 0, -1)))
+    assert verify.parse_when("2026-10-29") < verify.parse_when("2026-10-29T00:01")
+    with pytest.raises(ValueError):
+        verify.parse_when("yesterday")
+    m = verify.manual_manifest(T0, "claude-code", MODEL, 300_000)
+    assert verify.changes_from_manifest(m)[0].new == 300_000
+    res = verify.verify(_sessions(), m, PricingTable.load(offline=True))
+    assert res["groups"][0]["in_effect"] == "yes"
+    (c,) = verify.changes_from_manifest(verify.manual_manifest(T0, "codex", "", 250_000, 100_000))
+    assert (c.model, c.old, c.new) == ("", 100_000, 250_000)
+    with pytest.raises(ValueError):
+        verify.manual_manifest(T0, "dsh", "x", 1)
+
+
+def test_cli_verify_manual_mode(tmp_path, claude_root, codex_root, capsys):
+    base = ["verify", "--state-dir", str(tmp_path / "none"), "--claude-root", str(claude_root),
+            "--codex-root", str(codex_root), "--since-days", "0", "--no-cache", "--harness", "claude-code"]  # fmt: skip
+    assert main([*base, *["--applied-at", "2026-01-01", "--new", "300k"]]) == 2  # Claude Code needs --model
+    assert "--model" in capsys.readouterr().err
+    assert main([*base, *["--applied-at", "soon", "--model", MODEL, "--new", "300k"]]) == 2
+    rc = main([*base, *["--applied-at", "2000-01-01", "--model", MODEL, "--new", "300k", "--json"]])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["manifest"] == "manual" and "by hand" in out["note"]
+
+
+def test_a_threshold_already_in_effect_before_the_given_time_is_called_out():
+    # the "before" sessions already compact near 300k: the change took effect earlier than the manifest says
+    ss = [_session(f"b{i}", T0 - (i + 1) * DAY * 0.9 - 3600, compact_at=300_000) for i in range(4)]
+    ss += [_session(f"a{i}", T0 + (i + 1) * DAY * 0.9 + 3600, compact_at=300_000) for i in range(4)]
+    g = verify.verify(ss, _manifest(), PricingTable.load(offline=True))["groups"][0]
+    assert g["verdict"] == "already" and "earlier --applied-at" in g["summary"]
