@@ -1,0 +1,39 @@
+name: Share my estimated savings
+description: Contribute an anonymous record from `compactlab share` so the estimates can be checked across many histories
+title: "[data] estimated savings record"
+labels: [data-contribution]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. This issue is **public**. The record holds numbers and model names only: no session ids, paths,
+        project names, timestamps or text. `compactlab share` wrote it on your machine and sent nothing.
+
+        1. Run `compactlab simulate --out result.json`, then `compactlab share --result result.json`.
+        2. Open the file it wrote and read it.
+        3. Paste the whole file below. A check runs when you submit and tells you if the record is rejected.
+
+        The savings in it are replay estimates at list prices, not what you were billed. See
+        [docs/SHARING.md](https://github.com/LemonCANDY42/compactlab/blob/main/docs/SHARING.md).
+  - type: textarea
+    id: record
+    attributes:
+      label: Record
+      description: The content of compactlab-share.json
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything that would help read the numbers (optional)
+      description: Plan type (API, subscription), how long ago you changed the setting, what you noticed. Leave out anything private.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Before you submit
+      options:
+        - label: I read the record and I am happy for it to be public.
+          required: true
+        - label: I agree it may be used, summarised and republished under the project's MIT license.
+          required: true

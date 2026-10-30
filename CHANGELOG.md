@@ -31,6 +31,20 @@ versioning: [SemVer](https://semver.org/).
   (−22%) for Opus 5.5 and from 575k (−24%) to 650k (−15%) for Sonnet 5.5. Parser version 4 re-parses cached files.
 
 ### Added
+- **`compactlab verify`: check a change against the logs.** Splits sessions at the last `apply` (manifest time; `--id`
+  for another) and compares, per model and role, logged cost and compactions per 1k turns before vs after, with an
+  80% bootstrap interval over sessions, against a replay of the before sessions at the old and new threshold (no data
+  from after) and a replay of the after sessions (shows a changed workload). Reports whether compactions land near
+  the new threshold (a setting overridden elsewhere shows as "far"), says "too early" below 3 sessions / 2 active days
+  per side, and drops sessions that span the change. Cost only; wall-clock is not verified.
+- **`compactlab share`: an anonymous, opt-in record of the estimated savings.** Writes `compactlab-share.json`
+  with, per harness / model / role, the thresholds compared and the estimated change per day (each profile vs the
+  harness default and vs your current setting, and your current setting vs the default), plus trust markers
+  (history length, time-model source, replay cost over logged cost). Figures are rounded; no session ids, paths,
+  timestamps, curves or text; unknown model names become `other`; demo data is refused. `share --check FILE`
+  validates a record against an allow-list schema (`compactlab.share/1`). New "Share my estimated savings" issue
+  form, a workflow that validates and labels submitted records, and `scripts/aggregate_shares.py` for medians per
+  group. Nothing is sent by the tool. See `docs/SHARING.md`.
 - **DeepSeek Harness (`dsh`) adapter, experimental.** Reads `$DSH_HOME/sessions` (default `~/.dsh/sessions`): the
   newest `session[.vN].jsonl[.zstd]` per session, zstd via the standard library on Python 3.14+ or the `zstd`
   command (a torn last frame is dropped), disjoint usage counts, `compaction/*` events (failed ones dropped),

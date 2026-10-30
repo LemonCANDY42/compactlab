@@ -10,6 +10,8 @@ file paths and tool output) and harness configuration files it may modify.
   snippets. Disable it with `--no-cache`; wipe it with `compactlab cache clear`.
 - Reports and `result.json` contain token counts, model names and session ids, never transcript text or paths.
   `report --redact` hashes session ids.
+- `share` writes a local file of rounded aggregates (no ids, paths, timestamps or text) that you post yourself; the tool
+  never sends it. Its check is an allow-list, so an unexpected field rejects the record. See docs/SHARING.md.
 - `apply` writes only with `--write` plus a pre-authorization file or `--i-authorize`, keeps backups, and can revert.
 - Deep mode sends reconstructed excerpts of sampled sessions to the model you choose, through a harness you
   choose. It shows an estimate first, needs `--yes`, and stops at `--budget`.

@@ -39,6 +39,7 @@ compactlab doctor                     # where are my logs and configs?
 compactlab report --open              # lite analysis of your last 30 days -> HTML report
 compactlab simulate --out result.json # same analysis, saved for apply
 compactlab apply --result result.json --claude-settings ~/.claude/settings.json   # dry-run diff
+compactlab verify                     # days later: did the change do what the replay predicted?
 ```
 
 compactlab installs from GitHub (it is not on PyPI). Python 3.11+, no runtime dependencies.
@@ -167,6 +168,15 @@ only command that writes, under pre-authorization. The report has the same panel
 
 Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
 
+## Check the prediction afterwards
+
+`compactlab verify` splits your logs at the time of the last `apply` and compares, per model and role, the logged cost
+and compactions per 1k turns before and after with what a replay of the *before* sessions predicted (plus a replay
+of the *after* sessions, to show when the workload changed). It also checks that compactions really happen near the
+new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
+each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
+verified. Use `--id` for an older apply.
+
 ## Run as a service
 
 ```bash
@@ -270,6 +280,9 @@ None of these harnesses lets subagents have their own threshold, so `apply` writ
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
   [pre-authorization file](docs/SAFETY.md) (allowed files, keys, models, value bounds, expiry) or `--i-authorize`.
   Every write is backed up, and `revert` restores only the keys it changed.
+- **Sharing is a file you post yourself.** `compactlab share` writes an anonymous record of the estimated savings
+  (numbers and model names, no ids, paths or timestamps) for the research issue form; it sends nothing. See
+  [docs/SHARING.md](docs/SHARING.md).
 - The scan cache (`~/.compactlab/cache`, mode 0600) stores short excerpts. Use `--no-cache` or `compactlab cache clear`.
 
 ## Limitations
