@@ -191,3 +191,17 @@ def test_calibration_needs_complete_comparable_windows():
     s = _repeating(30)
     s.compactions.append(Compaction(40, pre_tokens=200_000))
     assert calibrate([s] * 5, 35_000, 12_000).n_observed == 0
+
+
+def test_replay_keeps_a_hand_typed_compact_only_while_it_is_still_needed():
+    s = _trace()
+    plain = make_trace(s, 30_000)
+    s.compactions = [Compaction(100, pre_tokens=30_000 + 3000 * 100, trigger="manual")]
+    tr = make_trace(s, 30_000)
+    assert tr.manual == {100: 330_000}
+    assert replay(tr, math.inf, _ctx()).compactions == 1  # no threshold: the user's /compact still happens
+    assert replay(plain, math.inf, _ctx()).compactions == 0
+    # a threshold that already keeps the context small makes the typed /compact unnecessary
+    assert replay(tr, 150_000, _ctx()).compactions == replay(plain, 150_000, _ctx()).compactions
+    s.compactions = [Compaction(100, pre_tokens=330_000, trigger="auto")]
+    assert make_trace(s, 30_000).manual == {}

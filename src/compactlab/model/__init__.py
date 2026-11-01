@@ -30,6 +30,12 @@ class Compaction:
     ts: float | None = None
     summary_text: str = ""
     duration_s: float | None = None  # wall-clock spent compacting, if it can be inferred
+    trigger: str = ""  # "auto" | "manual" (/compact) | "" when the log does not say
+
+
+def is_auto(c: Compaction) -> bool:
+    """A compaction the harness's threshold caused. Unknown counts as auto; only a logged manual one is excluded."""
+    return c.trigger != "manual"
 
 
 @dataclass

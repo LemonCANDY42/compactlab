@@ -21,7 +21,7 @@ from typing import Any
 from .. import __version__, synth
 from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
-from ..adapters.cache import ScanCache
+from ..adapters.cache import CACHE_VERSION, ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
 from ..model import Session
 from ..pricing import DEFAULT_REFRESHED, PricingTable
@@ -899,7 +899,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "refreshed_file": str(rp),
         "refreshed": rp.exists(),
     }
-    cf = Path(f"{STATE}/cache/scan-v1.json").expanduser()
+    cf = Path(f"{STATE}/cache/scan-v{CACHE_VERSION}.json").expanduser()
     report["cache"] = {"path": str(cf), "exists": cf.exists(), "bytes": cf.stat().st_size if cf.exists() else 0}
     lines = [f"compactlab {__version__} · Python {report['python']} · {platform.system()}"]
     for h in report["harnesses"]:

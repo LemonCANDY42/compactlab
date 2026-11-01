@@ -48,7 +48,7 @@ check: the old and new threshold, how many sessions and active days it had on ea
 compactions really landed near the threshold the harness honours, and three pairs of figures: the change in cost
 per 1k turns (percent) that the replay predicted, that the logs showed (with an 80% interval) and that a replay of
 the later sessions gives, and the same three for the change in compactions per 1k turns. These are changes, not
-absolute costs. Rounded like the rest; no dates. This is the schema `compactlab.share/2`; the checker still accepts
+absolute costs. Only compactions the threshold caused are counted: a hand-typed `/compact` (logged by Claude Code as manual) is left out. Rounded like the rest; no dates. This is the schema `compactlab.share/2`; the checker still accepts
 `/1` records. The pool then shows, per model and role, the median prediction error in percentage points and how
 many applied settings were not in effect.
 

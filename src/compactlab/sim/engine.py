@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..model import Session, Turn
+from ..model import Session, Turn, is_auto
 from ..pricing import Price, PricingTable
 from .baseline import default_note_zh, default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate
@@ -48,7 +48,13 @@ class Trace:
     o: list[int]  # output tokens this turn
     gap: list[float]  # idle seconds before this turn
     boundaries: set[int]
+    manual: dict[int, int] = field(default_factory=dict)  # turn after a hand-typed /compact -> context it was typed at
     models: list[str] | None = None  # per-turn model when the session switched models (else the group's price)
+
+
+# A replay keeps a hand-typed /compact only while the replayed context is still near the size it was typed at: if a
+# lower threshold already shrank the context, the user would not have needed to.
+MANUAL_KEEP = 0.7
 
 
 def make_trace(s: Session, base: int) -> Trace:
@@ -62,7 +68,10 @@ def make_trace(s: Session, base: int) -> Trace:
         gap.append(max(t.ts - prev_ts, 0.0) if (t.ts and prev_ts) else 0.0)
         prev, prev_ts = t.ctx, t.ts or prev_ts
     models = [t.model for t in s.turns]
-    return Trace(g, o, gap, bset, models if len(set(models)) > 1 else None)
+    manual = {
+        c.turn_index: c.pre_tokens for c in s.compactions if c.trigger == "manual" and c.pre_tokens and c.turn_index
+    }
+    return Trace(g, o, gap, bset, models=models if len(set(models)) > 1 else None, manual=manual)
 
 
 def rot_fn(table: list[tuple[int, float]]):
@@ -149,6 +158,7 @@ def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
     lat, rot, dec, top = c.tables()
     short, long_above, long_ = c.rate_tab(None)
     models = tr.models
+    man = tr.manual
     ttl, rho, fixed, corr = c.ttl, c.pen.rho, c.pen.fixed_tokens, c.pen.correction_turns
     step_tokens, med_turn = max(c.step_tokens, 1), c.tm.median_turn_s
     ndec = len(dec)
@@ -180,7 +190,7 @@ def replay(tr: Trace, T: float, c: Ctx, with_penalty: bool = True) -> Run:
         t_turns += lat[ki]
         recall += rot[ki] * (dec[since] if since < ndec else 1.0)
         since += 1
-        if ctx > T:
+        if ctx > T or (man and ctx >= MANUAL_KEEP * man.get(i + 1, 1 << 60)):
             cost += ctx * rr + summ * ro  # summarizer call reads the whole context
             t_compact += c.tm.compact(ctx)
             dropped = ctx - base - summ
@@ -394,7 +404,7 @@ def analyze(
             cur["configured"] = cur_val
             cur["source"] = cur_desc
 
-        pre = [x.pre_tokens for s in ss for x in s.compactions if x.pre_tokens]
+        pre = [x.pre_tokens for s in ss for x in s.compactions if x.pre_tokens and is_auto(x)]
         t_hist = _median(pre, 0) or None
         hist_run = run_all(traces, float(t_hist) if t_hist else math.inf, c)
         g: dict[str, Any] = {
@@ -417,7 +427,8 @@ def analyze(
             "summary_tokens": summ,
             "penalty_params": pen.to_dict(),
             "time_model": tm.summary(),
-            "observed_compactions": sum(len(s.compactions) for s in ss),
+            "observed_compactions": sum(is_auto(c) for s in ss for c in s.compactions),
+            "observed_manual_compactions": sum(not is_auto(c) for s in ss for c in s.compactions),
             "peak_p50": _median([s.peak for s in ss], 0),
             "peak_max": max(s.peak for s in ss),
             "grid": grid,
@@ -458,6 +469,7 @@ def analyze(
                 "curve": _downsample([t.ctx for t in s.turns], 160),
                 # the in-browser replay needs every turn: binned growth would count bins as turns
                 "growth": make_trace(s, base_of[id(s)]).g if id(s) in shown else [],
+                "manual": make_trace(s, base_of[id(s)]).manual if id(s) in shown else {},
                 "unknown_events": s.unknown_events,
                 "skipped_inherited": s.skipped_inherited,
             }

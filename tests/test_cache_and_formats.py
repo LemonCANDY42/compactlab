@@ -1,7 +1,7 @@
 import json
 
 from compactlab.adapters import get_adapter
-from compactlab.adapters.cache import ScanCache
+from compactlab.adapters.cache import CACHE_VERSION, ScanCache
 from compactlab.model import session_to_dict
 
 
@@ -17,7 +17,7 @@ def test_cache_hit_resume_and_equivalence(tmp_path, claude_root):
     first = [cache.parse(ad, f) for f in files]
     assert cache.stats["parsed"] == len(files)
     cache.save()
-    assert oct((tmp_path / "c" / "scan-v1.json").stat().st_mode & 0o777) == "0o600"
+    assert oct((tmp_path / "c" / f"scan-v{CACHE_VERSION}.json").stat().st_mode & 0o777) == "0o600"
     c2 = ScanCache(tmp_path / "c")
     again = [c2.parse(ad, f) for f in files]
     assert c2.stats["hit"] == len(files)
