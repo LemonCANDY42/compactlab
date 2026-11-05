@@ -21,6 +21,24 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **History copied into a resumed or forked Claude Code log is no longer counted twice.** The new log repeats the
+  parent's messages with their original timestamps; the same API call was priced and counted once per copy (in one
+  period a third of the turns and a third of the compactions). The earliest session keeps them; later copies drop
+  them and report `skipped_inherited`.
+- **The replay keeps your hand-typed `/compact`.** It used to drop every recorded compaction, so the "default"
+  baseline assumed you never compact by hand and the estimated saving was credited to the threshold. Now a manual
+  `/compact` is replayed at the same place while the replayed context is still at least 70% of the size it was typed
+  at (`MANUAL_KEEP`). On a session with 31 manual and 6 automatic compactions the default baseline went from $1,276 to
+  $932 against $915 actually logged, and the balanced pick's saving from −31% to −6.5%. The report's single-session
+  chart does the same.
+- **Claude Code re-writes old compaction records later in a log.** One long session showed 64 compactions, 37 real.
+  They are now read once (by record id), and the re-written summary line is skipped with them.
+- **Hand-typed `/compact` no longer counts as the threshold.** Claude Code logs whether a compaction was `auto` or
+  `manual`; compactlab ignored it, so `verify`, `share --verify` and the "historical" replay counted manual ones in
+  the observed compactions and the median size at compaction. A user who types `/compact` often saw "already in
+  effect" for a threshold that never was (real logs: 2.9 → 0.5 auto compactions per 1k turns before the change).
+  The adapter now records `trigger`; unknown (Codex, dsh) still counts as auto; `observed_manual_compactions` is
+  reported separately. The scan cache version is 3, so the first run after upgrading re-reads the logs.
 - **Replay model and presentation fixes** (from an independent review of the simulator, selection and report):
   - sessions are grouped by harness, model and role, so one model name under two harnesses is two groups; a session
     that switched models is still replayed with every turn priced at the model that served it (and its logged cost

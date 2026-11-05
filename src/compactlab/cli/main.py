@@ -21,9 +21,9 @@ from typing import Any
 from .. import __version__, synth
 from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
-from ..adapters.cache import ScanCache
+from ..adapters.cache import CACHE_VERSION, ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
-from ..model import Session
+from ..model import Session, drop_inherited
 from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, refresh
 from ..report.html import render_html
@@ -201,6 +201,7 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
             ad = get_adapter(h)(_roots(a).get(h))
             files = list(ad.find_files())
             total += len(files)
+            first = len(out)
             for i, path in enumerate(files, 1):
                 if i % 20 == 0 or i == len(files):
                     stats = "" if quiet or not cache else f" · cached {cache.stats['hit'] + cache.stats['resumed']}"
@@ -215,6 +216,8 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
                     out.append(s)
                 if cache and i % 500 == 0:
                     cache.save()  # keep progress if the scan is interrupted
+            if h == "claude-code":  # a resumed or forked log repeats its parent's history
+                out[first:] = drop_inherited(out[first:])
     finally:
         if cache:
             cache.save()
@@ -899,7 +902,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "refreshed_file": str(rp),
         "refreshed": rp.exists(),
     }
-    cf = Path(f"{STATE}/cache/scan-v1.json").expanduser()
+    cf = Path(f"{STATE}/cache/scan-v{CACHE_VERSION}.json").expanduser()
     report["cache"] = {"path": str(cf), "exists": cf.exists(), "bytes": cf.stat().st_size if cf.exists() else 0}
     lines = [f"compactlab {__version__} · Python {report['python']} · {platform.system()}"]
     for h in report["harnesses"]:

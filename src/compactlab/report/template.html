@@ -982,7 +982,7 @@ function hist(){const g=G(),box=$('#fHist'),h=g.hist;figHead(box,t('hTitle'),t('
   box.append(f.svg)}
 // replay at full resolution (growth has one entry per turn), then thin the line to the length of the actual curve
 function simulate(sess,g,T){const full=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
-  for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.floor(pp.rho*d+pp.fixed_tokens)}full.push(c)}
+  const man=sess.manual||{};sess.growth.forEach((x,i)=>{c+=x;if(c>T||(man[i+1]!==undefined&&c>=0.7*man[i+1])){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.floor(pp.rho*d+pp.fixed_tokens)}full.push(c)});
   const n=sess.curve.length,st=full.length/n;return {out:full.length<=n?full:Array.from({length:n},(_,i)=>full[Math.floor(i*st)]),k}}
 function sessList(){const g=G();return D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)).sort((a,b)=>b.peak-a.peak).slice(0,30)}
 function sessPick(){const box=$('#fSess'),ss=sessList();
