@@ -205,3 +205,27 @@ def test_replay_keeps_a_hand_typed_compact_only_while_it_is_still_needed():
     assert replay(tr, 150_000, _ctx()).compactions == replay(plain, 150_000, _ctx()).compactions
     s.compactions = [Compaction(100, pre_tokens=330_000, trigger="auto")]
     assert make_trace(s, 30_000).manual == {}
+
+
+def test_a_forked_log_does_not_bill_the_parents_history_twice():
+    from compactlab.model import drop_inherited
+
+    def sess(sid, start, n):
+        s = Session(sid, "claude-code", "main", sid)
+        s.turns = [Turn(ts=start + i, ctx=1000 + i, output=5, model="m") for i in range(n)]
+        return s
+
+    parent = sess("parent", 100.0, 6)
+    parent.compactions = [Compaction(3, pre_tokens=900, ts=103.0, trigger="auto")]
+    fork = sess("fork", 100.0, 6)  # the fork copies the parent's six turns, then adds three of its own
+    fork.turns += [Turn(ts=200.0 + i, ctx=5000 + i, output=5, model="m") for i in range(3)]
+    fork.compactions = [
+        Compaction(3, pre_tokens=900, ts=103.0, trigger="auto"),
+        Compaction(7, pre_tokens=6000, ts=201.0),
+    ]
+    a, b = drop_inherited([parent, fork])
+    assert (a.id, len(a.turns), len(a.compactions)) == ("parent", 6, 1)
+    assert (b.id, len(b.turns), b.skipped_inherited) == ("fork", 3, 6)
+    assert [(c.turn_index, c.pre_tokens) for c in b.compactions] == [(1, 6000)]
+    lone = sess("lone", 500.0, 2)
+    assert drop_inherited([lone]) == [lone] and lone.skipped_inherited == 0

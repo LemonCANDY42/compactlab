@@ -85,3 +85,45 @@ def session_from_dict(d: dict) -> Session:
     d["turns"] = [Turn(**t) for t in d.get("turns", [])]
     d["compactions"] = [Compaction(**c) for c in d.get("compactions", [])]
     return Session(**d)
+
+
+def drop_inherited(sessions: list[Session]) -> list[Session]:
+    """Remove history a resumed or forked session copied from an earlier session's log.
+
+    Claude Code writes the parent's messages into the new file with their original timestamps, so the same API call
+    would be billed and counted once per copy. The earliest session keeps a turn (or compaction); later copies drop
+    it and count it in `skipped_inherited`. Sessions left empty are dropped. Turns without a timestamp are kept.
+    """
+    seen_turns: set[tuple] = set()
+    seen_comps: set[tuple] = set()
+    out: list[Session] = []
+    for s in sorted(sessions, key=lambda x: min((t.ts for t in x.turns if t.ts), default=float("inf"))):
+        keep: list[Turn] = []
+        new_index: list[int] = []  # original turn index -> index among the kept turns
+        for t in s.turns:
+            new_index.append(len(keep))
+            key = (t.ts, t.ctx, t.cache_read, t.cache_write, t.output, t.model)
+            if t.ts is not None and key in seen_turns:
+                continue
+            if t.ts is not None:
+                seen_turns.add(key)
+            keep.append(t)
+        comps = []
+        for c in s.compactions:
+            ckey = (c.ts, c.pre_tokens, c.trigger)
+            if c.ts is not None and ckey in seen_comps:
+                continue
+            if c.ts is not None:
+                seen_comps.add(ckey)
+            if c.turn_index < len(new_index):
+                c.turn_index = new_index[c.turn_index]
+            else:
+                c.turn_index = len(keep)
+            if c.turn_index < len(keep):
+                comps.append(c)
+        if len(keep) != len(s.turns):
+            s.skipped_inherited += len(s.turns) - len(keep)
+            s.turns, s.compactions = keep, comps
+        if s.turns:
+            out.append(s)
+    return out

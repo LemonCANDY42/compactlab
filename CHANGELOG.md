@@ -21,6 +21,10 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **History copied into a resumed or forked Claude Code log is no longer counted twice.** The new log repeats the
+  parent's messages with their original timestamps; the same API call was priced and counted once per copy (in one
+  period a third of the turns and a third of the compactions). The earliest session keeps them; later copies drop
+  them and report `skipped_inherited`.
 - **The replay keeps your hand-typed `/compact`.** It used to drop every recorded compaction, so the "default"
   baseline assumed you never compact by hand and the estimated saving was credited to the threshold. Now a manual
   `/compact` is replayed at the same place while the replayed context is still at least 70% of the size it was typed
