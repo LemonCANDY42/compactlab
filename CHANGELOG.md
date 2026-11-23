@@ -6,6 +6,49 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Codex gets one decision for its one limit.** `model_auto_compact_token_limit` covers every model, but `recommend`
+  printed the pick of the model with the most turns (175k from `gpt-6.1-sol` history), which would also apply to the
+  GPT-6.2 models now in use and leave them worse off. The value is now chosen across the Codex models in use, each
+  scored at the lower of the value and its own clamp, with the usual tolerance rules; every Codex group, `recommend`,
+  `apply` and auto-apply follow that one decision. A model that a newer version of its family took over is left out
+  and listed (`gpt-6.1-sol` → `gpt-6.2-sol`).
+- **Keep the current setting when it is within the tolerance.** A profile's pick that would not beat your current
+  setting's score by more than the 2% selection tolerance is now **keep current** instead of a change: the pick is
+  the largest threshold within 2% of the best, so it could even score slightly worse than a setting already nearer
+  the best. `recommend`, `apply` and auto-apply leave such a setting alone, the idle-compaction verdict counts it as
+  in force, and the terminal views, report and `share` say why.
+- **Prices, windows and defaults that change over time.** Auto refresh also runs weekly for known models, and every
+  price or window a refresh moves is logged (`pricing-changes.json`; recent ones for your models appear in `simulate`
+  and `pricing auto status`). A refresh older than the bundled snapshot no longer overrides the bundle's newer rows.
+  Each group keeps the price it was replayed with, so loading a saved result after a change says what moved. The
+  window is the most common among a group's latest sessions (Codex can change a model's window; a clean switch is
+  reported), a Claude Code context beyond the assumed window means the window grew, and threshold compactions landing
+  more than 10% from the assumed default are flagged (the harness changed its default, or a setting compactlab cannot
+  read is in force). A model no public file lists stops triggering refreshes after 5 tries.
+- **New models and other platforms are priced from the right row.** Model IDs are reduced to the vendor's ID and the
+  platform they point at (Bedrock, Vertex, OpenRouter, Azure; Codex sessions record `model_provider`), and a lookup
+  says how it matched: the platform's own row, the vendor's list price, a borrowed row from the closest model of the
+  same family, or the fallback. Before, `claude-fable-5-2` picked up Fable 5's prices by substring (cache reads 5×
+  too high) and every GPT-6 model in Codex got the $3/$15 fallback. `pricing refresh` now keeps every vendor's own
+  models (not resellers' re-spelled copies) and each platform's prices under `<platform>:<id>`; `pricing show` gains
+  `--platform` and a match column. The bundled snapshot adds Fable 5.2 and the GPT-6 family. Codex parser version 6
+  re-reads Codex logs once.
+- **`compactlab pricing auto on|off|status`: opt-in refresh for new models.** When on, `serve` and scheduled runs
+  download models.dev (LiteLLM if that fails) when the logs show a model with no price row of its own, at most once a
+  day or once an hour for a model the last attempt did not cover. Off by default; `simulate` and the other commands
+  stay offline and say which models need it.
+- **`simulate` lists models priced from someone else's row, and Claude Code models with no window of their own** while
+  others have one and whose sessions reach it, with the closest configured model's value as a stand-in when the new
+  model has under 3 active days of data.
+- **Third-party models in Claude Code** (DeepSeek, Kimi, GLM behind `ANTHROPIC_BASE_URL`) are replayed with the 200K
+  window Claude Code assumes for an ID it does not recognize, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from settings.json's
+  `env` block or the environment. A Claude model missing from the default rules compacts at about 967K when its window
+  is 1M. `recommend`, `apply` and auto-apply key `modelSettings` by the canonical Claude name, which also covers
+  Bedrock, Vertex and dated IDs (a preauthorization or consent listing either spelling matches), and the current
+  setting is read the same way; a `[1m]` variant keeps its own key (`claude-opus-4-6[1m]`), read and written apart
+  from the base model's. A Claude Code context
+  beyond 200K for an unrecognized ID widens the window to what the logs show (the env var is probably set in a shell
+  compactlab does not see).
 - **Claude Code's idle compaction is modelled and gets its own advice.** `idleCompaction` (on by default) summarizes a
   long conversation left idle on the one-hour cache while the cache is still warm, about 55 minutes in, and applies
   the summary on return. The adapter tells these compactions apart (an `auto` boundary an hour or more after the last

@@ -66,7 +66,7 @@ def _is_subagent(src: Any) -> bool:
 
 
 class CodexParser(Parser):
-    version = 5  # 5: custom_tool_call(_output), text of list outputs, response timing, outputs before token_count
+    version = 6  # 5: custom_tool_call(_output), list outputs, response timing; 6: model_provider
 
     def __init__(self, path: str):
         self.session = Session(id=Path(path).stem, harness="codex", role="main", path=path)
@@ -101,6 +101,7 @@ class CodexParser(Parser):
                 s.id = self.leaf_id
                 s.role = "subagent" if _is_subagent(p.get("source")) else s.role
                 s.parent_id = next((str(p[k]) for k in PARENT_KEYS if p.get(k)), None)
+                s.platform = str(p["model_provider"]) if p.get("model_provider") else None
             elif sid and sid != self.leaf_id:
                 self.replaying = True  # embedded ancestor metadata: what follows is copied history
         elif typ == "turn_context":

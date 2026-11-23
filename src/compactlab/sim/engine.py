@@ -7,17 +7,20 @@ import dataclasses
 import math
 import statistics
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..model import Session, Turn, is_auto, is_threshold
 from ..pricing import Price, PricingTable
+from ..pricing.ids import family as model_family
+from ..pricing.ids import parse as parse_model
 from .baseline import default_note_zh, default_threshold, effective_max
 from .calibrate import PenaltyParams, calibrate, rediscovery_step
 from .select import (
     DEFAULT_PROFILE,
     PROFILE_NAMES,
+    PROFILES,
     WAIT_CAP_MIN_PER_DAY,
     InfeasibleCap,
     compare,
@@ -62,6 +65,8 @@ class SimOptions:
     # Claude Code idle compaction (`idleCompaction`): None -> on (the harness default) unless config says otherwise
     idle_compaction: bool | None = None
     idle_min_tokens: int = IDLE_MIN_TOKENS  # CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS
+    # CLAUDE_CODE_MAX_CONTEXT_TOKENS: the window Claude Code uses for model IDs it does not recognize (else 200K)
+    claude_max_context: int | None = None
 
 
 @dataclass
@@ -404,6 +409,12 @@ def _comparison(g: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     tol = p.get("recommendation", {}).get("tolerance", 0.02)
     if g["no_action_needed"]:
         action = "no action needed"
+    # your current setting is within the tolerance of the pick: changing it would not pay for the churn (and the pick
+    # may even score a little worse, since it is the largest threshold within the tolerance of the best)
+    elif cur is not None and cur["combined_cost"] + cur["time_s"] / 3600 * p["value_of_time"] <= p["combined"] * (
+        1 + tol
+    ):
+        action = "keep current"
     # not better than leaving the default alone, or better by no more than the tolerance the pick itself allows (the
     # pick is the largest threshold within it of the best score, so a default that close is as good a choice)
     elif thr >= d["threshold"] or d_score <= p["combined"] * (1 + tol):
@@ -454,6 +465,148 @@ def apply_measured(g: dict[str, Any]) -> dict[str, int]:
     return adjusted
 
 
+GLOBAL_KEY_HARNESSES = ("codex",)  # one threshold for every model (model_auto_compact_token_limit)
+SUPERSEDE_GRACE_S = 3 * 86400
+
+
+def superseded(groups: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
+    """(harness, model) -> the newer version of it that took over: same family, a higher version, used after the old
+    one's last use, and the old one not used for more than SUPERSEDE_GRACE_S after the new one first appeared
+    (gpt-6.1-sol -> gpt-6.2-sol). A model used alongside its successor is not superseded."""
+    spans: dict[tuple[str, str], list[float]] = {}
+    for g in groups:
+        if g.get("span") and g.get("model"):
+            s = spans.setdefault((g.get("harness", ""), g["model"]), [g["span"][0], g["span"][1]])
+            s[0], s[1] = min(s[0], g["span"][0]), max(s[1], g["span"][1])
+    fams = {k: model_family(parse_model(k[1]).id) for k in spans}
+    out: dict[tuple[str, str], str] = {}
+    for (h, a), (_, last_a) in spans.items():
+        fam, va = fams[(h, a)]
+        newer = [
+            (fams[(h2, b)][1], b)
+            for (h2, b), (first_b, last_b) in spans.items()
+            if h2 == h and b != a and fam and va and fams[(h2, b)][0] == fam and fams[(h2, b)][1] > va
+            and last_b > last_a and last_a <= first_b + SUPERSEDE_GRACE_S
+        ]  # fmt: skip
+        if newer:
+            out[(h, a)] = max(newer)[1]
+    return out
+
+
+def _global_pick(used: list[dict[str, Any]], name: str, opts: dict[str, Any]) -> dict[str, Any]:
+    """One threshold for every model of a harness: each model is scored at min(T, its own clamp) and the per-day
+    scores are summed; then the same rules as one group: the guardrails (your --max-threshold, each model's minimum
+    window and recall floor, measured recall from deep mode, and the profile's cap on added compaction wait, summed
+    over the models since it is one person's day), the largest T within the tolerance of the best, and keep current /
+    keep default within the tolerance."""
+    tol = opts.get("tolerance", 0.02)
+    cap = opts.get("max_threshold")
+    wait_cap = opts.get("wait_cap_min_per_day", WAIT_CAP_MIN_PER_DAY) if PROFILES[name]["enforce_wait_cap"] else None
+    vot = float(used[0]["profiles"][name]["value_of_time"])
+
+    def wait(g: dict[str, Any], p: dict[str, Any]) -> float:
+        d = g["default"]
+        added = (p["time_compact_s"] + p["time_redisc_s"]) - (d["time_compact_s"] + d["time_redisc_s"])
+        return added / 60 / max(float(g.get("days") or 1.0), 1.0)
+
+    def measured_ok(g: dict[str, Any], p: dict[str, Any], floor: float) -> bool:
+        mp = next((m for m in g.get("measured") or [] if m["threshold"] == p["threshold"]), None)
+        return mp is None or mp["measured_recall"] >= floor
+
+    def at(g: dict[str, Any], T: int) -> dict[str, Any] | None:
+        eff = min(T, g["effective_max"])
+        if eff >= g["default"]["threshold"]:
+            return g["default"]
+        return point(g, g["grid"].index(eff), vot) if eff in g["grid"] else None
+
+    def total(pts: list[tuple[dict[str, Any], dict[str, Any]]]) -> float:
+        return sum((p["combined_cost"] + p["time_s"] / 3600 * vot) / g["days"] for g, p in pts)
+
+    Pts = list[tuple[dict[str, Any], dict[str, Any]]]
+    scored: list[tuple[int, float, Pts]] = []
+    for T in sorted({x for g in used for x in g["grid"]}):
+        if cap is not None and cap < T:
+            continue
+        pts: Pts = []
+        for g in used:
+            p = at(g, T)
+            if p is None:  # not on this model's grid
+                break
+            prof = g["profiles"][name]
+            floor = prof["recommendation"]["recall_floor"]
+            if p is not g["default"] and (
+                prof.get("min_threshold", 0) > T or p["recall"] < floor or not measured_ok(g, p, floor)
+            ):
+                break  # a guardrail of this model's profile
+            pts.append((g, p))
+        else:
+            if wait_cap is None or sum(wait(g, p) for g, p in pts if p is not g["default"]) <= wait_cap:
+                scored.append((T, total(pts), pts))
+    d_pts = [(g, g["default"]) for g in used]
+    out: dict[str, Any] = {"threshold": None, "default_score": total(d_pts), "per_model": {}}
+    cur = next((g["current"]["configured"] for g in used if g.get("current")), None)
+    if all(g["no_action_needed"] for g in used):
+        return {**out, "action": "no action needed"}
+    if not scored:
+        return {**out, "action": "keep default"}
+    best = min(s for _, s, _ in scored)
+    T, S, pts = max((x for x in scored if x[1] <= best * (1 + tol)), key=lambda x: x[0])
+    out.update(threshold=T, score=S,
+               d_usd_per_day=sum((p["combined_cost"] - g["default"]["combined_cost"]) / g["days"] for g, p in pts),
+               d_min_per_day=sum((p["time_s"] - g["default"]["time_s"]) / 60 / g["days"] for g, p in pts),
+               per_model={f"{g['model']} · {g['role']}": (None if p is g["default"] else p["threshold"])
+                          for g, p in pts})  # fmt: skip
+    binding = any(p is not g["default"] for g, p in pts)
+    if cur is not None and total([(g, g.get("current") or g["default"]) for g in used]) <= S * (1 + tol):
+        return {**out, "action": "keep current", "current": cur}
+    if not binding or out["default_score"] <= S * (1 + tol):
+        return {**out, "action": "keep default"}
+    return {**out, "action": "set"}
+
+
+def _apply_global(g: dict[str, Any], name: str, gp: dict[str, Any], harness: str, models: list[str]) -> None:
+    """Make one group's comparison say what the harness-wide value does to it."""
+    T = gp["threshold"] if gp["action"] == "set" else None
+    eff = min(T, g["effective_max"]) if T else None
+    if eff is not None and eff < g["default"]["threshold"] and eff in g["grid"]:
+        override_profile(g, name, eff, "global_key")
+        g["comparison"][name]["action"] = "set"
+    elif g["no_action_needed"]:
+        g["comparison"][name]["action"] = "no action needed"
+    elif gp["action"] == "keep current" and g.get("current"):
+        g["comparison"][name]["action"] = "keep current"
+    else:
+        g["comparison"][name]["action"] = "keep default"
+    g["comparison"][name]["global"] = {"harness": harness, "action": gp["action"], "threshold": gp["threshold"],
+                                       "models": models, "superseded_by": g.get("superseded_by")}  # fmt: skip
+
+
+def global_keys(groups: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str, Any]:
+    """Harnesses with one threshold for every model (Codex): choose it across the models in use (a model a newer
+    version took over is left out) and rewrite each of its groups' comparison to match. Marks `superseded_by` on
+    every group, of any harness."""
+    sup = superseded(groups)
+    for g in groups:
+        g["superseded_by"] = sup.get((g.get("harness", ""), g.get("model", "")))
+    out: dict[str, Any] = {}
+    for h in GLOBAL_KEY_HARNESSES:
+        hs = [g for g in groups if g.get("harness") == h]
+        if not hs:
+            continue
+        used = [g for g in hs if not g["superseded_by"]] or hs
+        models = [f"{g['model']} · {g['role']}" for g in used]
+        res: dict[str, Any] = {
+            "models": models,
+            "superseded": {g["model"]: g["superseded_by"] for g in hs if g["superseded_by"]},
+            "profiles": {n: _global_pick(used, n, opts) for n in PROFILE_NAMES},
+        }
+        for g in hs:
+            for n in PROFILE_NAMES:
+                _apply_global(g, n, res["profiles"][n], h, models)
+        out[h] = res
+    return out
+
+
 def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: float | None = None) -> dict:
     """Re-run profile selection on a stored result (no replay). Mutates and returns `result`."""
     opts = result.setdefault("options", {})
@@ -463,6 +616,8 @@ def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: 
         opts["value_of_time"] = value_of_time
     for g in result["groups"]:
         select_group(g, opts)
+    result["global_keys"] = global_keys(result["groups"], opts)
+    for g in result["groups"]:
         if (g.get("idle") or {}).get("alt", {}).get("rows"):
             idle_select(g)
     if "idle_compaction" in result:
@@ -494,11 +649,12 @@ def _one_hour(s: Session) -> bool:
 
 
 def in_force(g: dict[str, Any], profile: str | None) -> dict[str, Any]:
-    """The replayed point that would be in force: a profile's pick when its action is "set", else the default; with
-    `profile` None, the current setting (or the default when none is set)."""
-    if profile is None:
+    """The replayed point that would be in force: a profile's pick when its action is "set", your setting when it is
+    "keep current", else the default; with `profile` None, the current setting (or the default when none is set)."""
+    action = g["comparison"][profile]["action"] if profile is not None else None
+    if profile is None or (action == "keep current" and g.get("current")):
         src = g.get("current") or g["default"]
-    elif g["comparison"][profile]["action"] == "set":
+    elif action == "set":
         i = g["grid"].index(g["comparison"][profile]["threshold"])
         src = {k: g[k][i] for k in BRIEF_KEYS if k in g}
         src["threshold"] = g["grid"][i]
@@ -558,6 +714,154 @@ def idle_advice(groups: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str,
     }
 
 
+CLAUDE_UNKNOWN_WINDOW = 200_000  # Claude Code's window for a model ID it does not recognize
+
+
+def claude_recognizes(model: str) -> bool:
+    """Claude Code sizes the window from the model ID: Claude IDs (on any platform) it knows; anything else, such as a
+    third-party model behind ANTHROPIC_BASE_URL or a gateway alias, gets 200K unless CLAUDE_CODE_MAX_CONTEXT_TOKENS
+    says otherwise."""
+    return model in ("unknown", "<synthetic>") or parse_model(model).id.startswith("claude-")
+
+
+PRICE_FIELDS = ("input", "output", "cache_write", "cache_read", "max_window")
+
+
+def price_snapshot(p: Price) -> dict[str, Any]:
+    """The list price a group was replayed with, kept in the result so a later price change can be noticed."""
+    return {**{f: getattr(p, f) for f in PRICE_FIELDS}, "key": p.key, "source": p.source}
+
+
+def price_drift(result: dict[str, Any], pricing: PricingTable) -> list[dict[str, Any]]:
+    """Prices and windows that differ between a saved result and the table now (one entry per model and field)."""
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for g in result.get("groups", []):
+        was = g.get("price")
+        if not was:
+            continue
+        now = price_snapshot(pricing.lookup(g["model"], g.get("platform")))
+        for f in PRICE_FIELDS:
+            if was.get(f) is not None and float(was[f]) != float(now[f]):
+                out.setdefault((g["model"], f), {"model": g["model"], "field": f, "old": was[f], "new": now[f],
+                                                 "source": now["source"]})  # fmt: skip
+    return list(out.values())
+
+
+WINDOW_RECENT = 10
+SWITCH_SHARE = 0.8  # a window change is reported when each side agrees this much (not when sessions alternate)
+
+
+def _mode(xs: list[int]) -> int:
+    """The most common value (the larger on a tie)."""
+    c = Counter(xs)
+    return max(c, key=lambda x: (c[x], x))
+
+
+def group_window(
+    harness: str, model: str, ss: list[Session], table_window: int, opts: SimOptions
+) -> tuple[int, str, dict[str, Any] | None]:
+    """(window, where it came from, a note when it moved or contradicts the logs). Harnesses change a model's window
+    over time, so the latest session's logged window wins over older ones (Codex logs it per session); without one,
+    the price data's. Claude Code gives a model ID it does not recognize 200K (or CLAUDE_CODE_MAX_CONTEXT_TOKENS).
+    Contexts in the logs larger than that window mean it is out of date: a Claude model then has the 1M window, any
+    other the largest context seen."""
+    dated = sorted((s.turns[-1].ts or 0.0, int(s.context_window)) for s in ss if s.context_window and s.turns)
+    note: dict[str, Any] | None = None
+    if dated:
+        # the most common window of the latest sessions (sessions of one model can differ, e.g. by client version);
+        # a change is reported only when the earlier sessions agreed on another one
+        recent, older = dated[-WINDOW_RECENT:], dated[:-WINDOW_RECENT]
+        window = _mode([w for _, w in recent])
+        source = "observed in logs (latest sessions)"
+        was = _mode([w for _, w in older]) if older else window
+
+        def share(block: list[tuple[float, int]], x: int) -> float:
+            return sum(w == x for _, w in block) / len(block)
+
+        if was != window and share(recent, window) >= SWITCH_SHARE and share(older, was) >= SWITCH_SHARE:
+            since = next(t for t, w in recent if w == window)
+            note = {"kind": "window_changed", "from": was, "to": window, "since": since}
+    else:
+        window, source = table_window, "pricing data"
+    if harness == "claude-code" and not claude_recognizes(model):
+        window = opts.claude_max_context or CLAUDE_UNKNOWN_WINDOW
+        source = (
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+            if opts.claude_max_context
+            else "Claude Code assumes 200K for a model ID it does not recognize"
+        )
+    peak = max((s.peak for s in ss), default=0)
+    if not dated and peak > window:  # a logged window is the harness's own word; an assumed one can be stale
+        was = window
+        window = 1_000_000 if harness == "claude-code" and claude_recognizes(model) and peak <= 1_000_000 else peak
+        source = f"contexts in the logs reached {peak:,}, beyond the {was:,} assumed"
+        note = {"kind": "peak_over_window", "assumed": was, "peak": peak, "window": window}
+    return window, source, note
+
+
+DRIFT_RECENT = 10  # threshold compactions to look at, newest first
+DRIFT_MIN = 5
+DRIFT_FRAC = 0.10
+
+
+def default_drift(ss: list[Session], assumed: int) -> dict[str, Any] | None:
+    """With no setting of yours in force, the threshold compactions should land near the harness default. When the
+    latest ones (at least DRIFT_MIN of the last DRIFT_RECENT) land more than 10% away, either the harness changed its
+    default (an update) or a setting compactlab cannot see is in force (an env var, a project file, a CLI flag)."""
+    recent = sorted((c for s in ss for c in s.compactions if c.pre_tokens and is_threshold(c)), key=lambda c: c.ts or 0)
+    recent = recent[-DRIFT_RECENT:]
+    if len(recent) < DRIFT_MIN:
+        return None
+    observed = int(_median([c.pre_tokens or 0 for c in recent], 0))
+    if abs(observed - assumed) <= DRIFT_FRAC * assumed:
+        return None
+    return {"assumed": assumed, "observed": observed, "n": len(recent), "since": recent[0].ts}
+
+
+def model_notes(groups: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Models priced from something other than their own row (another platform's price, a borrowed family row or the
+    fallback); Claude Code models with no window of their own while other models have one (a new model the settings
+    file has not caught up with), counted only when its sessions reach where the setting would act; windows that
+    changed or that the logs contradict; and defaults the latest compactions do not match."""
+    prices: dict[tuple[str, str], dict[str, Any]] = {}
+    for g in groups:
+        if g.get("price_kind", "exact") != "exact":
+            prices.setdefault((g["harness"], g["model"]), {
+                "harness": g["harness"], "model": g["model"], "kind": g["price_kind"], "row": g["price_key"],
+                "platform": g.get("platform"), "source": g["price_source"]})  # fmt: skip
+    unset = []
+    for g in groups:
+        if g["harness"] != "claude-code" or g["role"] != "main" or g.get("current") is not None:
+            continue
+        peers = [x for x in groups if x["harness"] == g["harness"] and x["model"] != g["model"] and x.get("current")]
+        if not peers:
+            continue
+        fam = model_family(parse_model(g["model"]).id)[0]
+        same = [x for x in peers if model_family(parse_model(x["model"]).id)[0] == fam]
+        peer = max(same or peers, key=lambda x: x["n_turns"])
+        if peer["current"]["configured"] >= g["default"]["threshold"]:
+            continue  # the peer's value would not lower this model's compaction point (e.g. a 200K window)
+        if g.get("peak_max", 0) < peer["current"]["configured"]:
+            continue  # its sessions never get where a setting would act: nothing to catch up on yet
+        unset.append({
+            "harness": g["harness"], "model": g["model"], "default": g["default"]["threshold"],
+            "active_days": g["active_days"], "peer": peer["model"], "peer_value": peer["current"]["configured"],
+            "same_family": bool(same)})  # fmt: skip
+    windows = [{"harness": g["harness"], "model": g["model"], "role": g["role"], **g["window_note"]}
+               for g in groups if g.get("window_note")]  # fmt: skip
+    defaults = [{"harness": g["harness"], "model": g["model"], "role": g["role"], **g["default_drift"]}
+                for g in groups if g.get("default_drift")]  # fmt: skip
+    last: dict[tuple[str, str, str], float] = {}
+    for g in groups:
+        if g.get("superseded_by"):
+            key = (g["harness"], g["model"], g["superseded_by"])
+            last[key] = max(last.get(key, 0.0), g["span"][1] if g.get("span") else 0.0)
+    replaced = [{"harness": h, "model": m, "by": b, "last_used": t, "global_key": h in GLOBAL_KEY_HARNESSES}
+                for (h, m, b), t in sorted(last.items())]  # fmt: skip
+    return {"prices": list(prices.values()), "unset": unset, "windows": windows, "defaults": defaults,
+            "superseded": replaced}  # fmt: skip
+
+
 def analyze(
     sessions: list[Session],
     pricing: PricingTable,
@@ -605,11 +909,12 @@ def analyze(
     for gi, ((harness, model, role), ss) in enumerate(sorted(groups.items()), 1):
         if progress:
             progress(gi, len(groups), f"{model} · {role} ({len(ss)} sessions)")
-        list_price = pricing.lookup(model)
+        platform = next(iter(Counter(s.platform for s in ss if s.platform).most_common(1)), (None, 0))[0]
+        list_price = pricing.lookup(model, platform)
+        platform = platform or list_price.platform  # a Bedrock or Vertex ID names its platform itself
         ttl, ttl_source = group_ttl(ss, opts.ttl_seconds, default_ttl)
         price = list_price.for_ttl(ttl)
-        observed_window = max((s.context_window or 0) for s in ss)
-        window = observed_window or price.max_window
+        window, window_source, window_note = group_window(harness, model, ss, price.max_window, opts)
         cap = effective_max(harness, window)
         base = opts.base_tokens or min(max(_median([s.turns[0].ctx for s in ss], 35_000), 10_000), 80_000)
         obs_summ = [len(c.summary_text) // 4 for s in ss for c in s.compactions if c.summary_text]
@@ -618,7 +923,7 @@ def analyze(
         tm = fit(ss, pooled.get(harness))
         step_tokens = rediscovery_step(ss, pen)
         turn_models = {t.model for s in ss for t in s.turns}
-        prices = {m: pricing.lookup(m).for_ttl(ttl) for m in turn_models} if len(turn_models) > 1 else None
+        prices = {m: pricing.lookup(m, platform).for_ttl(ttl) for m in turn_models} if len(turn_models) > 1 else None
         traces = [make_trace(s, base, data_end, idle_min, idle_since=idle_since[harness]) for s in ss]
         # a conversation you step away from: the main session, on the one-hour cache
         idle_applies = harness == "claude-code" and role == "main" and ttl >= IDLE_TTL_S
@@ -640,7 +945,7 @@ def analyze(
         d_thr, d_note = default_threshold(harness, model, window)
         default = _point(run_all(traces, d_thr, c), d_thr, n_turns)
         default["note"] = d_note
-        default["note_zh"] = default_note_zh(harness, model)
+        default["note_zh"] = default_note_zh(harness, model, window)
         cur_val, cur_desc = (current or {}).get((harness, model), (None, ""))
         cur = None
         if cur_val is not None:
@@ -651,6 +956,7 @@ def analyze(
 
         pre = [x.pre_tokens for s in ss for x in s.compactions if x.pre_tokens and is_threshold(x)]
         t_hist = _median(pre, 0) or None
+        drift = default_drift(ss, d_thr) if cur_val is None else None
         hist_run = run_all(traces, float(t_hist) if t_hist else math.inf, c)
         g: dict[str, Any] = {
             "harness": harness,
@@ -658,6 +964,9 @@ def analyze(
             "role": role,
             "price_key": price.key,
             "price_source": price.source,
+            "price_kind": price.kind,
+            "price": price_snapshot(list_price),
+            "platform": platform,
             "cache_ttl": ttl,
             "cache_ttl_source": ttl_source,
             "n_sessions": len(ss),
@@ -666,7 +975,9 @@ def analyze(
             "active_days": active_days,
             "span": [min(tss), max(tss)] if tss else None,
             "max_window": window,
-            "window_source": "observed in logs" if observed_window else "pricing data",
+            "window_source": window_source,
+            "window_note": window_note,
+            "default_drift": drift,
             "effective_max": cap,
             "base_tokens": base,
             "summary_tokens": summ,
@@ -720,6 +1031,7 @@ def analyze(
             }
             idle_select(g)
         out_groups.append(g)
+    keys = global_keys(out_groups, opt_d)  # before the notes: it marks superseded models
     return {
         "schema": 4,
         "mode": "lite",
@@ -728,6 +1040,8 @@ def analyze(
         "pricing_note": pricing.data.get("note", ""),
         "groups": out_groups,
         "idle_compaction": idle_advice(out_groups, opt_d),
+        "global_keys": keys,
+        "model_notes": {**model_notes(out_groups), "fallback": dict(pricing.data["fallback"])},
         "sessions": [
             {
                 "id": s.id,
@@ -773,7 +1087,7 @@ def _session_actual_cost(s: Session, pricing: PricingTable) -> float:
     for t in s.turns:
         by_model[t.model].append(t)
     return sum(
-        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m))
+        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m, s.platform))
         for m, ts in by_model.items()
     )
 

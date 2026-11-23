@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import apply as ap
+from ..sim.engine import GLOBAL_KEY_HARNESSES
 from ..sim.select import PROFILE_NAMES, PROFILES
 
 CONSENT_VERSION = 1
@@ -133,6 +134,9 @@ def decide(
     if g["comparison"][profile]["action"] in ("no action needed", "keep default") and current is None:
         d.reason = g["comparison"][profile]["action"]
         return d
+    if g["comparison"][profile]["action"] == "keep current":
+        d.reason = "keep current: the pick is within the tolerance of the current setting"
+        return d
     if last_written is not None and current != last_written and not force:
         d.action = "notify"
         d.reason = f"edited by someone else (now {current!r}, compactlab last wrote {last_written}); not overwriting"
@@ -213,13 +217,20 @@ def run_auto_apply(
     file = pre.targets[0].file
     decisions: list[Decision] = []
     for g in result["groups"]:
-        if g["role"] != "main" or g["harness"] != consent.harness or g["model"] not in consent.models:
+        if g["role"] != "main" or g["harness"] != consent.harness:
             continue
-        cur = ap._read_current(file, consent.harness, g["model"])
+        if not ap.model_allowed(consent.harness, g["model"], consent.models):
+            continue
+        mk = ap.model_key(consent.harness, g["model"])  # the key the settings file uses for this model
+        cur = ap._read_current(file, consent.harness, mk)
         cur = cur if isinstance(cur, int) else None
-        rec = applied.get(f"{file}::{g['model']}", {})
-        decisions.append(decide(g, consent.profile, cur, rec.get("value"), rec.get("at"), now, rules, force))
+        rec = applied.get(f"{file}::{mk}") or applied.get(f"{file}::{g['model']}", {})
+        d = decide(g, consent.profile, cur, rec.get("value"), rec.get("at"), now, rules, force)
+        d.model = mk
+        decisions.append(d)
     todo = [{"harness": consent.harness, "model": d.model, "value": d.value} for d in decisions if d.action == "apply"]
+    if consent.harness in GLOBAL_KEY_HARNESSES:  # one setting for every model: the models agree on it, write it once
+        todo = todo[:1]
     out: dict[str, Any] = {
         "decisions": [asdict(d) for d in decisions],
         "dry_run": dry_run,

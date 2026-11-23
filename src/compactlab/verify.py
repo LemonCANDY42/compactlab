@@ -124,7 +124,7 @@ def _logged_cost(s: Session, pricing: PricingTable) -> float:
     for t in s.turns:
         by_model[t.model].append(t)
     return sum(
-        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m))
+        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m, s.platform))
         for m, ts in by_model.items()
     )
 
@@ -137,7 +137,7 @@ def _compaction_calls(s: Session, pricing: PricingTable) -> float:
     for c in s.compactions:
         if not c.pre_tokens:
             continue
-        _, ro, _, rr = pricing.lookup(model).rates(c.pre_tokens)
+        _, ro, _, rr = pricing.lookup(model, s.platform).rates(c.pre_tokens)
         summ = len(c.summary_text) // 4 if c.summary_text else SUMMARY_TOKENS
         total += c.pre_tokens * rr + summ * ro
     return total

@@ -21,6 +21,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from ..pricing.ids import claude_settings_key
+
 CLAUDE_LIMITS = (100_000, 1_000_000)
 CODEX_KEY = "model_auto_compact_token_limit"
 CLAUDE_KEY_FMT = "modelSettings.{model}.autoCompactWindow"
@@ -105,6 +107,17 @@ class Change:
 # ---------- planning ----------
 
 
+def model_key(harness: str, model: str) -> str:
+    """The name a harness's config uses for a logged model: Claude Code's canonical modelSettings key, else as
+    logged."""
+    return claude_settings_key(model) if harness == "claude-code" else model
+
+
+def model_allowed(harness: str, model: str, allowed: list[str]) -> bool:
+    """`model` is in `allowed`, also when either side is a dated, platform or alias ID of the same Claude model."""
+    return model in allowed or any(model_key(harness, m) == model_key(harness, model) for m in allowed)
+
+
 def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str]]:
     """recs: [{harness, model, value}]. Returns allowed changes and human-readable rejections."""
     changes, rejected = [], []
@@ -113,7 +126,7 @@ def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str
         if not tgt:
             rejected.append(f"{r['harness']}/{r['model']}: no pre-authorized target for this harness")
             continue
-        if r["model"] not in tgt.models:
+        if not model_allowed(r["harness"], r["model"], tgt.models):
             rejected.append(f"{r['model']}: not in authorized models {tgt.models}")
             continue
         key = CLAUDE_KEY_FMT.format(model=r["model"]) if r["harness"] == "claude-code" else CODEX_KEY
@@ -154,7 +167,9 @@ def recs_from_result(result: dict, harness_of: dict[str, str] | None = None) -> 
         recs.append(
             {
                 "harness": g.get("harness", "claude-code"),
-                "model": g["model"],
+                "model": claude_settings_key(g["model"])
+                if g.get("harness", "claude-code") == "claude-code"
+                else g["model"],
                 "value": g["recommendation"]["threshold"],
                 "n_turns": g["n_turns"],
             }

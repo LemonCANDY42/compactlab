@@ -5,7 +5,7 @@
 | Piece | Source | Status |
 | --- | --- | --- |
 | Context growth per turn, idle gaps, outputs | your transcripts | measured |
-| Prices | `data/pricing.json` (models.dev snapshot, dated) → `pricing refresh` → `--pricing` | public list prices; provenance shown per row |
+| Prices | `data/pricing.json` (models.dev snapshot, dated) → `pricing refresh` (or opt-in `pricing auto`) → `--pricing` | public list prices; provenance and match kind shown per row |
 | Summary size, base context | median observed, else 12k / 35k | measured if available, else prior |
 | Re-discovery penalty | repeated reads/searches and correction phrases in the 20 turns after a compaction, minus the rate in the 20 turns before (only compactions with a full 20-turn window on both sides and no other compaction inside either) | calibrated with ≥5 observed compactions, else prior (ρ = 0.04, 6k tokens, 0.3 correction turns) |
 | Recall (lite) | context-rot table × summary-retention decay | **assumed**; placeholders you can replace |
@@ -31,6 +31,18 @@ if c > T:  cost += c · p_read + S · p_out          # summarizer call
            c ← B + S                                 # next turn rewrites the prefix
 penalty:   next turn adds ρ·(c_before − B − S) + F tokens; plus k correction turns at (B+S)·p_read + ō·p_out
 ```
+
+A logged model ID is reduced to the vendor's ID and the platform it points at (`us.anthropic.claude-fable-5-2-v1:0` →
+`claude-fable-5-2` on Bedrock, region `us`; `claude-opus-5-5@…` → Vertex; `anthropic/claude-fable-5.2` → OpenRouter;
+dates, `[1m]` and Bedrock versions dropped; Codex sessions carry `model_provider`). The price is then, in order: that
+platform's own row (from a refresh), the model's own row (`exact`, or `vendor` when used for a platform with no row of
+its own), the closest row of the same family (`family`: the longest shared version prefix, then the newest version not
+newer than the model, else the oldest newer one), a row whose `match` pattern the ID contains (also `family`; the
+matching earlier versions used, kept for override files), or the fallback row. The group records `price_kind`; `simulate` lists every model not priced
+from its own row. Claude Code sizes the window from the model ID: IDs it does not recognize (anything not a Claude
+model, such as a third-party model behind `ANTHROPIC_BASE_URL`) get 200K unless `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is
+set, and the replay uses the same window. A Claude model missing from the default rules compacts at about 967K when
+its window is 1M.
 
 Prices are chosen per request by size (long-context tiers). Penalty is reported as the difference between a run
 with and without it.
@@ -137,9 +149,31 @@ Every result is compared with:
   `autoCompactWindow`, in `~/.claude/settings.json`; top-level `model_auto_compact_token_limit` in
   `~/.codex/config.toml`). Project-level settings, env vars and CLI flags can override these and are not read.
 
-If the default never compacts in a group's sessions, the result is **no action needed**. A profile whose threshold
-is at or above the default, or whose score is not lower than the default's at the same value of time, is **keep
-default**. `apply` skips both. Comparisons are reported in total and per day (`days` = span of the group's
+If the default never compacts in a group's sessions, the result is **no action needed**. A profile whose pick your
+current setting matches within 2% of the score is **keep current**; one whose threshold is at or above the default,
+or whose score is not lower than the default's at the same value of time, is **keep default**. `apply` skips all
+three.
+
+Codex has one limit for every model (`model_auto_compact_token_limit`, clamped to 90% of each model's window), so its
+groups get one decision. A candidate value is scored for every Codex group at the lower of the value and that group's
+clamp, the per-day scores are summed, and the same rules as for one group pick it: the guardrails (`--max-threshold`,
+each group's minimum window, recall floor and deep-mode measured recall, and the profile's 30 min/day cap on added
+compaction wait, summed over the groups), the largest value within 2% of the best, then keep current / keep default
+within 2%. Deep mode redoes the choice once its measurements are on the groups. Each Codex group's comparison is rewritten
+to what that one value does to it, and `recommend`, `apply` and auto-apply write it once. A model a newer version of
+the same family took over (`gpt-6.1-sol` → `gpt-6.2-sol`: the newer one used after the older one's last use, which
+came no more than 3 days after the newer one first appeared) is left out of the decision; `simulate` lists it.
+
+Windows, defaults and prices change over time, and the replay uses what holds now. The window is the most common one
+among a group's latest 10 sessions that logged one (Codex logs it per session); a change is reported when the earlier
+sessions agreed (80%) on another. Without a logged window it comes from the price data, and a context in the logs
+larger than that means the data is stale: a Claude model then gets the 1M window, any other model the largest context
+seen. With no setting of yours in force, the latest 10 threshold compactions (at least 5) should land near the
+assumed default; more than 10% away, `simulate` says the harness may have changed its default, or that a setting
+compactlab cannot read is in force (an env var, a project settings file, a CLI flag). History is priced at today's
+prices: a refresh logs every price or window it moves (`~/.compactlab/pricing-changes.json`), a refresh older than
+the bundled snapshot no longer overrides the bundle's rows, and each group keeps the price it was replayed with, so
+loading a saved result after a change says which figures moved. Comparisons are reported in total and per day (`days` = span of the group's
 timestamps, at least 1): Δcost, Δwall-clock (hours and minutes/day), added compaction wait (minutes/day),
 compactions/day and Δrecall, against the default and against the current setting.
 
@@ -161,9 +195,12 @@ whose score is within 2% of the lowest (the rule earlier versions called **stand
 Flags record when a guardrail moved the pick (`guardrail_applied`, with the unconstrained threshold), when cost goes
 below a quarter of the window, when wait exceeds the cap, and when the recall floor could not be met.
 
-The action is **keep default** when the pick is not below the default, or when the default's score is within the
-same 2% of the pick's: by the selection rule the default is then as good a choice, and a "change" for a fraction of a
-percent would be noise. Otherwise it is **change** (`set` in the JSON).
+The action is **keep current** when your current setting's score is within the same 2% of the pick's: by the
+selection rule it is then as good a choice, and moving it would be churn (the pick, being the largest threshold within
+2% of the best, can even score a little worse than a current setting nearer the best). `recommend`, `apply` and
+auto-apply leave it alone, and the idle-compaction verdict counts your setting as what is in force. Otherwise the
+action is **keep default** when the pick is not below the default, or when the default's score is within the same 2%
+of the pick's, and **change** (`set` in the JSON) when neither holds.
 
 Why these numbers: with a value of time of $10/h, real histories favored windows near the low end of the grid and
 several times the default's compactions, at minutes of wait each. Pricing an hour of the developer's attention at

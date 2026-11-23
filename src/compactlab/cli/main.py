@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -25,10 +26,10 @@ from ..adapters.cache import CACHE_VERSION, ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
 from ..model import Session, drop_inherited
 from ..pricing import DEFAULT_REFRESHED, PricingTable
-from ..pricing.refresh import SOURCES, refresh
+from ..pricing.refresh import SOURCES, recent_changes, refresh
 from ..report.html import render_html
-from ..sim.baseline import read_current, read_idle
-from ..sim.engine import SimOptions, analyze, reselect
+from ..sim.baseline import MAX_CONTEXT_ENV, read_current, read_env_int, read_idle
+from ..sim.engine import SimOptions, analyze, price_drift, reselect
 from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES, PROFILES, WAIT_CAP_MIN_PER_DAY
 
 STATE = "~/.compactlab"
@@ -263,14 +264,17 @@ def _claude_settings_path(a: argparse.Namespace) -> Path | None:
 
 
 def _idle_opts(a: argparse.Namespace, opts: SimOptions) -> SimOptions:
-    """Claude Code's idle compaction as configured (read-only); on with a 200k minimum when nothing says otherwise."""
+    """Claude Code settings the replay needs, read-only: idle compaction (on with a 200k minimum when nothing says
+    otherwise) and CLAUDE_CODE_MAX_CONTEXT_TOKENS (the window for model IDs Claude Code does not recognize)."""
     if getattr(a, "no_current", False):
         return opts
-    enabled, min_tokens, _ = read_idle(_claude_settings_path(a))
+    path = _claude_settings_path(a)
+    enabled, min_tokens, _ = read_idle(path)
     if enabled is not None:
         opts.idle_compaction = enabled
     if min_tokens:
         opts.idle_min_tokens = min_tokens
+    opts.claude_max_context = read_env_int(path, MAX_CONTEXT_ENV)
     return opts
 
 
@@ -303,6 +307,12 @@ def _load_result(path: str) -> dict[str, Any]:
         raise CLIError(f"{p} was made by an older compactlab (schema {res.get('schema')}); re-run compactlab simulate")
     if any("impact" not in c["vs_default"] for g in res["groups"] for c in g.get("comparison", {}).values()):
         reselect(res)  # results saved before per-day impact existed: recompute selection (no replay)
+    drift = price_drift(res, PricingTable.load())
+    if drift:
+        what = "; ".join(f"{d['model']} {d['field']} {d['old']:g} -> {d['new']:g}" for d in drift[:6])
+        more = f" (+{len(drift) - 6} more)" if len(drift) > 6 else ""
+        print(f"note: prices or windows changed since {p.name} was made: {what}{more}. Its picks use the old figures; "
+              "re-run `compactlab simulate` for today's.", file=sys.stderr)  # fmt: skip
     return res
 
 
@@ -318,12 +328,36 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
         )
     pricing = _pricing(a)
     quiet = getattr(a, "service", False)
+    if quiet and not getattr(a, "offline_pricing", False) and not getattr(a, "pricing", None):
+        from ..pricing.auto import maybe_refresh
+
+        seen = {(t.model, s.platform) for s in sessions for t in s.turns}
+        pricing, info = maybe_refresh(pricing, seen, time.time(), lambda: _pricing(a))
+        if info:
+            import logging
+
+            moved = "; ".join(f"{c['model']} {c['field']} {c['old']} -> {c['new']}" for c in info["changes"])
+            logging.getLogger("compactlab.service").info(
+                "price refresh (%s%s): %s", info["reason"],
+                f": {', '.join(info['missing'])}" if info["missing"] else "",
+                f"from {info['source']}; changed for your models: {moved or 'nothing'}; "
+                f"still unpriced: {', '.join(info['still_missing']) or 'none'}"
+                if info["refreshed"] else f"failed ({info['error']})")  # fmt: skip
 
     def step(i: int, n: int, name: str) -> None:
         _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
 
     res = analyze(sessions, pricing, _idle_opts(a, _opts(a)), current=_current(a, sessions), progress=step)
     _progress("")
+    from ..pricing.auto import load_state
+
+    res["model_notes"]["auto_refresh"] = bool(load_state().get("enabled"))
+    # price and window changes the refreshes brought in the last 30 days, for the rows your models use
+    used = {g["price_key"] for g in res["groups"]}
+    since = time.strftime("%Y-%m-%d", time.localtime(time.time() - 30 * 86400))
+    res["model_notes"]["price_changes"] = [
+        c for c in recent_changes(DEFAULT_REFRESHED, used, limit=50) if str(c.get("date", "")) >= since
+    ]
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
     return res
@@ -437,7 +471,8 @@ T: dict[str, dict[str, Any]] = {
         "成本按公开标价估算;lite 模式下召回率是假设代理值。",
     },
 }
-ACTION_ZH = {"set": "设置", "keep default": "保持默认", "no action needed": "无需调整", "-": "-"}
+ACTION_ZH = {"set": "设置", "keep default": "保持默认", "keep current": "保持当前", "no action needed": "无需调整",
+             "-": "-"}  # fmt: skip
 
 
 def _dtime(c: dict[str, Any]) -> str:
@@ -542,6 +577,11 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                        "t": _k_(p["threshold"])}  # fmt: skip
                 for f in p["flags"]:
                     notes += [T[x]["flags"][f].format(p=T[x][n], **fmt) for x in langs if f in T[x]["flags"]]
+        sel_cmp = g["comparison"][g.get("profile") or "balanced"]
+        if sel_cmp.get("global") and sel_cmp["action"] != "set":
+            from ..term.views import keep_reason
+
+            notes += [keep_reason(g, g.get("profile") or "balanced", x) for x in langs]
         if g.get("cache_ttl"):
             notes += [_ttl_note(g, x) for x in langs]
         if "en" in langs:
@@ -552,12 +592,15 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                 + (f";当前:{g['current_note']}" if g.get("current_note") else "")
             )
         lines += [f"  · {n}" for n in notes]
-    from ..term.views import idle_lines
+    from ..term.views import idle_lines, model_lines
 
     for x in langs:
         il = idle_lines(res, x)
         if il:
             lines += ["", *il]
+        ml = model_lines(res, x)
+        if ml:
+            lines += ["", *ml]
     lines.append("")
     lines += [T[x]["note"] for x in langs]
     return "\n".join(ln.rstrip() for ln in lines)
@@ -589,6 +632,7 @@ IMPACT: dict[str, dict[str, Any]] = {
         "legend": "Sign: -$ / -min = saves, + = adds. min/day = wait (compaction + re-discovery) - turns "
         "(faster turns from a smaller context). Month = 30 days. List-price estimates; recall is a lite-mode proxy.",
         "keep": "{p}: picks {t}, which is not better than the default: recommend keeps the default",
+        "keep_cur": "{p}: picks {t}, within the tolerance of your current {c}: recommend keeps your setting",
     },
     "zh": {
         "title": "每日影响 · {m} · {r} · 历史覆盖 {d:.1f} 个自然日,其中 {a} 个活跃日(至少一轮)",
@@ -610,6 +654,7 @@ IMPACT: dict[str, dict[str, Any]] = {
         "legend": "符号:-$ / -分钟 = 节省,+ = 增加。分钟/天 = 等待(压缩 + 重新查找)- 每轮提速(上下文更小)。"
         "一个月按 30 天。成本按公开标价估算;lite 模式下召回率是代理值。",
         "keep": "{p}:选出 {t},不比默认值好,recommend 会保持默认",
+        "keep_cur": "{p}:选出 {t},与你当前的 {c} 相差在容差内,recommend 会保持你的设置",
     },
 }
 IWIDTHS = ((14, "<"), (7, ">"), (10, ">"), (11, ">"), (11, ">"), (9, ">"), (8, ">"), (8, ">"), (13, ">"),
@@ -669,8 +714,15 @@ def impact_text(res: dict[str, Any], lang: str = "both") -> str:
                          f"{c['per_month']:.0f}")  # fmt: skip
                 lines.append("    " + "".join(_pad(v, w_, al) for v, (w_, al) in zip(cells, IWIDTHS, strict=True)))
         for n in PROFILE_NAMES:
-            if g["comparison"][n]["action"] == "keep default":
-                lines += ["  · " + IMPACT[x]["keep"].format(p=T[x][n], t=_k_(g["profiles"][n]["threshold"]))
+            act_n = g["comparison"][n]["action"]
+            if act_n in ("keep default", "keep current") and g["comparison"][n].get("global"):
+                from ..term.views import keep_reason
+
+                lines += [f"  · {T[x][n]}: {keep_reason(g, n, x)}" for x in langs]
+            elif act_n in ("keep default", "keep current"):
+                key = "keep" if act_n == "keep default" else "keep_cur"
+                lines += ["  · " + IMPACT[x][key].format(p=T[x][n], t=_k_(g["profiles"][n]["threshold"]),
+                                                         c=_k_((g.get("current") or {}).get("configured")))
                           for x in langs]  # fmt: skip
     if lines:
         lines.append("")
@@ -789,12 +841,24 @@ def _preauth(a: argparse.Namespace) -> ap.Preauth:
 
 
 def _recs(res: dict[str, Any]) -> list[dict[str, Any]]:
-    """The selected profile's threshold per main-session model; groups where the default is fine are left alone."""
+    """The selected profile's threshold per main-session model; groups where the default is fine are left alone. A
+    harness with one setting for every model (Codex) gets one entry: the value chosen across its models."""
     out = []
+    seen: set[str] = set()
     for g in res["groups"]:
-        if g["role"] != "main" or g["comparison"][g["profile"]]["action"] in ("no action needed", "keep default"):
+        if g["role"] != "main" or g["comparison"][g["profile"]]["action"] in (
+            "no action needed", "keep default", "keep current"):  # fmt: skip
             continue
-        out.append({"harness": g["harness"], "model": g["model"], "value": g["profiles"][g["profile"]]["threshold"]})
+        glob = (res.get("global_keys") or {}).get(g["harness"])
+        if glob:
+            if g["harness"] in seen:
+                continue
+            seen.add(g["harness"])
+            out.append({"harness": g["harness"], "model": g["model"],
+                        "value": glob["profiles"][g["profile"]]["threshold"]})  # fmt: skip
+            continue
+        out.append({"harness": g["harness"], "model": ap.model_key(g["harness"], g["model"]),
+                    "value": g["profiles"][g["profile"]]["threshold"]})  # fmt: skip
     return out
 
 
@@ -955,6 +1019,29 @@ def cmd_doctor(a: argparse.Namespace) -> int:
 
 
 def cmd_pricing(a: argparse.Namespace) -> int:
+    if a.action == "auto":
+        from ..pricing.auto import AUTO_FILE, load_state, set_enabled
+
+        st = set_enabled(a.state == "on") if a.state in ("on", "off") else load_state()
+
+        def when(k: str) -> str:
+            return time.strftime("%Y-%m-%d %H:%M", time.localtime(st[k])) if st.get(k) else "never"
+
+        text = [
+            f"automatic price refresh: {'on' if st.get('enabled') else 'off'} ({AUTO_FILE})",
+            "  when on, `serve` and scheduled runs download models.dev (then LiteLLM) when the logs show a model "
+            "with no price row of its own; at most once a day; nothing about you is sent",
+            f"  last attempt: {when('last_attempt')}; last success: {when('last_ok')}"
+            + (f" from {st['last_source']}" if st.get("last_source") else ""),
+        ]
+        if st.get("still_missing"):
+            text.append("  still not in the public data: " + ", ".join(st["still_missing"]))
+        for c in recent_changes(DEFAULT_REFRESHED, limit=10):
+            text.append(f"  changed {c['date']}: {c['model']} {c['field']} {c['old']} -> {c['new']}")
+        if st.get("last_error"):
+            text.append(f"  last error: {st['last_error']}")
+        _out(a, st, "\n".join(text))
+        return 0
     if a.action == "refresh":
         try:
             n = refresh(a.source, DEFAULT_REFRESHED, a.url)
@@ -964,14 +1051,16 @@ def cmd_pricing(a: argparse.Namespace) -> int:
         print(f"stored {n} model rows from {a.source} in {DEFAULT_REFRESHED}")
         return 0
     t = PricingTable.load(a.pricing, offline=a.offline_pricing)
-    keys = a.model or sorted(t.data["models"])
+    keys = a.model or sorted(k for k in t.data["models"] if ":" not in k)  # platform rows: ask with --platform
     rows = []
     for k in keys:
-        p = t.lookup(k)
+        p = t.lookup(k, a.platform)
         rows.append(
             {
                 "model": k,
                 "row": p.key,
+                "match": p.kind,
+                "platform": p.platform,
                 "input": p.input,
                 "output": p.output,
                 "cache_write": p.cache_write,
@@ -981,13 +1070,17 @@ def cmd_pricing(a: argparse.Namespace) -> int:
                 "source": p.source,
             }
         )
-    text = [f"{'model':24} {'row':20} {'in':>6} {'out':>6} {'cw':>6} {'cr':>6} {'window':>8}  source"]
+    text = [f"{'model':24} {'row':24} {'match':8} {'in':>6} {'out':>6} {'cw':>6} {'cr':>6} {'window':>8}  source"]
     text += [
-        f"{r['model'][:24]:24} {r['row'][:20]:20} {r['input']:>6g} {r['output']:>6g} {r['cache_write']:>6g} "
-        f"{r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}"
+        f"{r['model'][:24]:24} {r['row'][:24]:24} {r['match']:8} {r['input']:>6g} {r['output']:>6g} "
+        f"{r['cache_write']:>6g} {r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}"
         for r in rows
     ]
-    _out(a, rows, "\n".join(text) + "\nUSD per million tokens.")
+    legend = (
+        "USD per million tokens. match: exact = the model's own row; vendor = the vendor's list price for a platform "
+        "with no row of its own; family = borrowed from the closest model of the same family; fallback = unknown."
+    )
+    _out(a, rows, "\n".join(text) + "\n" + legend)
     return 0
 
 
@@ -1640,9 +1733,16 @@ def _commands(sub: Any, fmt: Any) -> None:
     s.add_argument("--force", action="store_true", help="also revert keys edited after apply")
     s.set_defaults(f=cmd_revert)
 
-    s = sub.add_parser("pricing", help="show effective prices, or refresh from a public dataset")
-    s.add_argument("action", choices=["show", "refresh"])
+    s = sub.add_parser(
+        "pricing",
+        help="show effective prices, refresh from a public dataset, or turn on automatic refresh for new models",
+    )
+    s.add_argument("action", choices=["show", "refresh", "auto"])
+    s.add_argument("state", nargs="?", choices=["on", "off", "status"], help="for `auto`: on, off or status (default)")
     s.add_argument("--model", action="append")
+    s.add_argument(
+        "--platform", help="price on this platform: amazon-bedrock, google-vertex-anthropic, azure, openrouter"
+    )
     s.add_argument("--source", choices=sorted(SOURCES), default="models.dev")
     s.add_argument("--url", help="override the dataset URL (https only)")
     s.add_argument("--pricing")

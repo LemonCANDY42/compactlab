@@ -30,7 +30,7 @@ SCHEMAS = (SCHEMA_V1, SCHEMA)
 ISSUE_URL = "https://github.com/LemonCANDY42/compactlab/issues/new?template=share_estimates.yml"
 ROLES = ("main", "subagent")
 CHANGING = ("set", "change")
-ACTIONS = (*CHANGING, "keep default", "no action needed")
+ACTIONS = (*CHANGING, "keep default", "keep current", "no action needed")
 MODES = ("lite", "deep")
 VERDICTS = ("too_early", "already", "untouched", "unclear", "consistent", "less", "more")
 IN_EFFECT = ("yes", "no", "none seen", "n/a")
@@ -534,6 +534,8 @@ def preview(rec: dict[str, Any]) -> str:
         v = b["vs_default"]
         if g["no_action_needed"]:
             what = "no action needed (the default never compacts here)"
+        elif b["action"] == "keep current":
+            what = f"keep current (balanced {b['threshold'] // 1000}k would not beat it by more than the tolerance)"
         elif b["action"] not in CHANGING:
             what = f"keep default (balanced {b['threshold'] // 1000}k would not beat it)"
         else:

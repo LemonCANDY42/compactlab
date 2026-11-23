@@ -2,8 +2,8 @@
   "version": 2,
   "currency": "USD",
   "unit": "per million tokens",
-  "retrieved": "2026-10-29",
-  "source": "models.dev pricing snapshot as committed in ryoppippi/ccusage (rust/crates/ccusage-pricing-snapshots/src/models-dev-pricing.json); cache_write for OpenAI rows = input price (no separate write charge)",
+  "retrieved": "2026-11-23",
+  "source": "models.dev pricing snapshot as committed in ryoppippi/ccusage (rust/crates/ccusage-pricing-snapshots/src/models-dev-pricing.json); claude-fable-5-2 and the gpt-6 rows from https://models.dev/api.json (anthropic, openai) on 2026-11-23, checked against LiteLLM and OpenRouter; cache_write for GPT-5 rows = input price (no separate write charge), GPT-6 rows as models.dev lists them",
   "source_url": "https://models.dev/api.json",
   "note": "Snapshot of public list prices; may lag provider changes. Refresh with `compactlab pricing refresh` or override with --pricing.",
   "default_ttl_seconds": 300,
@@ -11,6 +11,7 @@
   "models": {
     "deepseek-v4-pro": {"match": ["deepseek-v4-pro", "deepseek-pro"], "input": 0.66, "output": 1.98, "cache_write": 0.66, "cache_read": 0.022, "max_window": 1048576, "note": "off-peak list price; peak hours bill 2x", "source_url": "https://api-docs.deepseek.com/quick_start/pricing"},
     "deepseek-flash": {"match": ["deepseek-flash", "deepseek-v4-flash"], "input": 0.15, "output": 0.60, "cache_write": 0.15, "cache_read": 0.003, "max_window": 1048576, "note": "off-peak list price; peak hours bill 2x", "source_url": "https://api-docs.deepseek.com/quick_start/pricing"},
+    "claude-fable-5-2": {"match": ["fable-5.2"], "input": 8.0, "output": 40.0, "cache_write": 10.0, "cache_write_1h": 16, "cache_read": 0.2, "max_window": 1000000},
     "claude-fable-5-1": {"match": ["fable-5-1", "fable-5.1"], "input": 10.0, "output": 50.0, "cache_write": 12.5, "cache_write_1h": 20, "cache_read": 0.25, "max_window": 1000000},
     "claude-fable-5": {"match": ["fable-5"], "input": 10.0, "output": 50.0, "cache_write": 12.5, "cache_write_1h": 20, "cache_read": 1.0, "max_window": 1000000},
     "claude-opus-5-5": {"match": ["opus-5-5", "opus-5.5"], "input": 4.0, "output": 20.0, "cache_write": 5.0, "cache_write_1h": 8, "cache_read": 0.2, "max_window": 1000000},
@@ -30,7 +31,21 @@
     "gpt-5.5": {
       "match": ["gpt-5.5"], "input": 5.0, "output": 30.0, "cache_write": 5.0, "cache_read": 0.5, "max_window": 1050000,
       "long_context": {"above_tokens": 272000, "input": 10.0, "output": 45.0, "cache_write": 10.0, "cache_read": 1.0}
-    }
+    },
+    "gpt-6-astra": {"input": 10.0, "output": 50.0, "cache_write": 12.5, "cache_read": 1.0, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 20.0, "output": 75.0, "cache_write": 25.0, "cache_read": 2.0}},
+    "gpt-6.2-astra": {"input": 8.0, "output": 40.0, "cache_write": 10.0, "cache_read": 0.4, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 16.0, "output": 60.0, "cache_write": 20.0, "cache_read": 0.8}},
+    "gpt-6-sol": {"input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.2, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 4.0, "output": 15.0, "cache_write": 5.0, "cache_read": 0.4}},
+    "gpt-6.1-sol": {"input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.1, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 4.0, "output": 15.0, "cache_write": 5.0, "cache_read": 0.2}},
+    "gpt-6.2-sol": {"input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.1, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 4.0, "output": 15.0, "cache_write": 5.0, "cache_read": 0.2}},
+    "gpt-6.1-terra": {"input": 1.0, "output": 5.0, "cache_write": 1.25, "cache_read": 0.05, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 2.0, "output": 7.5, "cache_write": 2.5, "cache_read": 0.1}},
+    "gpt-6-luna": {"input": 0.1, "output": 0.5, "cache_write": 0.125, "cache_read": 0.01, "max_window": 1050000,
+      "long_context": {"above_tokens": 272000, "input": 0.2, "output": 0.75, "cache_write": 0.25, "cache_read": 0.02}}
   },
   "fallback": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3, "max_window": 200000}
 }

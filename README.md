@@ -60,8 +60,9 @@ Within its guardrails, each profile picks the largest threshold whose score (lis
 penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
 `--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
 profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
-number when the default never compacts in those sessions, and **keep default** when a profile would not beat it by
-more than the 2% selection tolerance.
+number when the default never compacts in those sessions, **keep current** when your setting scores within the same
+2% of the profile's pick (changing it would be churn for no real gain), and **keep default** when a profile would not
+beat the default by more than that.
 
 Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
 added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
@@ -284,7 +285,7 @@ from latency curves fitted to your own timestamps. Details and formulas:
 | Harness | Logs | Setting `apply` writes | Status |
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only) | supported |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only: one value chosen across the models in use) | supported |
 | DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
 | OpenCode, Gemini CLI, Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
 
@@ -293,7 +294,11 @@ None of these harnesses lets subagents have their own threshold, so `apply` writ
 ## Safety and privacy
 
 - **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` fetches public
-  prices, and only deep mode calls a model, and only after you confirm.
+  prices, and only deep mode calls a model, and only after you confirm. `compactlab pricing auto on` lets `serve` and
+  scheduled runs fetch the same public files by themselves: when your logs show a model with no price row of its own
+  (retried daily, or after an hour for a newly seen model, up to 5 times) and once a week for the models already
+  known, since vendors change prices and windows. The download sends nothing about you or your models; changes are
+  logged and `simulate` lists the recent ones for your models.
 - **Nothing leaves your machine in lite mode.** Reports and `result.json` hold token counts, model names and
   session ids, never transcript text or file paths. `report --redact` hashes the ids.
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
@@ -312,7 +317,19 @@ None of these harnesses lets subagents have their own threshold, so `apply` writ
   (subscriptions, discounts and credits are ignored). Wall-clock estimates come from
   log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
-  row; refresh or override them as needed.
+  row; refresh or override them as needed. A model is priced from its own row when there is one, with platform IDs
+  (Bedrock `us.anthropic.…`, Vertex `…@date`, OpenRouter `anthropic/…`, Azure, Codex's `model_provider`) mapped to
+  that platform's price after a refresh and to the vendor's list price before. A model the table does not know borrows
+  the closest model of its family (`claude-fable-5-3` from `claude-fable-5-2`), and anything else gets the fallback
+  row; `simulate` lists both, and `pricing show --model <id> [--platform <p>]` shows how one is matched.
+- Claude Code sizes the window from the model ID: a third-party model behind `ANTHROPIC_BASE_URL` (DeepSeek, Kimi,
+  GLM, ...) is replayed with the 200K window Claude Code assumes for it, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` when set.
+- Things change over time, and the replay follows the latest: history is priced at today's prices (a refresh older
+  than the bundled snapshot no longer overrides it, and a saved result made before a price change says so when
+  loaded); Codex's window is the one its latest sessions logged (a clean switch is reported); a Claude Code context
+  larger than the assumed window means the window grew; and when your latest threshold compactions land more than
+  10% from the assumed default, `simulate` says the harness default may have changed or a setting it cannot read is
+  in force.
 - Some log-format details (Codex fork replay, compaction events) are marked `assumed` in
   [`data/harness_formats.json`](src/compactlab/data/harness_formats.json) until checked against more real files.
 - Tested on macOS; Linux paths follow the same defaults and run in CI. Windows is untested.

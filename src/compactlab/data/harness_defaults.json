@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-11-23",
   "claude-code": {
     "rules": [
       {
@@ -22,8 +22,9 @@
           "opus-5"
         ],
         "threshold": 967000,
-        "note": "models with a native 1M window compact at about 967K tokens by default",
-        "note_zh": "原生 1M 窗口的模型默认在约 967K token 时压缩"
+        "note": "models with a native 1M window compact at about 967K tokens by default (a Claude model not in this list counts when its window is 1M)",
+        "note_zh": "原生 1M 窗口的模型默认在约 967K token 时压缩(不在列表里的 Claude 模型按窗口判断)",
+        "min_window": 1000000
       }
     ],
     "otherwise": "window",
