@@ -464,7 +464,7 @@ def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: 
     for g in result["groups"]:
         select_group(g, opts)
         if (g.get("idle") or {}).get("alt", {}).get("rows"):
-            idle_select(g, opts)
+            idle_select(g)
     if "idle_compaction" in result:
         result["idle_compaction"] = idle_advice(result["groups"], opts)
     return result
@@ -475,12 +475,12 @@ def no_action(default: dict[str, Any]) -> bool:
     return default["compactions"] - default.get("idle_compactions", 0) - default.get("manual_compactions", 0) == 0
 
 
-def idle_select(g: dict[str, Any], opts: dict[str, Any]) -> None:
-    """Select the flipped-idle sweep the same way as the group, and record what would be in force on both sides."""
+def idle_select(g: dict[str, Any]) -> None:
+    """Record what would be in force with idle compaction as configured and flipped, both at the thresholds the group
+    emits (its profile picks, or the current setting). The flipped sweep is not re-selected: the recommendation only
+    adds the idle toggle to these picks, so the verdict must compare the two states at them."""
     alt = g["idle"]["alt"]
     ga = {**g, **alt["rows"], "default": alt["default_point"], "current": alt["current_point"]}
-    ga["no_action_needed"] = no_action(ga["default"])
-    select_group(ga, opts)
     alt["profiles"] = {n: in_force(ga, n) for n in PROFILE_NAMES}
     alt["current"] = in_force(ga, None)
     g["idle"]["profiles"] = {n: in_force(g, n) for n in PROFILE_NAMES}
@@ -718,7 +718,7 @@ def analyze(
                 "default_point": {**_point(run_all(traces, d_thr, ca), d_thr, n_turns), "note": d_note},
                 "current_point": acur,
             }
-            idle_select(g, opt_d)
+            idle_select(g)
         out_groups.append(g)
     return {
         "schema": 4,

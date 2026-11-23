@@ -155,12 +155,15 @@ class ClaudeCodeRecommender(Recommender):
         idle, line = idle_note(result, profile)
         if not (idle and idle["switch"]):
             return None
-        want = not result["idle_compaction"]["enabled"]
+        adv = result["idle_compaction"]
+        want = not adv["enabled"]
         path = "~/.claude/settings.json"
+        # revert to the value the file had; remove the key only when it was unset (absent means on)
+        undo = (_idle_py(path, adv["enabled"]) + f"   # back to {str(adv['enabled']).lower()}") if adv.get(
+            "configured") else (_idle_py(path, None) + "   # back to unset (the default, on)")  # fmt: skip
         return Snippet(
             self.harness, scope, profile, fmt, f"Claude Code · idle compaction · {profile}", TARGETS[scope],
-            json.dumps({"idleCompaction": want}, indent=2), _idle_py(path, want),
-            _idle_py(path, None) + "   # back to the default (on)", [line],
+            json.dumps({"idleCompaction": want}, indent=2), _idle_py(path, want), undo, [line],
             ["One setting for every model and project (a project's settings file can override it). "
              "Needs Claude Code v2.1.290+."], [], [KN_IDLE])  # fmt: skip
 

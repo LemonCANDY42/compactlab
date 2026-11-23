@@ -76,11 +76,14 @@ session and turn, so a gap fires the same way at every threshold.
 
 Every group is replayed with the setting as configured, and the groups it applies to again with it flipped. The
 setting is global, so the verdict (`idle_compaction` in the result, a block after the groups in the CLI) adds up the
-per-day cost, wall-clock, compactions and recall over those groups at what would be in force: each profile's picks,
-and your current settings. It says to flip the setting only when that beats the current state by more than the
-selection tolerance (2% of the score), and `recommend` then prints an `idleCompaction` snippet (also when no
-window needs to change). The flipped sweep is stored in the result, so `--profile` / `--value-of-time` on a saved
-result re-select it too. `verify` replays with the same setting, read from settings.json.
+per-day cost, wall-clock, compactions and recall over those groups, with the setting as configured and flipped, both
+at the thresholds that would be in force: each profile's picks (the windows `recommend` emits), and your current
+settings. The flipped state does not get picks of its own, because `recommend` only adds the toggle to those windows.
+It says to flip the setting only when that beats the current state by more than the selection tolerance (2% of the
+score), and `recommend` then prints an `idleCompaction` snippet (also when no window needs to change); its revert
+command restores the value the file had, or removes the key if it was unset. The flipped sweep is stored in the
+result, so `--profile` / `--value-of-time` on a saved result re-score it too. `verify` replays with the same setting,
+read from settings.json.
 
 Codex logs its own compaction request (`token_usage_record` next to the `compacted` line) but not as a turn, so it is
 not counted twice; `verify` estimates it like Claude Code's.

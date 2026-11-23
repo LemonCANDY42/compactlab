@@ -360,6 +360,33 @@ def test_idle_advice_adds_up_the_groups_it_applies_to():
     assert off["groups"][0]["idle"]["rate"] == 1.0 and not off["idle_compaction"]["enabled"]
 
 
+def test_idle_verdict_scores_both_states_at_the_emitted_thresholds():
+    """`recommend` adds the idle toggle to the group's own picks, so the verdict compares the two states at those
+    picks, never at thresholds re-selected for the flipped state (which are not what gets emitted). Here the context
+    passes the default (967k), so with idle compaction on the flipped side alone would keep the default."""
+    ss = []
+    for k in range(4):
+        s = Session(f"grow-{k}", "claude-code", "main", "p")
+        ts = k * 86_400.0
+        for i in range(120):
+            ts += 7200.0 if i and i % 20 == 0 else 10.0
+            s.turns.append(Turn(ts=ts, ctx=8100 * (i + 1), output=300, model="claude-opus-5-5",
+                                cache_write=3000, cache_write_1h=3000))  # fmt: skip
+        ss.append(s)
+    res = analyze(ss, PR, SimOptions(grid_start=100_000, grid_stop=1_000_000, idle_compaction=False))
+    (g,) = res["groups"]
+    adv = res["idle_compaction"]
+    for n in ("cost", "balanced", "time"):
+        assert g["idle"]["alt"]["profiles"][n]["threshold"] == g["idle"]["profiles"][n]["threshold"]
+        v, vot = adv["profiles"][n], g["profiles"][n]["value_of_time"]
+
+        def score(p, vot=vot):
+            return p["combined_cost"] + p["time_s"] / 3600 * vot
+
+        assert v["switch"] == (score(v["flipped"]) < score(v["configured"]) * (1 - 0.02))
+    assert g["idle"]["alt"]["current"]["threshold"] == g["idle"]["current"]["threshold"]
+
+
 def test_idle_compaction_needs_the_one_hour_cache():
     ss = _idle_sessions()
     for s in ss:

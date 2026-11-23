@@ -167,6 +167,7 @@ def test_idle_compaction_snippet_only_when_flipping_it_pays():
     assert json.loads(idle.content) == {"idleCompaction": False}
     assert idle.knobs == ["claude.settings.idleCompaction"] and "idleCompaction" in idle.merge
     assert idle.revert and idle.evidence
+    assert "idleCompaction" in idle.revert and " null" in idle.revert  # it was unset: revert removes the key
 
 
 def test_idle_snippet_even_when_no_threshold_changes():
@@ -179,3 +180,5 @@ def test_idle_snippet_even_when_no_threshold_changes():
     items = generate(res, "claude-code", "global", "balanced")
     (idle,) = snips(items)
     assert json.loads(idle.content) == {"idleCompaction": True}
+    # it was set to false in the file: revert writes false back (removing the key would leave it on)
+    assert " false" in idle.revert and " null" not in idle.revert
