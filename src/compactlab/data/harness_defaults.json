@@ -51,5 +51,22 @@
     "note_zh": "dsh-compaction-basic 在「窗口×80%」与「窗口 − 预留输出(256k) − 余量(65,536)」中较小者处压缩:100 万窗口约 678k,1,048,576 窗口约 727k",
     "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/packages/compaction/compaction-basic/src/config.ts (resolveConfig, resolveCompactSpec); packages/llm/llm-deepseek/src/defaults.ts (DEFAULT_MAX_TOKENS)",
     "status": "public-source"
+  },
+  "opencode": {
+    "rule": "window_minus_output",
+    "output_reserve": 32000,
+    "reserved_default": 20000,
+    "note": "OpenCode 1.x compacts once a reply's tokens (its context plus its output) reach the window minus the model's output reserve (its max output, capped at 32,000): about window - 32k. A model with limit.input uses limit.input - compaction.reserved (default 20,000) instead; a custom model with no known window never compacts automatically.",
+    "note_zh": "OpenCode 1.x 在一次回复的 token(上下文加该回复的输出)达到「窗口 − 模型输出预留(最大输出,上限 32,000)」时压缩,约为窗口 − 32k。设置了 limit.input 的模型改用 limit.input − compaction.reserved(默认 20,000);没有已知窗口的自定义模型不会自动压缩。",
+    "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/overflow.ts (usable, isOverflow); packages/opencode/src/provider/transform.ts (OUTPUT_TOKEN_MAX, maxOutputTokens)",
+    "status": "public-source"
+  },
+  "gemini-cli": {
+    "rule": "fraction_of_window",
+    "fraction": 0.5,
+    "note": "Gemini CLI compresses when the last request's prompt tokens reach model.compressionThreshold (default 0.5) of the model's token limit (1,048,576 for Gemini models): about 524k.",
+    "note_zh": "Gemini CLI 在上一次请求的提示 token 达到模型上限(Gemini 模型为 1,048,576)的 model.compressionThreshold(默认 0.5)时压缩,约 524k。",
+    "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/context/chatCompressionService.ts (DEFAULT_COMPRESSION_TOKEN_THRESHOLD); packages/core/src/core/tokenLimits.ts",
+    "status": "public-source"
   }
 }

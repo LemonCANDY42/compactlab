@@ -85,6 +85,16 @@ def _source(p: argparse.ArgumentParser) -> None:
         help="DeepSeek Harness sessions dir (default $DSH_HOME/sessions or ~/.dsh/sessions)",
     )
     g.add_argument(
+        "--opencode-root",
+        action="append",
+        help="OpenCode data dir or opencode.db (default $XDG_DATA_HOME/opencode or ~/.local/share/opencode)",
+    )
+    g.add_argument(
+        "--gemini-root",
+        action="append",
+        help="Gemini CLI tmp dir (default $GEMINI_CLI_HOME/.gemini/tmp or ~/.gemini/tmp)",
+    )
+    g.add_argument(
         "--since-days", type=float, default=30, help="only files modified in the last N days (0 = all; default 30)"
     )
     g.add_argument("--no-cache", action="store_true", help="do not read or write the scan cache")
@@ -157,10 +167,18 @@ def _reselect(a: argparse.Namespace, res: dict[str, Any]) -> dict[str, Any]:
 def _config_args(g: Any) -> None:
     g.add_argument("--claude-settings", help="Claude Code settings.json (default: ~/.claude/settings.json)")
     g.add_argument("--codex-config", help="Codex config.toml (default: ~/.codex/config.toml)")
+    g.add_argument("--opencode-config", help="OpenCode opencode.json, read only (default: ~/.config/opencode/)")
+    g.add_argument("--gemini-settings", help="Gemini CLI settings.json, read only (default: ~/.gemini/settings.json)")
 
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
-    return {"claude-code": a.claude_root, "codex": a.codex_root, "dsh": a.dsh_root}
+    return {
+        "claude-code": a.claude_root,
+        "codex": a.codex_root,
+        "dsh": a.dsh_root,
+        "opencode": a.opencode_root,
+        "gemini-cli": a.gemini_root,
+    }
 
 
 def _ttl_note(g: dict[str, Any], lang: str) -> str:
@@ -208,13 +226,10 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
                     stats = "" if quiet or not cache else f" · cached {cache.stats['hit'] + cache.stats['resumed']}"
                     _progress(f"scanning {h} {i}/{len(files)} files{stats}")
                 try:
-                    if cut and path.stat().st_mtime < cut:
-                        continue
-                    s = cache.parse(ad, path) if cache else ad.parse_file(path)
+                    found = ad.load(path, cache, cut)
                 except OSError:
                     continue
-                if s.turns:
-                    out.append(s)
+                out += [s for s in found if s.turns]
                 if cache and i % 500 == 0:
                     cache.save()  # keep progress if the scan is interrupted
             if h == "claude-code":  # a resumed or forked log repeats its parent's history
@@ -283,7 +298,12 @@ def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, 
     if getattr(a, "no_current", False):
         return {}
     paths: dict[str, Path | None] = {}
-    for h, arg in (("claude-code", a.claude_settings), ("codex", a.codex_config)):
+    for h, arg in (
+        ("claude-code", a.claude_settings),
+        ("codex", a.codex_config),
+        ("opencode", getattr(a, "opencode_config", None)),
+        ("gemini-cli", getattr(a, "gemini_settings", None)),
+    ):
         if arg:
             paths[h] = Path(arg).expanduser()
         else:
@@ -961,7 +981,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "pricing": {},
         "cache": {},
     }
-    bins = {"claude-code": "claude", "codex": "codex", "dsh": "dsh"}
+    bins = {"claude-code": "claude", "codex": "codex", "dsh": "dsh", "opencode": "opencode", "gemini-cli": "gemini"}
     for name in adapter_names():
         ad = get_adapter(name)
         roots = ad.default_roots()
@@ -978,6 +998,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
                     for r in roots
                 ],
                 "config": [{"path": str(c), "exists": c.exists()} for c in ad.config_paths()],
+                "checks": ad().doctor_checks(),
             }
         )
         if name == "dsh":
@@ -1003,6 +1024,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         if h["name"] == "dsh":
             zs = "decoder available" if h["zstd"] else "no decoder: Python 3.14+ or the zstd command"
             lines.append(f"  zstd   {'ok ' if h['zstd'] else '-- '} {zs}")
+        lines += [f"  {c['label']:6} {'ok ' if c['ok'] else '-- '} {c['text']}" for c in h["checks"]]
     lines.append(
         f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
@@ -1432,8 +1454,11 @@ def cmd_verify(a: argparse.Namespace) -> int:
                 "--applied-at describes a change made by hand: give --new (and --model for Claude Code), not --id"
             )
         harness = a.harness[0] if a.harness and len(a.harness) == 1 else "claude-code"
-        if harness == "claude-code" and not a.model:
-            raise CLIError("--model is needed for a Claude Code change (the key is per model)")
+        if harness in ("claude-code", "opencode", "gemini-cli") and not a.model:
+            raise CLIError(
+                "--model is needed for a Claude Code, OpenCode or Gemini CLI change (the threshold is per model; "
+                "OpenCode models are named provider/model, as `compactlab scan` lists them)"
+            )
         try:
             manifest = vf.manual_manifest(vf.parse_when(a.applied_at), harness, a.model or "", a.new, a.old)
         except ValueError as e:
@@ -1669,7 +1694,11 @@ def _commands(sub: Any, fmt: Any) -> None:
     h.add_argument(
         "--applied-at", metavar="WHEN", help="when it took effect: 2026-10-29 or 2026-10-29T21:05 (local time)"
     )
-    h.add_argument("--model", help="Claude Code: the model whose modelSettings key you set")
+    h.add_argument(
+        "--model",
+        help="the model the change is checked for (Claude Code: its modelSettings key; OpenCode: provider/model; "
+        "Gemini CLI: --new is that model's token threshold)",
+    )
     h.add_argument("--new", type=_k, help="the threshold you set, e.g. 625k")
     h.add_argument("--old", type=_k, help="the threshold before (default: the harness default)")
     s.add_argument("--pricing", help="pricing override JSON")

@@ -98,6 +98,46 @@
       "status": "documented",
       "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/config-catalog.md#deepseek-aidsh-compaction-basic",
       "verified_on": "2026-10-29"
+    },
+    "opencode.config.provider.models.limit": {
+      "harness": "opencode", "where": "opencode.json: provider.<providerID>.models.<modelID>.limit {context, input, output}",
+      "values": "token counts; context and output are required when limit is set. OpenCode 1.x compacts at limit.input - compaction.reserved (reserved default min(20000, max output)) when input is set, else at context - min(output, 32000)",
+      "min_version": "",
+      "scopes": ["~/.config/opencode/opencode.json", "opencode.json in the project root", "$OPENCODE_CONFIG"],
+      "note": "Per model. Setting limit replaces the catalog's limits for that model, so context and output must be the model's real values; an output above 32,000 changes nothing (OpenCode caps it).",
+      "status": "public-source",
+      "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/core/src/v1/config/provider.ts (limit); packages/opencode/src/session/overflow.ts",
+      "verified_on": "2026-11-23"
+    },
+    "opencode.config.compaction.reserved": {
+      "harness": "opencode", "where": "opencode.json: compaction.reserved",
+      "values": "tokens kept free below limit.input (default min(20000, the model's max output))",
+      "min_version": "",
+      "scopes": ["~/.config/opencode/opencode.json", "opencode.json in the project root"],
+      "note": "OpenCode 1.x applies it only to models whose limit sets input; for every other model the trigger is context - max output and this key has no effect. Global: one value for every model.",
+      "status": "public-source",
+      "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/core/src/v1/config/config.ts (compaction); packages/opencode/src/session/overflow.ts",
+      "verified_on": "2026-11-23"
+    },
+    "opencode.config.compaction.buffer": {
+      "harness": "opencode", "where": "opencode.json: compaction.buffer (OpenCode 2.x)",
+      "values": "\"1%\"..\"99%\" of the window (decimals allowed) or a token count; default \"15%\", at least 16k",
+      "min_version": "2.x (pre-release)",
+      "scopes": ["~/.config/opencode/opencode.json", "opencode.json in the project root"],
+      "note": "Room kept free: \"20%\" compacts at 80% full. Global for every model. Not in OpenCode 1.x.",
+      "status": "documented",
+      "source": "https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/content/compaction.mdx; packages/schema/src/config/compaction.ts",
+      "verified_on": "2026-11-23"
+    },
+    "gemini.settings.model.compressionThreshold": {
+      "harness": "gemini-cli", "where": "settings.json: model.compressionThreshold",
+      "values": "fraction of the model's token limit (default 0.5); compared with the last request's prompt tokens",
+      "min_version": "",
+      "scopes": ["~/.gemini/settings.json", "<project>/.gemini/settings.json", "system settings (/Library/Application Support/GeminiCli/settings.json) override both"],
+      "note": "Global: one fraction for every model. Requires a restart. If unset, a remote experiment flag can set a different value.",
+      "status": "documented",
+      "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/reference/configuration.md (model.compressionThreshold; settings precedence)",
+      "verified_on": "2026-11-23"
     }
   },
   "providers": {

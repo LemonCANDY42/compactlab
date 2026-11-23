@@ -152,7 +152,9 @@ class PricingTable:
 
     def _lookup(self, model: str, platform: str | None) -> Price:
         mid = parse(model)
-        plat = platform_name(platform) or mid.platform
+        # a platform the harness recorded (Codex model_provider, OpenCode provider ID) wins over the ID's shape: an
+        # OpenCode `anthropic/claude-…` is Anthropic's own API although OpenRouter spells IDs the same way
+        plat = platform_name(platform) if platform else mid.platform
         vendor = first_party(mid.id)
         rows = self.data["models"]
         if plat and plat != vendor:

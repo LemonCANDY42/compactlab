@@ -6,6 +6,27 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **OpenCode adapter** (1.x storage). Reads `~/.local/share/opencode/opencode.db` (`$XDG_DATA_HOME`,
+  `--opencode-root`) read-only with SQLite's normal locking, so a running OpenCode is never blocked or written to.
+  One turn per `step-finish` part, reasoning counted as output, subagents from `session.parent_id`, compactions from
+  the `compaction` part and its `summary: true` reply (whose own call is not a turn). Checked on a real 1.19.5
+  database: no unknown events, and the parsed token sums equal OpenCode's own per-session totals. The default rule
+  is window − min(max output, 32,000); `recommend` prints a per-model `provider.<id>.models.<model>.limit` (OpenCode
+  1.x has no threshold key, and `compaction.reserved` only applies to models whose limit sets `input`) and gives the
+  2.x `compaction.buffer` share in a note. `doctor` counts sessions in the 2.x storage, which is not read yet.
+  OpenCode's provider ID is the session's platform for pricing (`anthropic/…` is Anthropic's own API, not
+  OpenRouter).
+- **Gemini CLI adapter, experimental** (built from the 0.46/0.70 source; no real log checked yet). Reads
+  `~/.gemini/tmp/<project>/chats/*.jsonl` and subagent chats (`$GEMINI_CLI_HOME`, `--gemini-root`), and the older
+  single `session-*.json` files. Messages re-written by id are merged, tool-result messages are not prompts, and a
+  `<state_snapshot>` summary marks a compression. Default: half the model's token limit (about 524K); `recommend`
+  prints `model.compressionThreshold`.
+- **Ratio knobs**: `recommend/units.py` turns a token threshold into a fraction of the window or a share kept free,
+  rounding so the trigger never lands above the pick and noting when the window makes a step coarse or when one
+  global fraction lands elsewhere for another model. dsh's `thresholdRatio` uses it.
+- `simulate` reads the configured threshold for OpenCode (`--opencode-config`) and Gemini CLI (`--gemini-settings`);
+  `verify --applied-at` accepts OpenCode (`--model provider/model`) and Gemini CLI changes. `apply` does not write
+  either harness's config yet.
 - **Codex gets one decision for its one limit.** `model_auto_compact_token_limit` covers every model, but `recommend`
   printed the pick of the model with the most turns (175k from `gpt-6.1-sol` history), which would also apply to the
   GPT-6.2 models now in use and leave them worse off. The value is now chosen across the Codex models in use, each

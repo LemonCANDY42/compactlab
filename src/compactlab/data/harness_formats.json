@@ -199,6 +199,102 @@
         "status": "assumed",
         "source": ""
       }
+    },
+    "opencode": {
+      "log_roots": {
+        "value": [
+          "$XDG_DATA_HOME/opencode/opencode.db (default ~/.local/share/opencode/opencode.db)",
+          "opencode-<channel>.db on non-release channels; OPENCODE_DB overrides"
+        ],
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/core/src/database/database.ts (path); packages/core/src/global.ts (xdg-basedir)"
+      },
+      "storage": {
+        "value": "one SQLite database in WAL mode for every session: session (id, parent_id, time_updated ms), message (id, session_id, data JSON), part (id, message_id, session_id, time_created ms, data JSON); opened with mode=ro, never written",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/session.ts; checked on a real 1.19.5 database on 2026-11-23"
+      },
+      "message_shape": {
+        "value": "user {role, time.created, agent, model{providerID, modelID}}; assistant {role, parentID, providerID, modelID, mode, agent, time.created/completed, finish, error?, summary?, tokens, cost}",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/schema/src/v1/session.ts (User, Assistant)"
+      },
+      "part_types": {
+        "value": "text, reasoning, file, agent, compaction, subtask, retry, step-start, step-finish, tool, snapshot, patch",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/schema/src/v1/session.ts (Part)"
+      },
+      "token_counts": {
+        "value": "one step-finish part per model request, tokens {input (uncached: provider input - cache read - cache write), output (reasoning excluded), reasoning, cache.read, cache.write, total?}; reasoning is billed at the output rate",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/session.ts (getUsage). On real 1.19.5 history total = input + output + reasoning + cache.read + cache.write on every row, and the parsed sums equal the session table's own totals"
+      },
+      "compaction_event": {
+        "value": "a user message with a compaction part {auto, overflow?, tail_start_id?}, answered by an assistant message with summary: true (mode/agent 'compaction', parentID = that user message); completed when finish is set and error is absent. The summary call's usage is on that message, not a turn",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/compaction.ts (create, process, completedCompactions)"
+      },
+      "trigger_check": {
+        "value": "checked after every step (processor finish-step) and before each loop iteration (prompt.ts), so a compaction can happen in the middle of a tool loop",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/processor.ts; packages/opencode/src/session/prompt.ts"
+      },
+      "subagents": {
+        "value": "the task tool runs a child session whose session.parent_id is the caller",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/v1.19.6/packages/opencode/src/session/session.ts (parentID)"
+      },
+      "v2_storage": {
+        "value": "OpenCode 2.x pre-releases store sessions in session_v2 / session_message / session_part; not parsed, counted by doctor",
+        "status": "public-source",
+        "source": "https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts"
+      }
+    },
+    "gemini-cli": {
+      "log_roots": {
+        "value": [
+          "$GEMINI_CLI_HOME/.gemini/tmp",
+          "~/.gemini/tmp/<project>/chats/session-<YYYY-MM-DDTHH-MM>-<id8>.jsonl",
+          "<project> is a slug from ~/.gemini/projects.json (older versions: a SHA-256 of the project root)"
+        ],
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/services/chatRecordingService.ts; packages/core/src/config/storage.ts; packages/core/src/utils/paths.ts (GEMINI_CLI_HOME)"
+      },
+      "line_shape": {
+        "value": "JSONL: a header {sessionId, projectHash, startTime, lastUpdated, kind?: main|subagent}, message lines {id, timestamp, type: user|gemini|info|error|warning, content, model?, tokens?, toolCalls?, thoughts?}, {$set: {...}}, {$rewindTo: id} and (0.70+) {$patch: {...}}. A message is re-written with the same id when tokens or tool calls are attached; the last line wins. Older versions wrote one .json document",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/services/chatRecordingTypes.ts; https://github.com/google-gemini/gemini-cli/blob/v0.46.0/packages/core/src/services/chatRecordingService.ts (loader)"
+      },
+      "token_counts": {
+        "value": "gemini message tokens {input = promptTokenCount (INCLUDES cached), output = candidatesTokenCount, cached = cachedContentTokenCount, thoughts, tool = toolUsePromptTokenCount, total}; one gemini message per API call, tool follow-ups included",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.46.0/packages/core/src/services/chatRecordingService.ts (recordMessageTokens); packages/core/src/core/geminiChat.ts"
+      },
+      "tool_results": {
+        "value": "tool results are also written as type 'user' messages whose content is functionResponse parts",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.46.0/packages/core/src/core/geminiChat.ts"
+      },
+      "compaction_event": {
+        "value": "no explicit record: 0.46 writes a {$set: {messages: [...]}} checkpoint whose first message is the <state_snapshot> summary; 0.70 appends the summary messages and a {$patch: {removeIds, orderIds}}. The summary call's usage is not written; /compress and automatic compression look the same",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/services/chatRecordingService.ts; packages/core/src/core/client.ts (tryCompressChat)"
+      },
+      "subagents": {
+        "value": "chats/<parent session id>/<subagent session id>.jsonl with kind: 'subagent' in the header",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/services/chatRecordingService.ts"
+      },
+      "token_limit": {
+        "value": "tokenLimit(model) = 1,048,576 for Gemini models (and any unknown name), 256,000 for Gemma 4",
+        "status": "public-source",
+        "source": "https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/core/tokenLimits.ts"
+      },
+      "real_logs": {
+        "value": "not checked: no Gemini CLI chat logs were available; the adapter is experimental",
+        "status": "assumed",
+        "source": ""
+      }
     }
   }
 }
