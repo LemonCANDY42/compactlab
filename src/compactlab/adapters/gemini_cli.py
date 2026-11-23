@@ -157,7 +157,6 @@ class GeminiParser(Parser):
             old = s.turns[idx]
             turn.user_text, turn.start_ts, turn.ts = old.user_text, old.start_ts, old.ts or ts
             s.turns[idx] = turn
-        s.context_window = max(s.context_window or 0, token_limit(model))
 
     def _replace(self, idx: int, tool_calls: Any) -> None:
         old = self.session.turns[idx]
@@ -193,7 +192,10 @@ class GeminiParser(Parser):
     def finish(self) -> Session:
         from ..model import snapshot
 
-        return snapshot(self.session)
+        out = snapshot(self.session)
+        if out.turns:  # the window of the model the session is grouped under (its most-used one), not the largest
+            out.context_window = token_limit(out.model)
+        return out
 
     def dump(self) -> dict[str, Any]:
         from ..model import session_to_dict

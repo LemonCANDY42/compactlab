@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any, ClassVar
 
-from ..sim.baseline import OPENCODE_OUTPUT_CAP, defaults
+from ..sim.baseline import OPENCODE_AUTO_OFF, OPENCODE_OUTPUT_CAP, defaults
 from . import Omitted, Recommender, Snippet, evidence, register, safe_value
 from .units import free_share
 
@@ -73,6 +73,10 @@ class OpenCodeRecommender(Recommender):
         ev, notes = [], []
         for g in sorted(result["groups"], key=lambda g: -g["n_turns"]):
             if g["harness"] != self.harness or g["role"] != "main":
+                continue
+            if str(g.get("current_note") or "").startswith(OPENCODE_AUTO_OFF):
+                why = f"{g['model']}: {g['current_note']}, so a limit would never take effect; set compaction.auto "
+                out.append(Omitted(self.harness, why + "to true first if you want it to"))
                 continue
             v, why = safe_value(g, profile, result, 1, 10**9)
             if v is None:

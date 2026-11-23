@@ -1334,10 +1334,10 @@ def cmd_verify(a: argparse.Namespace) -> int:
                 "--applied-at describes a change made by hand: give --new (and --model for Claude Code), not --id"
             )
         harness = a.harness[0] if a.harness and len(a.harness) == 1 else "claude-code"
-        if harness in ("claude-code", "opencode") and not a.model:
+        if harness in ("claude-code", "opencode", "gemini-cli") and not a.model:
             raise CLIError(
-                "--model is needed for a Claude Code or OpenCode change (the key is per model; OpenCode models are "
-                "named provider/model, as `compactlab scan` lists them)"
+                "--model is needed for a Claude Code, OpenCode or Gemini CLI change (the threshold is per model; "
+                "OpenCode models are named provider/model, as `compactlab scan` lists them)"
             )
         try:
             manifest = vf.manual_manifest(vf.parse_when(a.applied_at), harness, a.model or "", a.new, a.old)
@@ -1573,7 +1573,11 @@ def _commands(sub: Any, fmt: Any) -> None:
     h.add_argument(
         "--applied-at", metavar="WHEN", help="when it took effect: 2026-10-29 or 2026-10-29T21:05 (local time)"
     )
-    h.add_argument("--model", help="Claude Code: the model whose modelSettings key you set; OpenCode: provider/model")
+    h.add_argument(
+        "--model",
+        help="the model the change is checked for (Claude Code: its modelSettings key; OpenCode: provider/model; "
+        "Gemini CLI: --new is that model's token threshold)",
+    )
     h.add_argument("--new", type=_k, help="the threshold you set, e.g. 625k")
     h.add_argument("--old", type=_k, help="the threshold before (default: the harness default)")
     s.add_argument("--pricing", help="pricing override JSON")

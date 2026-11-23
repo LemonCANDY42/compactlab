@@ -133,7 +133,7 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 - DeepSeek Harness(dsh)为**实验性**支持:按 dsh 源码和它自带的快照日志实现,还没在真实历史上跑过。日志在 `~/.dsh/sessions`(`.jsonl.zstd` 需要 Python 3.14+ 或 `zstd` 命令);`recommend` 给出 compaction-basic 插件的 `modelPolicies`(`thresholdRatio`)片段,`apply` 不改 dsh 配置。
 - OpenCode 1.x:读 `~/.local/share/opencode/opencode.db`(SQLite,只读打开,不会干扰正在运行的 OpenCode;可用 `$XDG_DATA_HOME` 或 `--opencode-root` 改位置)。已在一份真实的 1.19.5 数据库上解析过,逐步 token 加总与 OpenCode 自己的会话合计一致;那份历史里没有压缩,压缩记录的解析依据的是源码。OpenCode 1.x 没有阈值键:默认在「窗口 − 模型输出预留(最多 32,000)」处压缩,只有 `limit` 设了 `input` 的模型才按 `limit.input − compaction.reserved` 算,所以单设 `compaction.reserved` 对大多数模型无效。`recommend` 给出按模型的 `provider.<id>.models.<model>.limit`(`input` = 阈值 + 20,000),并在说明里给出 2.x 的 `compaction.buffer` 比例。没写 `limit` 的自定义模型窗口未知,OpenCode 不会自动压缩它。2.x 预发布版的新存储暂不读取(`doctor` 会计数)。
 - Gemini CLI 为**实验性**支持:按 0.46/0.70 源码实现,还没在真实历史上跑过。日志在 `~/.gemini/tmp/<project>/chats/*.jsonl`(也读旧版 `session-*.json`)。`recommend` 给出 `model.compressionThreshold`(模型 token 上限的比例,默认 0.5,约 524k);这个键是全局的,一个比例管所有模型,片段会说明它落在其他模型的哪个位置。比例向下取整,保证触发点不超过推荐值,窗口太大导致一步太粗时会提示。
-- `apply` 暂不写 OpenCode 和 Gemini CLI 的配置,等配置位置与优先级在真实环境上核实后再说;`verify` 支持手动描述的改动(OpenCode 用 `--harness opencode --model provider/model`,Gemini CLI 的 `--new` 用 token 数)。
+- `apply` 暂不写 OpenCode 和 Gemini CLI 的配置,等配置位置与优先级在真实环境上核实后再说;`verify` 支持手动描述的改动(OpenCode 用 `--harness opencode --model provider/model`,Gemini CLI 也要 `--model`,`--new` 填该模型对应的 token 数,即比例 × 它的 token 上限)。
 - Hermes、Qwen Code、Kimi CLI、Goose 的适配器在计划中,顺序见 [路线图](docs/ROADMAP.md),欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
 
 MIT 许可。英文完整说明见 [README.md](README.md)。

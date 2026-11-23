@@ -181,7 +181,8 @@ verified. Use `--id` for an older apply. For a threshold you set by hand, descri
 `compactlab verify --applied-at 2026-10-29T21:05 --model claude-opus-5-5 --new 625k [--old 967k]` (the time and old
 value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
 too-late date). For OpenCode add `--harness opencode` and name the model as `provider/model`; for Gemini CLI add
-`--harness gemini-cli` and give `--new` in tokens (the fraction times the model's token limit).
+`--harness gemini-cli`, name the model, and give `--new` in tokens for it (the fraction times that model's token
+limit; one fraction is a different token count on each window).
 
 ## Run as a service
 

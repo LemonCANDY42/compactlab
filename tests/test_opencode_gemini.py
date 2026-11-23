@@ -181,6 +181,9 @@ def test_opencode_recommend_snippet(oc_result):
     assert lim["input"] == 520_000 and lim["output"] == 32_000 and lim["context"] == r["groups"][0]["max_window"]
     assert any("compaction.buffer" in n for n in sn.notes) and sn.warnings and not check([sn])
     assert not [x for x in generate(r, harness="opencode", scope="agent") if isinstance(x, Snippet)]
+    r["groups"][0]["current_note"] = "compaction.auto is false in opencode.json: OpenCode does not compact by itself"
+    (om,) = generate(r, harness="opencode", profile="balanced")  # a limit would never take effect
+    assert not isinstance(om, Snippet) and "compaction.auto to true" in om.reason
 
 
 # ---------- Gemini CLI ----------
@@ -232,6 +235,14 @@ def test_gemini_rewrites_tools_compressions_and_unknowns(tmp_path):
     (c,) = s.compactions  # the appended summary and the checkpoint are one compression
     assert (c.turn_index, c.pre_tokens) == (2, 15_000) and "state_snapshot" in c.summary_text
     assert s.unknown_events == {"message:mystery": 1, "record": 1} and s.parse_errors == 1
+
+
+def test_gemini_window_follows_the_grouped_model(tmp_path):
+    gemma = {"model": "gemma-4-31b-it"}
+    path = _jsonl(tmp_path / "tmp" / "p" / "chats" / "session-x.jsonl", [
+        gm("g1", 9000), gm("g2", 10_000) | gemma, gm("g3", 11_000) | gemma])  # fmt: skip
+    s = GeminiAdapter(tmp_path / "tmp").parse_file(path)
+    assert (s.model, s.context_window) == ("gemma-4-31b-it", 256_000)  # not the largest window seen
 
 
 def test_gemini_files_subagent_legacy_json_and_cache(tmp_path):
@@ -307,8 +318,10 @@ def test_units_fraction_and_free_share():
 
 def test_manual_verify_keys():
     oc = manual_manifest(1.0, "opencode", "bailian/m1", 500_000)
-    gm_ = manual_manifest(1.0, "gemini-cli", "", 400_000)
+    gm_ = manual_manifest(1.0, "gemini-cli", "gemma-4-31b-it", 128_000)
     (c1,) = changes_from_manifest(oc)
     (c2,) = changes_from_manifest(gm_)
     assert (c1.key, c1.model) == ("provider.bailian.models.m1.limit", "bailian/m1")
-    assert (c2.key, c2.model) == ("model.compressionThreshold", "")
+    assert (c2.key, c2.model, c2.new) == ("model.compressionThreshold", "gemma-4-31b-it", 128_000)  # stays per model
+    with pytest.raises(ValueError, match="--model"):
+        manual_manifest(1.0, "gemini-cli", "", 400_000)

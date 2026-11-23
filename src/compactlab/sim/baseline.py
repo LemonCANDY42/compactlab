@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 _DEFAULTS: dict[str, Any] | None = None
+OPENCODE_AUTO_OFF = "compaction.auto is false"  # read_current's note when OpenCode never compacts by itself
 OPENCODE_OUTPUT_CAP = 32_000  # OpenCode's OUTPUT_TOKEN_MAX: the most output it reserves for any model
 
 
@@ -110,7 +111,7 @@ def _opencode_current(d: dict[str, Any], model: str, name: str) -> tuple[int | N
     """OpenCode 1.x: limit.input - compaction.reserved when the model's limit sets input, else context - output."""
     comp = _obj(d.get("compaction"))
     if comp.get("auto") is False:
-        return None, f"compaction.auto is false in {name}: OpenCode does not compact by itself"
+        return None, f"{OPENCODE_AUTO_OFF} in {name}: OpenCode does not compact by itself"
     prov, _, mid = model.partition("/")
     lim = _obj(_obj(_obj(_obj(_obj(d.get("provider")).get(prov)).get("models")).get(mid)).get("limit"))
     if not _num(lim.get("context")):

@@ -32,6 +32,9 @@ MIN_ACTIVE_DAYS = 2
 BOOTSTRAP = 400
 NEAR = (0.8, 1.05)  # median size at compaction vs the new threshold: "setting is in effect" band
 PER_MODEL_KEYS = ("modelSettings.", "provider.")  # Claude Code's and OpenCode's keys are per model; others global
+# A global fraction (Gemini CLI) is one setting but a different token threshold for each model's window, so its
+# changes are verified per model too.
+FRACTION_HARNESSES = ("gemini-cli",)
 
 
 @dataclass
@@ -66,7 +69,7 @@ def resolve(changes: list[Change]) -> list[Change]:
     out: list[Change] = []
     glob: dict[tuple[str, str], Change] = {}
     for c in changes:
-        if c.key.startswith(PER_MODEL_KEYS):
+        if c.key.startswith(PER_MODEL_KEYS) or (c.harness in FRACTION_HARNESSES and c.model):
             out.append(c)
             continue
         first = glob.get((c.harness, c.key))
@@ -92,7 +95,12 @@ def manual_manifest(applied_at: float, harness: str, model: str, new: int, old: 
         prov, _, mid = model.partition("/")
         key, who = f"provider.{prov}.models.{mid}.limit", model
     elif harness == "gemini-cli":
-        key, who = "model.compressionThreshold", ""  # one fraction for every model; `new` is in tokens
+        if not model:
+            raise ValueError(
+                "Gemini CLI: name the model with --model; one compressionThreshold is a different "
+                "token threshold for each model's window, so --new is that model's token count"
+            )
+        key, who = "model.compressionThreshold", model
     else:
         raise ValueError(f"verifying a manual change is not supported for {harness}")
     change = {"harness": harness, "key": key, "model": who, "old": old, "new": new}
