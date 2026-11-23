@@ -20,6 +20,7 @@ from .calibrate import PenaltyParams, calibrate, rediscovery_step
 from .select import (
     DEFAULT_PROFILE,
     PROFILE_NAMES,
+    PROFILES,
     WAIT_CAP_MIN_PER_DAY,
     InfeasibleCap,
     compare,
@@ -492,11 +493,25 @@ def superseded(groups: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
     return out
 
 
-def _global_pick(used: list[dict[str, Any]], name: str, tol: float) -> dict[str, Any]:
+def _global_pick(used: list[dict[str, Any]], name: str, opts: dict[str, Any]) -> dict[str, Any]:
     """One threshold for every model of a harness: each model is scored at min(T, its own clamp) and the per-day
-    scores are summed; then the same rules as one group (the largest T within `tol` of the best, guardrails per model,
-    keep current / keep default within `tol`)."""
+    scores are summed; then the same rules as one group: the guardrails (your --max-threshold, each model's minimum
+    window and recall floor, measured recall from deep mode, and the profile's cap on added compaction wait, summed
+    over the models since it is one person's day), the largest T within the tolerance of the best, and keep current /
+    keep default within the tolerance."""
+    tol = opts.get("tolerance", 0.02)
+    cap = opts.get("max_threshold")
+    wait_cap = opts.get("wait_cap_min_per_day", WAIT_CAP_MIN_PER_DAY) if PROFILES[name]["enforce_wait_cap"] else None
     vot = float(used[0]["profiles"][name]["value_of_time"])
+
+    def wait(g: dict[str, Any], p: dict[str, Any]) -> float:
+        d = g["default"]
+        added = (p["time_compact_s"] + p["time_redisc_s"]) - (d["time_compact_s"] + d["time_redisc_s"])
+        return added / 60 / max(float(g.get("days") or 1.0), 1.0)
+
+    def measured_ok(g: dict[str, Any], p: dict[str, Any], floor: float) -> bool:
+        mp = next((m for m in g.get("measured") or [] if m["threshold"] == p["threshold"]), None)
+        return mp is None or mp["measured_recall"] >= floor
 
     def at(g: dict[str, Any], T: int) -> dict[str, Any] | None:
         eff = min(T, g["effective_max"])
@@ -510,19 +525,23 @@ def _global_pick(used: list[dict[str, Any]], name: str, tol: float) -> dict[str,
     Pts = list[tuple[dict[str, Any], dict[str, Any]]]
     scored: list[tuple[int, float, Pts]] = []
     for T in sorted({x for g in used for x in g["grid"]}):
+        if cap is not None and cap < T:
+            continue
         pts: Pts = []
         for g in used:
             p = at(g, T)
             if p is None:  # not on this model's grid
                 break
             prof = g["profiles"][name]
+            floor = prof["recommendation"]["recall_floor"]
             if p is not g["default"] and (
-                prof.get("min_threshold", 0) > T or p["recall"] < prof["recommendation"]["recall_floor"]
+                prof.get("min_threshold", 0) > T or p["recall"] < floor or not measured_ok(g, p, floor)
             ):
                 break  # a guardrail of this model's profile
             pts.append((g, p))
         else:
-            scored.append((T, total(pts), pts))
+            if wait_cap is None or sum(wait(g, p) for g, p in pts if p is not g["default"]) <= wait_cap:
+                scored.append((T, total(pts), pts))
     d_pts = [(g, g["default"]) for g in used]
     out: dict[str, Any] = {"threshold": None, "default_score": total(d_pts), "per_model": {}}
     cur = next((g["current"]["configured"] for g in used if g.get("current")), None)
@@ -569,7 +588,6 @@ def global_keys(groups: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str,
     sup = superseded(groups)
     for g in groups:
         g["superseded_by"] = sup.get((g.get("harness", ""), g.get("model", "")))
-    tol = opts.get("tolerance", 0.02)
     out: dict[str, Any] = {}
     for h in GLOBAL_KEY_HARNESSES:
         hs = [g for g in groups if g.get("harness") == h]
@@ -580,7 +598,7 @@ def global_keys(groups: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str,
         res: dict[str, Any] = {
             "models": models,
             "superseded": {g["model"]: g["superseded_by"] for g in hs if g["superseded_by"]},
-            "profiles": {n: _global_pick(used, n, tol) for n in PROFILE_NAMES},
+            "profiles": {n: _global_pick(used, n, opts) for n in PROFILE_NAMES},
         }
         for g in hs:
             for n in PROFILE_NAMES:

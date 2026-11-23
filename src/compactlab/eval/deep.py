@@ -371,6 +371,11 @@ def deep_analyze(
                 "adjusted": adjusted,
             }
         )
+    # a harness with one setting for every model (Codex) decides it across its groups: redo that with the measured
+    # recall now on them, or it keeps the lite-mode value the measurement just ruled out
+    from ..sim.engine import global_keys
+
+    result["global_keys"] = global_keys(result["groups"], result.get("options") or {})
     result["mode"] = "deep"
     result["deep"] = {
         "model": model,

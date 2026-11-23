@@ -111,8 +111,10 @@ def parse(raw: str) -> ModelId:
 def claude_settings_key(model: str) -> str:
     """Claude Code's modelSettings key for a logged model ID: the canonical Claude name, which also matches its alias,
     date-suffixed, [1m] and Bedrock / Vertex IDs; any other ID as logged."""
-    mid = parse(model).id
-    return mid if mid.startswith("claude-") else model
+    m = parse(model)
+    if not m.id.startswith("claude-"):
+        return model
+    return m.id + "[1m]" if m.one_m else m.id  # the 1M variant has a setting of its own
 
 
 def platform_key(platform: str, mid: ModelId) -> str:

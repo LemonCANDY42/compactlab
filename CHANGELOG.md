@@ -45,7 +45,8 @@ versioning: [SemVer](https://semver.org/).
   `env` block or the environment. A Claude model missing from the default rules compacts at about 967K when its window
   is 1M. `recommend`, `apply` and auto-apply key `modelSettings` by the canonical Claude name, which also covers
   Bedrock, Vertex and dated IDs (a preauthorization or consent listing either spelling matches), and the current
-  setting is read the same way; a `[1m]` variant's setting is not taken for the base model. A Claude Code context
+  setting is read the same way; a `[1m]` variant keeps its own key (`claude-opus-4-6[1m]`), read and written apart
+  from the base model's. A Claude Code context
   beyond 200K for an unrecognized ID widens the window to what the logs show (the env var is probably set in a shell
   compactlab does not see).
 - **Claude Code's idle compaction is modelled and gets its own advice.** `idleCompaction` (on by default) summarizes a

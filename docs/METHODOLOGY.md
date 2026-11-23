@@ -156,8 +156,10 @@ three.
 
 Codex has one limit for every model (`model_auto_compact_token_limit`, clamped to 90% of each model's window), so its
 groups get one decision. A candidate value is scored for every Codex group at the lower of the value and that group's
-clamp, the per-day scores are summed, and the same rules as for one group pick it: the largest value within 2% of the
-best, each group's guardrails, then keep current / keep default within 2%. Each Codex group's comparison is rewritten
+clamp, the per-day scores are summed, and the same rules as for one group pick it: the guardrails (`--max-threshold`,
+each group's minimum window, recall floor and deep-mode measured recall, and the profile's 30 min/day cap on added
+compaction wait, summed over the groups), the largest value within 2% of the best, then keep current / keep default
+within 2%. Deep mode redoes the choice once its measurements are on the groups. Each Codex group's comparison is rewritten
 to what that one value does to it, and `recommend`, `apply` and auto-apply write it once. A model a newer version of
 the same family took over (`gpt-6.1-sol` → `gpt-6.2-sol`: the newer one used after the older one's last use, which
 came no more than 3 days after the newer one first appeared) is left out of the decision; `simulate` lists it.

@@ -526,3 +526,42 @@ def test_codex_auto_apply_writes_its_one_limit_once(make_group, tmp_path):
     out = run_auto_apply(res, consent, tmp_path, Rules(min_days=1, min_turns=1), now=0.0, dry_run=True)
     assert sum(d["action"] == "apply" for d in out["decisions"]) == 2  # both models agree on the value
     assert out["diff"].count("+model_auto_compact_token_limit") == 1 and not out.get("rejected")
+
+
+def test_codex_one_limit_keeps_the_guardrails(make_group):
+    """The shared Codex value obeys --max-threshold, the profile's added-wait cap and measured (deep) recall, like a
+    single group's pick."""
+    from compactlab.sim.engine import global_keys
+
+    day = 86_400.0
+    low = [5.0 + i for i in range(14)]  # wants the lowest limit
+    grid = [100_000 + 25_000 * i for i in range(14)]
+
+    def one():
+        g = _codex(make_group, "gpt-6.2-sol", "main", low, [0, 25 * day])
+        return g, [g]
+
+    g, gs = one()
+    free = global_keys(gs, {})["codex"]["profiles"]["cost"]
+    assert free["action"] == "set" and free["threshold"] == 100_000
+    capped = global_keys(gs, {"max_threshold": 150_000})["codex"]["profiles"]["cost"]
+    assert capped["threshold"] <= 150_000
+    g, gs = one()
+    g["time_compact_s"] = [4 * 3600.0 * (14 - i) for i in range(14)]  # every binding value adds 60+ min/day
+    g["default"]["time_compact_s"] = 0.0
+    bal = global_keys(gs, {})["codex"]["profiles"]["balanced"]
+    assert bal["action"] == "keep default"  # every binding value breaks the 30 min/day wait cap
+    g, gs = one()
+    g["measured"] = [{"threshold": T, "measured_recall": 0.5 if T < 200_000 else 0.95} for T in grid]
+    deep = global_keys(gs, {})["codex"]["profiles"]["cost"]
+    assert deep["threshold"] >= 200_000  # measured recall rules out the lower values
+
+
+def test_1m_variant_keeps_its_own_settings_key(tmp_path):
+    assert claude_settings_key("claude-opus-4-6[1m]") == "claude-opus-4-6[1m]"
+    assert claude_settings_key("claude-opus-4-6-20260101") == "claude-opus-4-6"
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps({"modelSettings": {"claude-opus-4-6": {"autoCompactWindow": 650000},
+                                               "claude-opus-4-6[1m]": {"autoCompactWindow": 800000}}}))  # fmt: skip
+    assert read_current("claude-code", "claude-opus-4-6[1m]", p)[0] == 800_000
+    assert read_current("claude-code", "claude-opus-4-6", p)[0] == 650_000
