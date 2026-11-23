@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -264,7 +264,10 @@ class LiveSessions:
         assert s is not None
         i, last = latest(s)
         h, model = s.harness, last.model
-        window, window_source, _ = group_window(h, model, [s], self.pricing.lookup(model, s.platform).max_window, opts)
+        # only this model's requests: another model's larger contexts must not raise its window
+        mine = replace(s, turns=[x for x in s.turns if x.model == model], compactions=[])
+        table_window = self.pricing.lookup(model, s.platform).max_window
+        window, window_source, _ = group_window(h, model, [mine], table_window, opts)
         if s.context_window and window == s.context_window:
             window_source = "logged by the session"
         if (h, model) not in current:

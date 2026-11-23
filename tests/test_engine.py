@@ -197,6 +197,21 @@ def test_claude_rewritten_history_is_not_the_latest_request(tmp_path, monkeypatc
         assert after is not None and after.ts == pytest.approx(NOW - 600, abs=1)
 
 
+def test_window_comes_from_the_latest_models_requests_only(logs):
+    """A switch from a 1M-window model to a smaller one: the earlier model's 700k contexts say nothing about the
+    new model's window."""
+    lines = _claude_lines("55555555-eeee", 3, 700_000, NOW - 300)
+    tail = _claude_lines("55555555-eeee", 1, 50_000, NOW - 100)
+    for d in tail:
+        if d["type"] == "assistant":
+            d["message"].update(id="h1", model="claude-haiku-4-5")
+            d["requestId"] = "rh1"
+    _write(logs["claude"] / "-p" / "55555555-eeee.jsonl", lines + tail)
+    row = _by_id(_live(logs).snapshot())["55555555-eeee"]
+    assert row["model"] == "claude-haiku-4-5" and row["ctx"] == 50_000
+    assert row["window"] == 200_000 and row["threshold"] == 200_000 and row["threshold_source"] == "default"
+
+
 def test_touched_file_with_old_records_is_not_active(logs):
     old = _write(
         logs["claude"] / "-p" / "44444444-dddd.jsonl", _claude_lines("44444444-dddd", 3, 9_000, NOW - 9 * 86_400)
