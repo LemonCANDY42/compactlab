@@ -5,6 +5,43 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Claude Code's idle compaction is modelled and gets its own advice.** `idleCompaction` (on by default) summarizes a
+  long conversation left idle on the one-hour cache while the cache is still warm, about 55 minutes in, and applies
+  the summary on return. The adapter tells these compactions apart (an `auto` boundary an hour or more after the last
+  turn that took under 5 s, or `precomputed: true`); they no longer count as the threshold, as compaction wait or as
+  the "history" threshold. The replay charges the summary (a cached read and its output), returns you to the smaller
+  context, adds the re-discovery after it, and charges summaries for sessions never resumed at the observed rate.
+  Whether a gap fires depends on the app and machine, not the context size (124 of 335 eligible gaps in the
+  maintainer's logs), so each gap keeps its logged outcome and the rest fire at the group's rate. Groups on the
+  one-hour cache are replayed with the setting flipped too; `simulate` prints a keep-on / turn-off verdict over all of
+  them (it is one global setting) and `recommend` adds an `idleCompaction` snippet when flipping wins by more than 2%,
+  even when no window changes. Main sessions only; the flipped sweep is saved in the result, so re-selecting a saved
+  result (`--profile`, `--value-of-time`) updates the verdict too. `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` is read from
+  settings.json's `env` block or the environment; `verify` uses the same setting.
+- **`verify` counts the compaction requests the logs leave out.** Each compaction's summary request (a cached read of
+  the context and the summary output) is not a logged turn; observed cost now adds an estimate, as the replay does.
+  Threshold, idle and hand-typed compactions are counted apart, the "setting in effect" check uses threshold
+  compactions only, and a role that never reached the threshold gets `untouched` instead of "saved less than
+  predicted".
+
+### Fixed
+- **Codex: most tool calls were missed.** Current Codex runs commands as `custom_tool_call` (`exec`), which the
+  adapter ignored (24,107 calls in 30 days of the maintainer's logs); tool outputs as lists of content blocks are now
+  counted by their text, not their JSON (an image's base64 no longer counts as context). Codex writes a response's
+  `token_count` after that response's tool has run, so turn latency now runs from the input before the response's
+  first output item to its last one (it had been the tool's run time, or zero; an aborted response no longer stretches
+  the next turn), and a tool output that arrives before its turn is recorded on that turn instead of the previous
+  one. Parser version 5 re-reads Codex logs.
+- **Re-discovery time could explode.** It divided the re-discovered tokens by the median of all tool results; for a
+  Codex group whose logged results were ~4 tokens that gave 134 hours of re-discovery in a 39-hour history (+4,826
+  min/day). The step is now in the same units as the tokens: the mean re-discovery result with an observed penalty,
+  the prior's 2,000 tokens with the prior.
+- **"No action needed" now means the default threshold is never reached.** Idle compactions and the hand-typed
+  `/compact` the replay keeps no longer count; `verify`'s predicted threshold compactions leave them out too.
+- **"Change" for a negligible gain.** A profile now keeps the default unless it beats it by more than the 2% selection
+  tolerance (by the selection rule the default is as good a choice); the reason says "net gain under 2%".
+
 ### Changed
 - **Clearer terminal and report wording** (from a review while making the promo video):
   - one verdict line first in `demo` / `simulate` (terminal and plain output) and `top`:

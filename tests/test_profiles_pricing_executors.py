@@ -71,6 +71,19 @@ def test_keep_default_when_profile_is_not_better(make_group):
     assert all(c["action"] == "keep default" for c in g["comparison"].values())
 
 
+@pytest.mark.parametrize(("gain", "action"), [(0.01, "keep default"), (0.03, "set")])
+def test_set_needs_a_gain_beyond_the_selection_tolerance(make_group, gain, action):
+    """The pick is the largest threshold within 2% of the best score; a default that close is just as good."""
+    from compactlab.term.views import keep_reason
+
+    # the default copies the last grid point; that point fails the recall floor, so it is not a candidate
+    cost = [100.0 * (1 - gain)] * (len(GRID) - 1) + [100.0]
+    g = make_group(GRID, cost, recall=[0.95] * (len(GRID) - 1) + [0.5], emax=1_000_000)
+    assert {c["action"] for c in g["comparison"].values()} == {action}
+    if action == "keep default":
+        assert "under 2%" in keep_reason(g, "balanced")
+
+
 def test_models_dev_and_litellm_parsers():
     md = {
         "anthropic": {

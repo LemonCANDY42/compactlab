@@ -23,6 +23,10 @@ def _lat(rng: random.Random, ctx: int) -> timedelta:
     return timedelta(seconds=2.5 + 0.8 * ctx / 100_000 + rng.uniform(0, 4))
 
 
+def _stamped(records: list[dict], t: datetime) -> list[dict]:
+    return [{"timestamp": _iso(t), **r} for r in records]
+
+
 def _clat(rng: random.Random, pre: int) -> timedelta:
     """Synthetic compaction latency: a summarizer call that reads the whole context and writes a long summary
     (real logs show minutes, not seconds, for large contexts)."""
@@ -145,8 +149,13 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
             {"timestamp": _iso(t), "type": "turn_context", "payload": {"model": model}},
         ]
         total = 0
+        # Real order: the model answers the last input (its latency), calls a tool, the tool runs, and the response's
+        # token_count is written after the tool's output. An idle gap is spent while that tool output is pending, so
+        # each step writes the previous step's output and token_count after its gap.
+        pending: list[dict] = []
         for k, (ctx, gap, key, utext, compacted, pre) in enumerate(_steps(rng, rng.randint(80, 160), 20_000, 300_000)):
             t += timedelta(seconds=gap)
+            lines += _stamped(pending, t)
             if compacted:
                 t += _clat(rng, pre)
                 lines.append(
@@ -160,6 +169,7 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
                 lines.append(
                     {"timestamp": _iso(t), "type": "event_msg", "payload": {"type": "user_message", "message": utext}}
                 )
+            t += _lat(rng, ctx)
             lines.append(
                 {
                     "timestamp": _iso(t),
@@ -172,17 +182,7 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
                     },
                 }
             )
-            lines.append(
-                {
-                    "timestamp": _iso(t),
-                    "type": "response_item",
-                    "payload": {
-                        "type": "function_call_output",
-                        "call_id": f"c{k}",
-                        "output": "y" * rng.randint(300, 4000),
-                    },
-                }
-            )
+            output = {"type": "function_call_output", "call_id": f"c{k}", "output": "y" * rng.randint(300, 4000)}
             out_tok = rng.randint(50, 600)
             total += ctx + out_tok
             tok = {
@@ -197,9 +197,10 @@ def write_codex(root: Path, n: int = 4, seed: int = 11, model: str = "gpt-5-code
                 "last_token_usage": tok,
                 "model_context_window": 400_000,
             }
-            t += _lat(rng, ctx)
-            ev = {"timestamp": _iso(t), "type": "event_msg", "payload": {"type": "token_count", "info": info}}
-            lines += [ev, ev]  # Codex re-emits identical token_count events
+            ev = {"type": "event_msg", "payload": {"type": "token_count", "info": info}}
+            pending = [{"type": "response_item", "payload": output}, ev, ev]  # Codex re-emits identical token_counts
+            t += timedelta(milliseconds=500)  # the tool runs
+        lines += _stamped(pending, t)
         path.write_text("\n".join(json.dumps(x) for x in lines) + "\n")
         out.append(path)
     return out

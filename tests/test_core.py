@@ -229,3 +229,172 @@ def test_a_forked_log_does_not_bill_the_parents_history_twice():
     assert [(c.turn_index, c.pre_tokens) for c in b.compactions] == [(1, 6000)]
     lone = sess("lone", 500.0, 2)
     assert drop_inherited([lone]) == [lone] and lone.skipped_inherited == 0
+
+
+def _tool_session(results, key="Read:/a"):
+    s = Session("x", "claude-code", "main", "p")
+    s.turns = [Turn(ts=i, ctx=1000 + i, tool_keys=[key], tool_result_tokens=[r]) for i, r in enumerate(results)]
+    return s
+
+
+def test_rediscovery_step_matches_the_penalty_units():
+    from compactlab.sim.calibrate import PRIOR_STEP_TOKENS, rediscovery_step
+
+    observed = PenaltyParams(rho=0.01, fixed_tokens=0, correction_turns=0, source="observed", n_observed=9)
+    big = [_tool_session([100, 300] * 15)]
+    # observed re-read tokens are made of these calls: tokens / mean size = calls
+    assert rediscovery_step(big, observed) == 200
+    # prior re-read tokens pair with the prior step, whatever the logged tool results look like
+    assert rediscovery_step([_tool_session([4] * 40)], PenaltyParams()) == PRIOR_STEP_TOKENS
+    # too few re-discovery results, or none (edits are not re-discovery): the prior step
+    assert rediscovery_step([_tool_session([100] * 5)], observed) == PRIOR_STEP_TOKENS
+    assert rediscovery_step([_tool_session([5000] * 40, key="Edit:/a")], observed) == PRIOR_STEP_TOKENS
+
+
+def test_tiny_tool_results_do_not_inflate_rediscovery_time():
+    """Regression: a Codex group whose logged tool results were ~4 tokens replayed ~65 h of re-discovery per
+    compaction, because the prior's re-read tokens were divided by that median."""
+    ss = []
+    for k in range(3):
+        s = Session(f"s{k}", "codex", "main", "p")
+        ctx = 30_000
+        for i in range(120):
+            ctx += 3000
+            s.turns.append(Turn(ts=k * 10_000 + i * 20, ctx=ctx, output=200, model="gpt-6-astra",
+                                tool_keys=["exec:ls"], tool_result_tokens=[4]))  # fmt: skip
+        ss.append(s)
+    res = analyze(ss, PR, SimOptions(grid_start=100_000, grid_stop=300_000, grid_step=50_000))
+    (g,) = res["groups"]
+    assert g["penalty_params"]["source"] == "prior"
+    med = g["time_model"]["median_turn_s"]
+    for T, redisc, comps in zip(g["grid"], g["time_redisc_s"], g["compactions"], strict=True):
+        # prior: (6000 + 4% of what was dropped) / 2000 + 0.3 turns per compaction, never thousands
+        assert redisc <= comps * ((6000 + 0.04 * (T + 3000)) / 2000 + 0.3) * med + 1e-6, T
+
+
+def _idle_session(n=200, away_at=100, away_s=7200.0, g=3000):
+    s = Session("idle", "claude-code", "main", "p")
+    ctx, ts = 30_000, 0.0
+    for i in range(n):
+        ts += away_s if i == away_at else 10.0
+        ctx += g
+        s.turns.append(Turn(ts=ts, ctx=ctx, output=300, model="claude-opus-5-5"))
+    return s
+
+
+def _idle_ctx(on=True, rate=1.0):
+    pen = PenaltyParams(rho=0, fixed_tokens=0, correction_turns=0)
+    return Ctx(PR.lookup("claude-opus-5-5").for_ttl(3600), 30_000, 12_000, 3600, pen, TimeModel(), 2000,
+               rot_fn(DEFAULT_ROT), SimOptions(), idle_on=on, idle_rate=rate)  # fmt: skip
+
+
+def test_idle_compaction_replay():
+    """Away for 2 h at 330k: the summary is made while the cache is warm (read + summary output), the user returns to
+    a small context whose cache write is cheap, and nobody waits for it."""
+    assert make_trace(_idle_session(), 30_000).idle_obs == {}  # no idle compaction anywhere: nothing observed
+    assert make_trace(_idle_session(), 30_000, idle_since=1e12).idle_obs == {}  # all before the feature appeared
+    tr = make_trace(_idle_session(), 30_000, idle_since=0.0)
+    assert tr.idle_obs == {100: False}  # eligible in the log, and no idle compaction there
+    tr.idle_obs = {}  # unknown instead: it fires at the rate (1.0 here)
+    on, off = replay(tr, math.inf, _idle_ctx(True)), replay(tr, math.inf, _idle_ctx(False))
+    assert (on.compactions, on.idle_compactions, off.compactions, off.idle_compactions) == (1, 1, 0, 0)
+    assert on.t_compact == 0 and on.t_redisc == 0
+    _, ro, _, rr = PR.lookup("claude-opus-5-5").for_ttl(3600).rates(1)
+    ctx = 30_000 + 100 * 3000
+    assert on.idle_cost == pytest.approx(ctx * rr + 12_000 * ro)
+    assert on.cost < off.cost  # rewriting 330k cold costs more than the summary and the smaller turns after it
+    # a gap the log shows did not fire stays without one; a short gap or a small context never fires
+    tr.idle_obs[100] = False
+    assert replay(tr, math.inf, _idle_ctx(True)).idle_compactions == 0
+    assert replay(make_trace(_idle_session(away_s=1800.0), 30_000), math.inf, _idle_ctx()).idle_compactions == 0
+    assert replay(make_trace(_idle_session(away_at=40), 30_000), math.inf, _idle_ctx()).idle_compactions == 0
+
+
+def test_idle_compaction_observed_outcomes_and_tail():
+    s = _idle_session()
+    s.turns.append(Turn(ts=s.turns[-1].ts + 4000, ctx=s.turns[-1].ctx + 3000, output=10, model="claude-opus-5-5"))
+    s.compactions.append(Compaction(turn_index=100, pre_tokens=330_000, ts=s.turns[100].ts, trigger="auto", idle=True))
+    tr = make_trace(s, 30_000, data_end=s.turns[-1].ts + 10_000, idle_since=s.turns[100].ts)
+    assert tr.idle_obs == {100: True, 200: False}  # fired at 100; eligible at 200 (630k, away 67 min) but did not
+    assert tr.tail_gap == 10_000
+    r = replay(tr, math.inf, _idle_ctx(True, rate=0.5))
+    assert r.idle_compactions == 1
+    # never resumed: the summary was still made while the app was open, at the observed rate
+    tail_ctx = 30_000 + 12_000 + 100 * 3000
+    _, ro, _, rr = PR.lookup("claude-opus-5-5").for_ttl(3600).rates(1)
+    assert r.idle_tail_cost == pytest.approx(0.5 * (tail_ctx * rr + 12_000 * ro))
+
+
+def _idle_sessions(n=6, shift=0):
+    """`shift` raises every context: from 400k the default threshold (967k) is reached too."""
+    ss = []
+    for k in range(n):
+        s = _idle_session()
+        s.id = f"idle-{k}"
+        for t in s.turns:
+            t.ts += k * 86_400
+            t.ctx += shift
+            t.cache_write, t.cache_write_1h = 3000, 3000  # the logs say the one-hour cache
+        if k % 2 == 0:  # half of the eligible gaps fired
+            s.compactions.append(
+                Compaction(turn_index=100, pre_tokens=330_000, ts=s.turns[100].ts, trigger="auto", idle=True)
+            )
+        ss.append(s)
+    return ss
+
+
+def test_idle_advice_adds_up_the_groups_it_applies_to():
+    res = analyze(_idle_sessions(), PR, SimOptions(grid_start=100_000, grid_stop=700_000))
+    (g,) = res["groups"]
+    assert g["cache_ttl"] == 3600 and g["observed_idle_compactions"] == 3 and g["observed_compactions"] == 0
+    assert g["idle"]["applies"] and g["idle"]["enabled"] and g["idle"]["rate"] == 0.5
+    assert g["idle"]["alt"]["enabled"] is False
+    adv = res["idle_compaction"]
+    assert adv["enabled"] and adv["groups"] == ["claude-opus-5-5 · main"]
+    bal = adv["profiles"]["balanced"]
+    # flipping it off removes exactly the idle compactions at the same thresholds
+    assert bal["flipped"]["idle_compactions"] == 0 and bal["configured"]["idle_compactions"] > 0
+    assert isinstance(bal["switch"], bool) and set(adv["current"]) >= {"d_usd_per_day", "d_min_per_day", "switch"}
+    # with the setting off, the logs say nothing about how often it would fire: assume every eligible gap
+    off = analyze(_idle_sessions(), PR, SimOptions(grid_start=100_000, grid_stop=700_000, idle_compaction=False))
+    assert off["groups"][0]["idle"]["rate"] == 1.0 and not off["idle_compaction"]["enabled"]
+
+
+def test_idle_compaction_needs_the_one_hour_cache():
+    ss = _idle_sessions()
+    for s in ss:
+        for t in s.turns:
+            t.cache_write_1h = 0
+    res = analyze(ss, PR, SimOptions(grid_start=100_000, grid_stop=700_000))
+    assert res["groups"][0]["idle"]["applies"] is False and res["idle_compaction"] is None
+    assert all(x == 0 for x in res["groups"][0]["idle_compactions"])
+
+
+def test_idle_review_regressions():
+    from compactlab.sim.engine import reselect
+
+    # the default never reaches its threshold here (peak 630k < 967k): no action, whichever way idle compaction is set
+    for idle in (None, False):
+        res = analyze(_idle_sessions(), PR, SimOptions(grid_start=100_000, grid_stop=700_000, idle_compaction=idle))
+        assert res["groups"][0]["no_action_needed"], idle
+    # the tail of a set pick is kept, and reselect brings the idle verdict along
+    ss = _idle_sessions(shift=400_000)  # now the default does compact
+    res = analyze(ss, PR, SimOptions(grid_start=100_000, grid_stop=1_000_000))
+    g = res["groups"][0]
+    assert not g["no_action_needed"]
+    assert "idle_tail_cost" in g and "manual_compactions" in g
+    picked = [n for n in g["comparison"] if g["comparison"][n]["action"] == "set"]
+    assert picked and all(g["idle"]["profiles"][n]["idle_tail_cost"] == g["idle_tail_cost"][
+        g["grid"].index(g["comparison"][n]["threshold"])] for n in picked)  # fmt: skip
+    # re-selecting a saved result gives the same idle verdict as a fresh run with those options
+    reselect(res, "cost", 0.0)
+    fresh = analyze(ss, PR, SimOptions(grid_start=100_000, grid_stop=1_000_000, profile="cost", value_of_time=0.0))
+    assert res["idle_compaction"] == fresh["idle_compaction"] and res["idle_compaction"]["profile"] == "cost"
+
+
+def test_a_logged_idle_compaction_fires_even_on_a_shorter_return():
+    s = _idle_session(away_s=52 * 60.0)  # the adapter counts 50 min+; the replay's own rule is 55 min
+    s.compactions.append(Compaction(turn_index=100, pre_tokens=330_000, ts=s.turns[100].ts, trigger="auto", idle=True))
+    tr = make_trace(s, 30_000, idle_since=0.0)
+    assert tr.idle_obs == {100: True}
+    assert replay(tr, math.inf, _idle_ctx(True, rate=0.0)).idle_compactions == 1

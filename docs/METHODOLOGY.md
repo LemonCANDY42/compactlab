@@ -43,6 +43,48 @@ overrides both. The group records `cache_ttl` and `cache_ttl_source`, and the me
 logged write at its own tier. Subscriptions usually show 1-hour writes for the main session and 5-minute writes
 for subagents.
 
+### Idle compaction (Claude Code)
+
+Claude Code's idle compaction (`idleCompaction` in settings.json, on unless `false`) summarizes a long conversation
+left idle on the one-hour cache while that cache is still warm, and applies the summary when you return. In the logs
+it is an `auto` compact boundary written an hour or more after the last turn that took almost no time (the summary
+was ready; newer versions add `precomputed: true`); its summary line is timestamped about 55 minutes after the last
+turn (54.5–62 min in the maintainer's logs). It acts only at or above `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` (default
+200k; read from settings.json's `env` block or the environment). The adapter marks these compactions `idle`; they do
+not count as the threshold, as compaction wait, or as the "history" threshold.
+
+For main-session groups on the one-hour cache (a subagent's transcript is not a conversation you step away from),
+the replay models it:
+
+```
+before turn t, if c ≥ min_tokens and it fires (logged there, or Δt_t ≥ 55 min and the draw says so):
+           cost += c · p_read + S · p_out          # summary made while the cache was warm; nobody waits for it
+           c ← B + S                                 # the turn on return writes the small context, not c
+           penalty and recall decay as after any compaction
+after the last turn, if the data ends ≥ 55 min later and c ≥ min_tokens:
+           cost += rate · (c · p_read + S · p_out)   # a summary for a session nobody resumed (expected value)
+```
+
+Whether a gap fires depends on the app running and the machine being awake, not on the context size (it fired on
+124 of 335 eligible gaps in the maintainer's logs, 33–44% in every size band, 17% for gaps over 8 hours). So the
+replay keeps each gap's logged outcome where the log shows one (it was eligible in the log: away long enough with a
+large enough context, from the first idle compaction in the logs on, since before that the harness may not have had
+the feature) and draws the rest at the group's observed rate (the harness's main sessions on the one-hour cache when
+the group has fewer than 5 eligible gaps; 1.0, the documented behaviour, when the logs have none or the setting is
+off). A threshold the default never reaches is still "no action needed" when idle compactions happen. The draw is fixed per
+session and turn, so a gap fires the same way at every threshold.
+
+Every group is replayed with the setting as configured, and the groups it applies to again with it flipped. The
+setting is global, so the verdict (`idle_compaction` in the result, a block after the groups in the CLI) adds up the
+per-day cost, wall-clock, compactions and recall over those groups at what would be in force: each profile's picks,
+and your current settings. It says to flip the setting only when that beats the current state by more than the
+selection tolerance (2% of the score), and `recommend` then prints an `idleCompaction` snippet (also when no
+window needs to change). The flipped sweep is stored in the result, so `--profile` / `--value-of-time` on a saved
+result re-select it too. `verify` replays with the same setting, read from settings.json.
+
+Codex logs its own compaction request (`token_usage_record` next to the `compacted` line) but not as a turn, so it is
+not counted twice; `verify` estimates it like Claude Code's.
+
 Recall proxy per turn: `rot(c) · (1 − (1 − r)·exp(−turns_since_compaction / H))` with retention `r = 0.9`,
 `H = 15`, and `rot` interpolated from `(0, 1.0) (100k, .98) (200k, .95) (400k, .90) (600k, .84) (1M, .75)`.
 
@@ -51,11 +93,13 @@ Recall proxy per turn: `rot(c) · (1 − (1 − r)·exp(−turns_since_compactio
 compactlab fits wall-clock behaviour from your own timestamps, per model and role (`sim/timing.py`):
 
 - **Turn latency vs context**: latency = response timestamp − last user/tool-result timestamp before it (≤ 600 s).
+  Codex writes a response's `token_count` after that response's tool already ran, so for Codex the response runs from
+  the input before its first output item to its last output item.
   Samples are binned by 50k tokens of context; bin medians (≥ 5 samples) are made monotone non-decreasing and
   interpolated. Confidence: `ok` with ≥ 200 samples in ≥ 3 bins, `low` otherwise, `prior` with no usable
   timestamps.
-- **Compaction latency vs size**: compaction timestamp − last input before it (≤ 900 s), fitted as `a + b·pre_tokens`
-  (a, b ≥ 0). Confidence: `ok` with ≥ 20 samples, `low` with 5–19, `prior` below that.
+- **Compaction latency vs size**: the logged `durationMs` when there is one, else compaction timestamp − last input
+  before it (≤ 900 s), fitted as `a + b·pre_tokens` (a, b ≥ 0). Idle compactions are left out: nobody waited. Confidence: `ok` with ≥ 20 samples, `low` with 5–19, `prior` below that.
 - **Thin data never drives a pick.** A fit that is not `ok` is not used. The group borrows the pooled fit of all
   sessions of the same harness when that one is `ok` (`source: pooled`); otherwise it uses a prior (`source: prior`):
   turn latency 8 s + 4 s per 100k, compaction latency 30 s + 0.3 s per 1k tokens (about 2 minutes at 300k). The
@@ -63,7 +107,11 @@ compactlab fits wall-clock behaviour from your own timestamps, per model and rol
   The re-discovery step (median turn latency) follows the same rule: with `source: prior` it stays at the prior's
   10 s however few samples exist. The
   result records `turn_source` / `compact_source` and the own sample counts, and the CLI and report print them.
-- **Re-discovery time**: (re-discovered tokens ÷ median tool-result size + correction turns) × median turn latency.
+- **Re-discovery time**: (re-discovered tokens ÷ tokens per re-discovery call + correction turns) × median turn
+  latency. The two must be in the same units: with an observed penalty the re-discovered tokens are the summed
+  results of repeated re-discovery calls, so a call is their mean size; with the prior penalty (6,000 tokens plus 4% of
+  what was dropped) a call is the prior's 2,000 tokens. (A median of all tool results once turned a Codex group's
+  prior into 134 hours of re-discovery in a 39-hour history.)
 
 Per threshold the replay sums turn time at the simulated context, compaction time and re-discovery time. Versus the
 default this splits into *time saved by smaller contexts* and *time added by compactions and re-discovery*.
@@ -109,6 +157,10 @@ is, the cap is dropped and flagged); then, among thresholds with recall ≥ floo
 whose score is within 2% of the lowest (the rule earlier versions called **standard**, now applied per profile).
 Flags record when a guardrail moved the pick (`guardrail_applied`, with the unconstrained threshold), when cost goes
 below a quarter of the window, when wait exceeds the cap, and when the recall floor could not be met.
+
+The action is **keep default** when the pick is not below the default, or when the default's score is within the
+same 2% of the pick's: by the selection rule the default is then as good a choice, and a "change" for a fraction of a
+percent would be noise. Otherwise it is **change** (`set` in the JSON).
 
 Why these numbers: with a value of time of $10/h, real histories favored windows near the low end of the grid and
 several times the default's compactions, at minutes of wait each. Pricing an hour of the developer's attention at

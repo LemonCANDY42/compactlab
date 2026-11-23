@@ -506,6 +506,7 @@ const I={
  kTotSub:[n=>'if the '+n+' “set” models are applied',n=>'应用 '+n+' 个“设置”模型时'], kKeep:['Keep default','保持默认'], mUnit:['models','个模型'],
  kwAbove:[(a,b)=>'keep default: '+a+' is not below the default '+b,(a,b)=>'保持默认:'+a+' 不低于默认值 '+b],
  kwScore:[(v,n)=>'keep default: no net gain at $'+v+'/h (net '+n+' per day)',(v,n)=>'保持默认:按 $'+v+'/小时 没有净收益(每天净 '+n+')'],
+ kwSmall:[(v,n,p)=>'keep default: net gain under '+p+'% at $'+v+'/h ('+n+' per day)',(v,n,p)=>'保持默认:按 $'+v+'/小时 净收益不到 '+p+'%(每天 '+n+')'],
  kwWorth:[(v,u,m,tv)=>'keep default: not worth it at $'+v+'/h · saves '+u+'/day but adds '+m+'/day of wall-clock (= '+tv+')',(v,u,m,tv)=>'保持默认:按 $'+v+'/小时 不划算 · 每天省 '+u+',但总耗时每天多 '+m+'(折合 '+tv+')'],
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
@@ -564,11 +565,13 @@ const setUsd=(g,k=S.op)=>isSet(g,k)?usdOf(g,k):0,setMin=(g,k=S.op)=>isSet(g,k)?m
 // the group with the largest per-day money impact, never one that needs no change; ties by turns
 function best(){const key=g=>[isSet(g)?1:0,Math.abs(usdOf(g)),g.n_turns];let b=-1,bk=null;
   D.groups.forEach((g,i)=>{if(g.no_action_needed)return;const k=key(g);if(!bk||k[0]>bk[0]||(k[0]===bk[0]&&(k[1]>bk[1]+1e-9||(Math.abs(k[1]-bk[1])<=1e-9&&k[2]>bk[2])))){b=i;bk=k}});return b}
+function tolOf(){return (D.options&&D.options.tolerance!=null)?D.options.tolerance:0.02}
 function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i);
-  return (thr>=d.threshold||p.combined_cost+p.time_s/3600*vot>=d.combined_cost+d.time_s/3600*vot)?'aKeep':'aSet'}
-// why a threshold keeps the default: the same two tests as action() and compactlab.sim.engine._comparison
+  return (thr>=d.threshold||d.combined_cost+d.time_s/3600*vot<=(p.combined_cost+p.time_s/3600*vot)*(1+tolOf()))?'aKeep':'aSet'}
+// why a threshold keeps the default: the same tests as action() and compactlab.sim.engine._comparison
 function keepWhy(g,thr,vot){const d=g.default;if(g.no_action_needed)return '';if(thr>=d.threshold)return t('kwAbove',fk(thr),fk(d.threshold));
   const im=impJS(pt(g,g.grid.indexOf(thr)),d,g),u=im.usd.per_day,m=im.minutes.per_day,tv=m/60*vot;
+  if(u+tv<0)return t('kwSmall',vot,fsv(u+tv),+(tolOf()*100).toFixed(1));
   if(u<0&&m>0)return t('kwWorth',vot,'$'+(-u).toFixed(1),m.toFixed(1)+' min','$'+tv.toFixed(1));
   return t('kwScore',vot,fsv(u+tv))}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}

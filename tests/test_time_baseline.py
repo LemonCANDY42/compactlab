@@ -114,3 +114,17 @@ def test_cli_summary_languages_and_apply_skips_no_action(tmp_path, claude_root, 
     plan = json.loads(capsys.readouterr().out)
     assert all(c["key"].endswith("autoCompactWindow") for c in plan["changes"])
     assert {c["key"].split(".")[1] for c in plan["changes"]} <= {"claude-opus-5-5", "claude-sonnet-5-5"}
+
+
+def test_read_idle_settings(tmp_path):
+    from compactlab.sim.baseline import read_idle
+
+    f = tmp_path / "settings.json"
+    assert read_idle(None, {})[:2] == (None, None)
+    f.write_text('{"idleCompaction": false, "env": {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "300_000"}}')
+    on, mn, desc = read_idle(f, {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "150000"})
+    assert (on, mn) == (False, 300_000) and "idleCompaction in settings.json" in desc  # the settings env block wins
+    f.write_text('{"idleCompaction": "yes"}')  # not a boolean: treated as unset
+    assert read_idle(f, {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "150000"})[:2] == (None, 150_000)
+    f.write_text("{not json")
+    assert read_idle(f, {})[:2] == (None, None)

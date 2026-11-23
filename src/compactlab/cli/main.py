@@ -27,7 +27,7 @@ from ..model import Session, drop_inherited
 from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, refresh
 from ..report.html import render_html
-from ..sim.baseline import read_current
+from ..sim.baseline import read_current, read_idle
 from ..sim.engine import SimOptions, analyze, reselect
 from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES, PROFILES, WAIT_CAP_MIN_PER_DAY
 
@@ -256,6 +256,24 @@ def _pricing(a: argparse.Namespace) -> PricingTable:
     return PricingTable.load(getattr(a, "pricing", None), offline=getattr(a, "offline_pricing", False))
 
 
+def _claude_settings_path(a: argparse.Namespace) -> Path | None:
+    if getattr(a, "claude_settings", None):
+        return Path(a.claude_settings).expanduser()
+    return next((c for c in get_adapter("claude-code").config_paths() if c.exists()), None)
+
+
+def _idle_opts(a: argparse.Namespace, opts: SimOptions) -> SimOptions:
+    """Claude Code's idle compaction as configured (read-only); on with a 200k minimum when nothing says otherwise."""
+    if getattr(a, "no_current", False):
+        return opts
+    enabled, min_tokens, _ = read_idle(_claude_settings_path(a))
+    if enabled is not None:
+        opts.idle_compaction = enabled
+    if min_tokens:
+        opts.idle_min_tokens = min_tokens
+    return opts
+
+
 def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
     """Read the configured threshold per (harness, model) from config files, read-only."""
     if getattr(a, "no_current", False):
@@ -304,7 +322,7 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     def step(i: int, n: int, name: str) -> None:
         _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
 
-    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions), progress=step)
+    res = analyze(sessions, pricing, _idle_opts(a, _opts(a)), current=_current(a, sessions), progress=step)
     _progress("")
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
@@ -534,6 +552,12 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                 + (f";当前:{g['current_note']}" if g.get("current_note") else "")
             )
         lines += [f"  · {n}" for n in notes]
+    from ..term.views import idle_lines
+
+    for x in langs:
+        il = idle_lines(res, x)
+        if il:
+            lines += ["", *il]
     lines.append("")
     lines += [T[x]["note"] for x in langs]
     return "\n".join(ln.rstrip() for ln in lines)
@@ -1277,7 +1301,7 @@ def cmd_share(a: argparse.Namespace) -> int:
             manifest = json.loads(m.read_text())
         except (ap.ApplyError, OSError, ValueError) as e:
             raise CLIError(f"--verify needs a change made with compactlab apply: {e}") from e
-        verification = vf.verify(sessions, manifest, _pricing(a))
+        verification = vf.verify(sessions, manifest, _pricing(a), opts=_idle_opts(a, SimOptions()))
         if not any(g["verdict"] != "no_data" for g in verification["groups"]):
             raise CLIError("--verify: no sessions on both sides of the change yet; share without --verify")
     try:
@@ -1344,7 +1368,8 @@ def cmd_verify(a: argparse.Namespace) -> int:
     sessions = load_sessions(a)
     if not sessions:
         raise CLIError("no sessions found; check `compactlab doctor`, or widen --since-days (0 = all)")
-    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days)
+    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days,
+                    opts=_idle_opts(a, SimOptions()))  # fmt: skip
     res["manifest"] = m.stem
     if note:
         res["note"] = note

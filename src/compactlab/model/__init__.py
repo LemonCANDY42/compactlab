@@ -31,11 +31,18 @@ class Compaction:
     summary_text: str = ""
     duration_s: float | None = None  # wall-clock spent compacting, if it can be inferred
     trigger: str = ""  # "auto" | "manual" (/compact) | "" when the log does not say
+    idle: bool = False  # Claude Code idle compaction: precomputed while the cache was warm, applied on return
 
 
 def is_auto(c: Compaction) -> bool:
-    """A compaction the harness's threshold caused. Unknown counts as auto; only a logged manual one is excluded."""
+    """A compaction the harness made by itself (threshold or idle). Unknown counts as auto; only a logged manual one
+    is excluded."""
     return c.trigger != "manual"
+
+
+def is_threshold(c: Compaction) -> bool:
+    """A compaction the auto-compact threshold caused: automatic and not an idle compaction."""
+    return is_auto(c) and not c.idle
 
 
 @dataclass

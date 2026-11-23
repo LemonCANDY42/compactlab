@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-11-23",
   "status_legend": {
     "documented": "stated in the vendor's public docs",
     "public-tool": "relied on by a public open-source parser (CodexBar, ccusage); not checked against vendor docs",
@@ -59,9 +59,14 @@
         "source": ""
       },
       "compaction_latency_proxy": {
-        "value": "compact_boundary timestamp minus the last input line before it",
+        "value": "compactMetadata.durationMs when present, else the compact_boundary timestamp minus the last input line before it; idle compactions have no wait",
         "status": "assumed",
         "source": ""
+      },
+      "idle_compaction": {
+        "value": "idleCompaction (on unless false) summarizes a long conversation left idle on the one-hour cache before the cache expires (summary line timestamped 54.5-62 min after the last turn) and applies it on return: an auto compact_boundary written an hour or more after the last turn with durationMs under 5 s (newer versions add precomputed: true). Only at or above CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS (default 200000). It fired on 124 of 335 eligible gaps in the maintainer's logs, at a rate that does not depend on the context size",
+        "status": "documented",
+        "source": "https://code.claude.com/docs/en/prompt-caching (setting); https://code.claude.com/docs/en/env-vars (minimum); log shape from the maintainer's logs, 2026-11-23"
       },
       "default_threshold": {
         "value": "~967K for native-1M models; 200K for Sonnet/Opus 4.6 without extended context; else the context limit",
@@ -120,9 +125,14 @@
         "source": "https://learn.chatgpt.com/docs/config-file/config-reference"
       },
       "latency_proxy": {
-        "value": "token_count timestamp minus the last user_message / function_call_output timestamp",
+        "value": "a response runs from the last input before its first output item (user_message, function_call_output, custom_tool_call_output) to its last output item (reasoning, message, function_call, custom_tool_call); its token_count is written after the tool output, so token_count time is not used",
         "status": "assumed",
-        "source": ""
+        "source": "record order checked on the maintainer's logs, 2026-11-23"
+      },
+      "tool_calls": {
+        "value": "function_call / function_call_output and, for freeform tools such as exec (most commands), custom_tool_call (input text) / custom_tool_call_output; an output is a string or a list of content blocks whose text blocks count",
+        "status": "assumed",
+        "source": "the maintainer's logs, 2026-11-23 (24,107 custom exec calls in 30 days)"
       },
       "default_limit": {
         "value": "90% of the resolved context window; configured values clamped to it",

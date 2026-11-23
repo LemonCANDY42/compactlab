@@ -52,3 +52,23 @@ While doing this, three counting problems were found and fixed ([CHANGELOG](../C
 counted as the threshold, compaction records re-written later in a log counted again, and history copied into a
 resumed session counted twice. Earlier numbers from the tool, including its "already in effect" warnings, were
 affected by them.
+
+## Update, 2026-11-23: the two parts separated
+
+compactlab now tells idle compactions apart and replays them (see [METHODOLOGY](METHODOLOGY.md#idle-compaction-claude-code)),
+and `verify` adds the compaction requests the logs leave out. Re-run on the same machine with 25 active days after
+the change (Opus 5.5 main sessions, 125 before and 86 after):
+
+| | Before | After | Change | Replay credits the threshold with |
+|---|---|---|---|---|
+| Cost per 1k turns (list price, with compaction requests) | $135 | $107 | −21% (80%: −24..−17) | −6.5% (before sessions), −15% (after sessions) |
+| Threshold compactions per 1k turns | 0.47 | 1.68 | +1.2 | +0.5 / +1.0 |
+| Idle compactions per 1k turns | 0.04 | 1.73 | +1.7 | about 0 |
+
+- Threshold compactions sit at the setting (median 618k). Idle compactions came in during the same days as the
+  change (the feature reached this machine then), so the observed saving is both; the replay puts the threshold's
+  share at roughly a third to two thirds of it.
+- Idle compaction fired on 88 of 244 eligible idle gaps (36%), at about the same rate for every context size; the
+  rest are most likely gaps when the app was closed or the machine asleep.
+- With the current 650k windows, turning idle compaction off would add about 9% to the list-price cost per day and
+  4 minutes of wall-clock a day, for 3 fewer compactions a day. compactlab's verdict: keep it on.

@@ -55,7 +55,7 @@ def test_formats_and_missing_knobs(result):
     env = snips(generate(result, "claude-code", "global", "balanced", "env"))[0]
     assert "export CLAUDE_CODE_AUTO_COMPACT_WINDOW=" in env.content
     sh = snips(generate(result, "claude-code", "global", "time", "shell"))[0]
-    assert "claude --model claude-opus-5-5 --autocompact" in sh.content
+    assert sh.content.startswith("claude --model claude-") and " --autocompact " in sh.content
     (cx_env,) = generate(result, "codex", "global", "cost", "env")
     assert isinstance(cx_env, Omitted) and "No documented environment variable" in cx_env.reason
     (bad,) = generate(result, "claude-code", "project", "balanced", "toml")
@@ -150,3 +150,32 @@ def test_cli_recommend_print_json_check_and_copy(tmp_path, claude_root, capsys, 
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
     assert main(["recommend", "--result", str(out), "--copy"]) == 0
     assert '"autoCompactWindow"' in clip.read_text()
+
+
+def test_idle_compaction_snippet_only_when_flipping_it_pays():
+    from compactlab.sim.engine import SimOptions
+    from test_core import PR, _idle_sessions  # pytest puts this folder on sys.path
+
+    res = analyze(_idle_sessions(shift=400_000), PR, SimOptions(grid_start=100_000, grid_stop=1_000_000))
+    adv = res["idle_compaction"]["profiles"]["balanced"]
+    adv["switch"] = False
+    items = snips(generate(res, "claude-code", "global", "balanced"))
+    assert not any("idleCompaction" in s.content for s in items)
+    assert any("idle compaction" in n.lower() and "keep it on" in n for s in items for n in s.notes)
+    adv["switch"] = True
+    (idle,) = [s for s in snips(generate(res, "claude-code", "global", "balanced")) if "idleCompaction" in s.content]
+    assert json.loads(idle.content) == {"idleCompaction": False}
+    assert idle.knobs == ["claude.settings.idleCompaction"] and "idleCompaction" in idle.merge
+    assert idle.revert and idle.evidence
+
+
+def test_idle_snippet_even_when_no_threshold_changes():
+    from compactlab.sim.engine import SimOptions
+    from test_core import PR, _idle_sessions
+
+    res = analyze(_idle_sessions(), PR, SimOptions(grid_start=100_000, grid_stop=700_000, idle_compaction=False))
+    assert all(g["no_action_needed"] for g in res["groups"])
+    res["idle_compaction"]["profiles"]["balanced"]["switch"] = True
+    items = generate(res, "claude-code", "global", "balanced")
+    (idle,) = snips(items)
+    assert json.loads(idle.content) == {"idleCompaction": True}
