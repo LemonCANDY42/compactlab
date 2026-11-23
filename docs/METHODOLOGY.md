@@ -18,7 +18,11 @@ compactlab does not contain measured recall curves for Claude 5 or any other mod
 Sessions are grouped by harness, model and role (the same model name under two harnesses is two groups); a session
 that switched models belongs to its majority model's group, and each of its turns is priced at the model that served
 it. A session becomes growth increments `g_t` (tokens added per turn), outputs `o_t` and idle gaps `Δt_t`.
-Historical compactions are removed (growth across a boundary is set to 0). For threshold `T`, with context `c`:
+Historical compactions are removed (growth across a boundary is set to 0), except a hand-typed `/compact`, which the
+user does whatever the threshold is: the replay compacts there too, while the replayed context is still at least 70% of
+the size it was typed at (a lower threshold that already shrank the context makes it unnecessary). Without this, a
+user who compacts by hand would get savings credited to a setting that their own habit already delivers. For
+threshold `T`, with context `c`:
 
 ```
 c ← c + g_t

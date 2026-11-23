@@ -180,6 +180,9 @@ verified. Use `--id` for an older apply. For a threshold you set by hand, descri
 value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
 too-late date).
 
+Does it hold up on real logs? One checked case, with the control that makes the replay trustworthy:
+[docs/RESULTS.md](docs/RESULTS.md).
+
 ## Run as a service
 
 ```bash

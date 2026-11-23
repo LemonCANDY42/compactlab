@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from .model import Session, Turn
+from .model import Session, Turn, is_auto
 from .pricing import PricingTable
 from .sim.engine import SimOptions, _actual_cost, analyze
 
@@ -127,16 +127,20 @@ def _logged_cost(s: Session, pricing: PricingTable) -> float:
 def observe(ss: list[Session], pricing: PricingTable) -> dict[str, Any]:
     """Logged figures for one period of one group."""
     if not ss:
-        return {"sessions": 0, "turns": 0, "active_days": 0, "cost": 0.0, "compactions": 0, "per_session": [],
-                "median_compaction_tokens": None}  # fmt: skip
-    per = [(_logged_cost(s, pricing), len(s.turns), len(s.compactions)) for s in ss]
-    pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
+        return {
+            "sessions": 0, "turns": 0, "active_days": 0, "cost": 0.0, "compactions": 0,
+            "manual_compactions": 0, "per_session": [], "median_compaction_tokens": None,
+        }  # fmt: skip
+    # Only compactions the threshold caused: a hand-typed /compact says nothing about the setting.
+    per = [(_logged_cost(s, pricing), len(s.turns), sum(is_auto(c) for c in s.compactions)) for s in ss]
+    pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens and is_auto(c)]
     return {
         "sessions": len(ss),
         "turns": sum(p[1] for p in per),
         "active_days": _active_days(ss),
         "cost": sum(p[0] for p in per),
         "compactions": sum(p[2] for p in per),
+        "manual_compactions": sum(not is_auto(c) for s in ss for c in s.compactions),
         "per_session": per,
         "median_compaction_tokens": int(statistics.median(pre)) if pre else None,
     }
@@ -367,6 +371,11 @@ def render(res: dict[str, Any]) -> str:
         "Cost is the logged list-price figure per 1k turns, so a busier week does not look like a cost rise.",
         "It is not your invoice and does not control for a change in what you worked on. Wall-clock is not verified.",
     ]
+    manual = sum(g[side]["manual_compactions"] for g in res["groups"] if "before" in g for side in ("before", "after"))
+    if manual:
+        lines.append(
+            f"{manual} hand-typed /compact left out of the compaction counts: they say nothing about the threshold."
+        )
     if res["dropped_sessions"]:
         lines.append(f"{res['dropped_sessions']} session(s) spanning the change, or without timestamps, were left out.")
     return "\n".join(lines)

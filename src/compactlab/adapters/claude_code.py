@@ -38,6 +38,8 @@ class ClaudeParser(Parser):
         role = "subagent" if "subagents" in Path(path).parts else "main"
         self.session = Session(id=Path(path).stem, harness="claude-code", role=role, path=path)
         self.seen: set[str] = set()
+        self.replayed_summary = False
+        self.boundaries: set[tuple[str, float | None, Any]] = set()  # Claude Code re-writes old boundaries later
         self.pending_user = ""
         self.tool_turn: dict[str, int] = {}
         self.last_input_ts: float | None = None  # last user / tool-result / system line
@@ -53,6 +55,11 @@ class ClaudeParser(Parser):
         if typ == "system" and d.get("subtype") == "compact_boundary":
             meta = d.get("compactMetadata")
             meta = meta if isinstance(meta, dict) else {}
+            key = (str(d.get("uuid") or ""), ts, meta.get("preTokens"))
+            if key in self.boundaries:
+                self.replayed_summary = True  # its summary line is re-written too
+                return
+            self.boundaries.add(key)
             try:
                 pre = count(meta.get("preTokens")) if meta.get("preTokens") is not None else None
             except BadRecord:
@@ -65,6 +72,7 @@ class ClaudeParser(Parser):
                     pre_tokens=pre,
                     ts=ts,
                     duration_s=dur if dur is not None and 0 < dur <= 900 else None,
+                    trigger=str(meta["trigger"]) if meta.get("trigger") in ("auto", "manual") else "",
                 )
             )
             self.last_input_ts = ts
@@ -84,7 +92,9 @@ class ClaudeParser(Parser):
         content = m.get("content")
         text = _text_of(content)
         if d.get("isCompactSummary"):
-            if s.compactions:
+            if self.replayed_summary:
+                self.replayed_summary = False
+            elif s.compactions:
                 s.compactions[-1].summary_text = text
             return
         if isinstance(content, list):

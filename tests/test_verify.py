@@ -189,3 +189,15 @@ def test_a_threshold_already_in_effect_before_the_given_time_is_called_out():
     ss += [_session(f"a{i}", T0 + (i + 1) * DAY * 0.9 + 3600, compact_at=300_000) for i in range(4)]
     g = verify.verify(ss, _manifest(), PricingTable.load(offline=True))["groups"][0]
     assert g["verdict"] == "already" and "earlier --applied-at" in g["summary"]
+
+
+def test_hand_typed_compactions_do_not_count_as_the_threshold():
+    ss = _sessions()
+    for s in ss[:4]:  # the "before" sessions: the user typed /compact now and then, far below any threshold
+        s.compactions = [Compaction(turn_index=5, pre_tokens=90_000, ts=s.turns[5].ts, trigger="manual")]
+    res = verify.verify(ss, _manifest(), PricingTable.load(offline=True))
+    (g,) = res["groups"]
+    assert g["before"]["compactions"] == 0 and g["before"]["manual_compactions"] == 4
+    assert g["before"]["median_compaction_tokens"] is None
+    assert g["in_effect"] == "yes"
+    assert "hand-typed /compact" in verify.render(res)

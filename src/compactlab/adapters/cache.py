@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ..model import Session
     from .base import Adapter
 
-CACHE_VERSION = 1
+CACHE_VERSION = 3
 HEAD = 4096
 
 

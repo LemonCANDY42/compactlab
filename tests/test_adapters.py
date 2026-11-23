@@ -100,3 +100,54 @@ def test_codex_malformed_usage_skips_record_not_scan(tmp_path):
     (s,) = get_adapter("codex")(tmp_path).sessions()
     assert [t.ctx for t in s.turns] == [50, 80]
     assert s.parse_errors == 4
+
+
+def test_claude_compaction_trigger_is_recorded(tmp_path):
+    def boundary(trigger, uuid):
+        meta = {"preTokens": 500_000}
+        if trigger:
+            meta["trigger"] = trigger
+        return {
+            "type": "system",
+            "subtype": "compact_boundary",
+            "uuid": uuid,
+            "timestamp": "2026-01-01T00:00:00Z",
+            "compactMetadata": meta,
+        }
+
+    _write(
+        tmp_path,
+        "s.jsonl",
+        [
+            x
+            for i, t in enumerate(("auto", "manual", None, "weird"))
+            for x in (_claude_turn(str(i), {"input_tokens": 100, "output_tokens": 5}), boundary(t, f"u{i}"))
+        ]
+        + [_claude_turn("z", {"input_tokens": 100, "output_tokens": 5})],
+    )
+    (s,) = list(get_adapter("claude-code")(tmp_path).sessions())
+    assert [c.trigger for c in s.compactions] == ["auto", "manual", "", ""]
+    from compactlab.model import is_auto
+
+    assert [is_auto(c) for c in s.compactions] == [True, False, True, True]
+
+
+def test_claude_rewritten_compact_boundaries_count_once(tmp_path):
+    def boundary(uuid, pre):
+        return {
+            "type": "system", "subtype": "compact_boundary", "uuid": uuid,
+            "timestamp": "2026-01-01T00:00:00Z", "compactMetadata": {"preTokens": pre, "trigger": "auto"},
+        }  # fmt: skip
+
+    def summary(text):
+        return {"type": "user", "isCompactSummary": True, "message": {"role": "user", "content": text}}
+
+    turn = lambda i: _claude_turn(str(i), {"input_tokens": 100, "output_tokens": 5})  # noqa: E731
+    _write(
+        tmp_path,
+        "s.jsonl",
+        [turn(0), boundary("u1", 500_000), summary("first"), turn(1), boundary("u2", 600_000), summary("second"),
+         boundary("u1", 500_000), summary("first"), turn(2)],
+    )  # fmt: skip
+    (s,) = list(get_adapter("claude-code")(tmp_path).sessions())
+    assert [(c.pre_tokens, c.summary_text) for c in s.compactions] == [(500_000, "first"), (600_000, "second")]
