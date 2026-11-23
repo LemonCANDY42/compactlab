@@ -60,7 +60,9 @@ Within its guardrails, each profile picks the largest threshold whose score (lis
 penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
 `--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
 profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
-number when the default never compacts in those sessions, and **keep default** when a profile would not beat it.
+number when the default never compacts in those sessions, **keep current** when your setting scores within the same
+2% of the profile's pick (changing it would be churn for no real gain), and **keep default** when a profile would not
+beat the default by more than that.
 
 Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
 added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
@@ -174,7 +176,9 @@ Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/comp
 
 `compactlab verify` splits your logs at the time of the last `apply` and compares, per model and role, the logged cost
 and compactions per 1k turns before and after with what a replay of the *before* sessions predicted (plus a replay
-of the *after* sessions, to show when the workload changed). It also checks that compactions really happen near the
+of the *after* sessions, to show when the workload changed). Cost includes an estimate of each compaction's summary
+request, which the logs do not record; threshold, idle and hand-typed compactions are counted apart, and a role whose
+threshold was never reached gets no verdict on it. It also checks that compactions really happen near the
 new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
 each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
 verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
@@ -183,6 +187,19 @@ value are yours; it says so when sessions before that time already compacted nea
 too-late date). For OpenCode add `--harness opencode` and name the model as `provider/model`; for Gemini CLI add
 `--harness gemini-cli`, name the model, and give `--new` in tokens for it (the fraction times that model's token
 limit; one fraction is a different token count on each window).
+
+Does it hold up on real logs? One checked case, with the control that makes the replay trustworthy:
+[docs/RESULTS.md](docs/RESULTS.md).
+
+## Idle compaction
+
+Claude Code also compacts on its own when you leave a long conversation idle on the one-hour cache (`idleCompaction`,
+on by default, from 200k tokens): it makes the summary while the cache is still warm, about 55 minutes in, and
+applies it when you return. compactlab tells these compactions apart in the logs, replays them (the summary's read
+and output, the smaller context you return to, the re-discovery after it, and summaries made for sessions you never
+resumed), and replays the groups it applies to with the setting flipped. After the groups it says whether to keep it
+on, with the cost, wall-clock and compaction change per day; `recommend` prints an `idleCompaction` snippet only when
+flipping it beats the current state by more than 2%.
 
 ## Run as a service
 
@@ -272,7 +289,7 @@ from latency curves fitted to your own timestamps. Details and formulas:
 | Harness | Logs | Setting `apply` writes | Status |
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only) | supported |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only: one value chosen across the models in use) | supported |
 | DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
 | OpenCode 1.x | `~/.local/share/opencode/opencode.db` (SQLite, opened read-only; `$XDG_DATA_HOME`) | none: `recommend` prints a per-model `limit` for `opencode.json` | supported: parsed on a real 1.19.5 database (token sums match OpenCode's own totals); compaction records are from the source, since that history had none. 2.x pre-release storage is not read (`doctor` counts it) |
 | Gemini CLI | `~/.gemini/tmp/<project>/chats/*.jsonl` (`$GEMINI_CLI_HOME`; older `session-*.json` too) | none: `recommend` prints `model.compressionThreshold` | experimental: built from Gemini CLI 0.46/0.70 source, not yet run on real history |
@@ -292,7 +309,11 @@ step coarse. `apply` writes neither until their config locations and precedence 
 ## Safety and privacy
 
 - **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` fetches public
-  prices, and only deep mode calls a model, and only after you confirm.
+  prices, and only deep mode calls a model, and only after you confirm. `compactlab pricing auto on` lets `serve` and
+  scheduled runs fetch the same public files by themselves: when your logs show a model with no price row of its own
+  (retried daily, or after an hour for a newly seen model, up to 5 times) and once a week for the models already
+  known, since vendors change prices and windows. The download sends nothing about you or your models; changes are
+  logged and `simulate` lists the recent ones for your models.
 - **Nothing leaves your machine in lite mode.** Reports and `result.json` hold token counts, model names and
   session ids, never transcript text or file paths. `report --redact` hashes the ids.
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
@@ -311,7 +332,19 @@ step coarse. `apply` writes neither until their config locations and precedence 
   (subscriptions, discounts and credits are ignored). Wall-clock estimates come from
   log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
-  row; refresh or override them as needed.
+  row; refresh or override them as needed. A model is priced from its own row when there is one, with platform IDs
+  (Bedrock `us.anthropic.…`, Vertex `…@date`, OpenRouter `anthropic/…`, Azure, Codex's `model_provider`) mapped to
+  that platform's price after a refresh and to the vendor's list price before. A model the table does not know borrows
+  the closest model of its family (`claude-fable-5-3` from `claude-fable-5-2`), and anything else gets the fallback
+  row; `simulate` lists both, and `pricing show --model <id> [--platform <p>]` shows how one is matched.
+- Claude Code sizes the window from the model ID: a third-party model behind `ANTHROPIC_BASE_URL` (DeepSeek, Kimi,
+  GLM, ...) is replayed with the 200K window Claude Code assumes for it, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` when set.
+- Things change over time, and the replay follows the latest: history is priced at today's prices (a refresh older
+  than the bundled snapshot no longer overrides it, and a saved result made before a price change says so when
+  loaded); Codex's window is the one its latest sessions logged (a clean switch is reported); a Claude Code context
+  larger than the assumed window means the window grew; and when your latest threshold compactions land more than
+  10% from the assumed default, `simulate` says the harness default may have changed or a setting it cannot read is
+  in force.
 - Some log-format details (Codex fork replay, compaction events) are marked `assumed` in
   [`data/harness_formats.json`](src/compactlab/data/harness_formats.json) until checked against more real files.
 - Tested on macOS; Linux paths follow the same defaults and run in CI. Windows is untested.

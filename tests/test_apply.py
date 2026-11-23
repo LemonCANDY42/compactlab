@@ -221,3 +221,16 @@ def test_toml_refuses_rather_than_guesses(tmp_path):
     with pytest.raises(ap.ApplyError):  # not a plain decimal integer
         ap.render(ch)
     assert f.read_text() == "model_auto_compact_token_limit = 0x10\n"
+
+
+def test_dated_and_platform_ids_use_the_canonical_settings_key(tmp_path):
+    """A preauth listing the canonical name covers the model however the logs spell it, and the change lands on the
+    key Claude Code reads (not a second, dated key)."""
+    f, pre_ = pre(tmp_path)
+    f.write_text(SETTINGS)
+    key = ap.model_key("claude-code", "us.anthropic.claude-opus-5-5-v1:0")
+    assert key == "claude-opus-5-5" and ap.model_key("codex", "gpt-6.1-sol") == "gpt-6.1-sol"
+    assert ap.model_allowed("claude-code", "claude-opus-5-5-20261001", ["claude-opus-5-5"])
+    assert not ap.model_allowed("claude-code", "claude-sonnet-5-5", ["claude-opus-5-5"])
+    ch, rej = ap.plan_changes([{"harness": "claude-code", "model": key, "value": 300000}], pre_)
+    assert not rej and ch[0].key == "modelSettings.claude-opus-5-5.autoCompactWindow"

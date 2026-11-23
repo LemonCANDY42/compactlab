@@ -292,7 +292,8 @@ def gm_result(tmp_path_factory):
 
 def test_gemini_simulate_and_recommend(gm_result):
     g = next(g for g in gm_result["groups"] if g["role"] == "main")
-    assert (g["max_window"], g["window_source"], g["default"]["threshold"]) == (1_048_576, "observed in logs", 524_288)
+    assert (g["max_window"], g["default"]["threshold"]) == (1_048_576, 524_288)
+    assert g["window_source"].startswith("observed in logs")
     assert g["observed_compactions"] > 0
     r = _set(gm_result, "gemini-cli", 400_000)
     (sn,) = [x for x in generate(r, harness="gemini-cli", profile="balanced") if isinstance(x, Snippet)]
@@ -325,3 +326,4 @@ def test_manual_verify_keys():
     assert (c2.key, c2.model, c2.new) == ("model.compressionThreshold", "gemma-4-31b-it", 128_000)  # stays per model
     with pytest.raises(ValueError, match="--model"):
         manual_manifest(1.0, "gemini-cli", "", 400_000)
+

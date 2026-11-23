@@ -139,9 +139,12 @@ status icons.
   was vs now, with the legend in its tooltip and accessible name.
 - Roll-up table: every group with its profile threshold, the default, the action and the per-day numbers
   (greyed unless the action is "change").
-- A "keep default" row carries a one-line reason from the same two tests the engine uses
+- A "keep current" row says why: the pick would not beat your setting by more than the 2% selection tolerance at
+  that price of time (`550k would not beat your 650k by more than 2% at $250/h (net −$14.6 per day)`).
+- A "keep default" row carries a one-line reason from the same tests the engine uses
   (`sim/engine.py` `_comparison`): the profile threshold is not below the default, or its score (cost + time x
-  price of time) is not below the default's, e.g. `not worth it at $250/h · saves $3.7/day but adds 1.1 min/day of
+  price of time) does not beat the default's by more than the 2% selection tolerance (`net gain under 2% at $250/h`
+  when it is better, but not by enough), e.g. `not worth it at $250/h · saves $3.7/day but adds 1.1 min/day of
   wall-clock (= $4.6)` (or `no net gain at $250/h (net ▲ +$0.9 per day)` when it saves neither). The same reason shows on the model page's profile card and in the answer line
   when the cursor sits on such a threshold.
 

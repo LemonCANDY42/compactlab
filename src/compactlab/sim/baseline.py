@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from importlib import resources
 from pathlib import Path
 from typing import Any
+
+from ..pricing.ids import claude_settings_key, parse
 
 _DEFAULTS: dict[str, Any] | None = None
 OPENCODE_AUTO_OFF = "compaction.auto is false"  # read_current's note when OpenCode never compacts by itself
@@ -20,14 +23,25 @@ def defaults() -> dict[str, Any]:
     return _DEFAULTS
 
 
+def _claude_rule(d: dict[str, Any], model: str, window: int | None) -> dict[str, Any] | None:
+    """The Claude Code default rule for `model`: by name, else by window (`min_window`: a model Claude Code knows with
+    a native window that large, such as a Claude model newer than the list)."""
+    m = model.lower()
+    for r in d["rules"]:
+        if any(p in m for p in r["match"]):
+            return r
+    if window and parse(model).id.startswith("claude-"):
+        return next((r for r in d["rules"] if r.get("min_window") and window >= r["min_window"]), None)
+    return None
+
+
 def default_threshold(harness: str, model: str, window: int) -> tuple[int, str]:
     """(threshold, explanation). Never above the window. See default_note_zh() for the Chinese note."""
     d = defaults().get(harness)
-    m = model.lower()
     if harness == "claude-code" and d:
-        for r in d["rules"]:
-            if any(p in m for p in r["match"]):
-                return min(int(r["threshold"]), window), r["note"]
+        r = _claude_rule(d, model, window)
+        if r:
+            return min(int(r["threshold"]), window), r["note"]
         return window, d["otherwise_note"]
     if harness == "codex" and d:
         return int(window * d["fraction"]), d["note"]
@@ -82,9 +96,18 @@ def read_current(harness: str, model: str, path: Path | None) -> tuple[int | Non
             d = json.loads(text) if text.strip() else {}
         except ValueError:
             return None, f"{path.name} is not strict JSON"
-        ms = (d.get("modelSettings") or {}).get(model) or {}
+        table = d.get("modelSettings") or {}
+        # keyed by canonical name, which also covers dated and Bedrock / Vertex IDs of the same model (not its [1m]
+        # variant, which is a different model to Claude Code)
+        canon = claude_settings_key(model)
+        mid = parse(model)
+        key = next(
+            (k for k in (canon, model) if k in table),
+            next((k for k in table if parse(k).id == mid.id and parse(k).one_m == mid.one_m), model),
+        )
+        ms = table.get(key) or {}
         v = ms.get("autoCompactWindow") if isinstance(ms, dict) else None
-        src = f"modelSettings.{model}.autoCompactWindow"
+        src = f"modelSettings.{key}.autoCompactWindow"
         if v is None:
             v, src = d.get("autoCompactWindow"), "autoCompactWindow"
         if v is None or v == "auto":
@@ -134,12 +157,58 @@ def _gemini_current(d: dict[str, Any], model: str, name: str) -> tuple[int | Non
     return int(v * token_limit(model)), f"model.compressionThreshold {v:g} in {name}"
 
 
-def default_note_zh(harness: str, model: str) -> str:
+IDLE_ENV = "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS"
+MAX_CONTEXT_ENV = "CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+
+
+def read_env_int(path: Path | None, name: str, environ: dict[str, str] | None = None) -> int | None:
+    """An integer Claude Code setting from settings.json's `env` block, else this process's environment."""
+    d: Any = {}
+    if path is not None and path.exists():
+        try:
+            text = path.read_text()
+            d = json.loads(text) if text.strip() else {}
+        except (OSError, ValueError):
+            d = {}
+    env = d.get("env") if isinstance(d, dict) else None
+    env = env if isinstance(env, dict) else {}
+    raw = env.get(name) or (environ if environ is not None else os.environ).get(name)
+    try:
+        return int(str(raw).replace("_", "")) if raw else None
+    except ValueError:
+        return None
+
+
+def read_idle(path: Path | None, environ: dict[str, str] | None = None) -> tuple[bool | None, int | None, str]:
+    """Claude Code's idle compaction as configured, read-only: (`idleCompaction` or None when not set, the minimum
+    context from CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS or None, description). The env var counts from settings.json's
+    `env` block first, then this process's environment."""
+    d: dict = {}
+    if path is not None and path.exists():
+        try:
+            text = path.read_text()
+            d = json.loads(text) if text.strip() else {}
+        except (OSError, ValueError):
+            return None, None, f"{path.name} unreadable: idle compaction assumed on"
+    d = d if isinstance(d, dict) else {}
+    v = d.get("idleCompaction")
+    enabled = v if isinstance(v, bool) else None
+    env = d.get("env")
+    env = env if isinstance(env, dict) else {}
+    raw = env.get(IDLE_ENV) or (environ if environ is not None else os.environ).get(IDLE_ENV)
+    try:
+        min_tokens = int(str(raw).replace("_", "")) if raw else None
+    except ValueError:
+        min_tokens = None
+    where = f"idleCompaction in {path.name}" if enabled is not None and path else "not set (on by default)"
+    return enabled, min_tokens, where + (f"; {IDLE_ENV}={min_tokens:,}" if min_tokens else "")
+
+
+def default_note_zh(harness: str, model: str, window: int | None = None) -> str:
     d = defaults().get(harness) or {}
-    m = model.lower()
     if harness == "claude-code" and d:
-        for r in d["rules"]:
-            if any(p in m for p in r["match"]):
-                return str(r.get("note_zh", r["note"]))
+        r = _claude_rule(d, model, window)
+        if r:
+            return str(r.get("note_zh", r["note"]))
         return str(d.get("otherwise_note_zh", d.get("otherwise_note", "")))
     return str(d.get("note_zh", d.get("note", "")))

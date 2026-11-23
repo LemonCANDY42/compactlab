@@ -189,3 +189,61 @@ def test_a_threshold_already_in_effect_before_the_given_time_is_called_out():
     ss += [_session(f"a{i}", T0 + (i + 1) * DAY * 0.9 + 3600, compact_at=300_000) for i in range(4)]
     g = verify.verify(ss, _manifest(), PricingTable.load(offline=True))["groups"][0]
     assert g["verdict"] == "already" and "earlier --applied-at" in g["summary"]
+
+
+def test_hand_typed_compactions_do_not_count_as_the_threshold():
+    ss = _sessions()
+    for s in ss[:4]:  # the "before" sessions: the user typed /compact now and then, far below any threshold
+        s.compactions = [Compaction(turn_index=5, pre_tokens=90_000, ts=s.turns[5].ts, trigger="manual")]
+    res = verify.verify(ss, _manifest(), PricingTable.load(offline=True))
+    (g,) = res["groups"]
+    assert g["before"]["compactions"] == 0 and g["before"]["manual_compactions"] == 4
+    assert g["before"]["median_compaction_tokens"] is None
+    assert g["in_effect"] == "yes"
+    assert "hand-typed /compact" in verify.render(res)
+
+
+def test_idle_compactions_are_counted_apart_from_the_threshold():
+    ss = _sessions()
+    for s in ss[4:]:  # after: one idle compaction each, far below the new threshold
+        s.compactions.append(Compaction(turn_index=2, pre_tokens=210_000, ts=s.turns[2].ts, trigger="auto", idle=True))
+        s.compactions.sort(key=lambda c: c.turn_index)
+    res = verify.verify(ss, _manifest(), PricingTable.load(offline=True))
+    (g,) = res["groups"]
+    assert g["after"]["idle_compactions"] == 4 and g["after"]["compactions"] == sum(
+        len([c for c in s.compactions if not c.idle]) for s in ss[4:]
+    )
+    assert g["in_effect"] == "yes"  # the idle ones do not pull the median below the threshold
+    assert g["observed"]["idle_per_kturn_after"] > 0 and g["observed"]["idle_per_kturn_before"] == 0
+    assert "idle compactions per 1k turns" in verify.render(res)
+
+
+def test_observed_cost_includes_the_unlogged_compaction_calls():
+    """The summary request of a compaction is not a logged turn: its read and its output are estimated and added."""
+    pricing = PricingTable.load(offline=True)
+    s = _session("c", T0, compact_at=300_000)
+    n = len(s.compactions)
+    assert n > 0
+    with_calls = verify.observe([s], pricing)
+    pre = sum(c.pre_tokens for c in s.compactions)
+    s.compactions = []
+    without = verify.observe([s], pricing)
+    _, ro, _, rr = pricing.lookup(MODEL).rates(1)
+    assert with_calls["compaction_call_cost"] == pytest.approx(pre * rr + n * 12_000 * ro)
+    assert with_calls["cost"] == pytest.approx(without["cost"] + with_calls["compaction_call_cost"])
+
+
+def test_a_threshold_never_reached_is_not_a_miss():
+    ss = _sessions(after_compact_at=None)  # nothing compacts on either side, and nothing would at 900k either
+    res = verify.verify(ss, _manifest(new=900_000), PricingTable.load(offline=True))
+    (g,) = res["groups"]
+    assert g["verdict"] == "untouched" and "not reached" in g["summary"]
+
+
+def test_hand_typed_compactions_alone_leave_the_threshold_untouched():
+    ss = _sessions(after_compact_at=None)
+    for s in ss:  # every session: one /compact at about 150k, and nothing near any threshold
+        s.compactions = [Compaction(turn_index=10, pre_tokens=150_000, ts=s.turns[10].ts, trigger="manual")]
+    res = verify.verify(ss, _manifest(new=900_000), PricingTable.load(offline=True))
+    (g,) = res["groups"]
+    assert g["verdict"] == "untouched" and g["expected_compactions_after"] == 0

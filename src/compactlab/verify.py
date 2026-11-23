@@ -4,7 +4,10 @@ After `apply` the harness keeps writing session logs. This splits them at the ap
 compares, per model and role:
 
   observed          logged cost and compactions per 1k turns, before vs after (list price, each cache write at the
-                    tier it was billed at), with a bootstrap interval over sessions
+                    tier it was billed at), with a bootstrap interval over sessions. A compaction's own summary
+                    request is not a logged turn, so its cost (a cached read of the context and the summary's
+                    output) is estimated and added, as the replay charges it. Threshold, idle (Claude Code's
+                    idleCompaction) and hand-typed compactions are counted apart.
   predicted         a replay of the BEFORE sessions at the old and at the new threshold (no data from after)
   replay on after   the same replay on the AFTER sessions; if it disagrees with `predicted`, the workload changed
 
@@ -23,9 +26,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from .model import Session, Turn
+from .model import Session, Turn, is_auto, is_threshold
 from .pricing import PricingTable
 from .sim.engine import SimOptions, _actual_cost, analyze
+
+SUMMARY_TOKENS = 12_000  # when a compaction's summary text is not in the log (the replay's default too)
 
 MIN_SESSIONS = 3
 MIN_ACTIVE_DAYS = 2
@@ -133,37 +138,68 @@ def _logged_cost(s: Session, pricing: PricingTable) -> float:
     for t in s.turns:
         by_model[t.model].append(t)
     return sum(
-        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m))
+        _actual_cost(Session(s.id, s.harness, s.role, s.path, turns=ts), pricing.lookup(m, s.platform))
         for m, ts in by_model.items()
     )
+
+
+def _compaction_calls(s: Session, pricing: PricingTable) -> float:
+    """Estimated cost of a session's compaction requests, which are not logged turns: each reads the context from
+    the cache and writes a summary (its logged text when there is one, else the replay's default size)."""
+    model = s.model
+    total = 0.0
+    for c in s.compactions:
+        if not c.pre_tokens:
+            continue
+        _, ro, _, rr = pricing.lookup(model, s.platform).rates(c.pre_tokens)
+        summ = len(c.summary_text) // 4 if c.summary_text else SUMMARY_TOKENS
+        total += c.pre_tokens * rr + summ * ro
+    return total
 
 
 def observe(ss: list[Session], pricing: PricingTable) -> dict[str, Any]:
     """Logged figures for one period of one group."""
     if not ss:
-        return {"sessions": 0, "turns": 0, "active_days": 0, "cost": 0.0, "compactions": 0, "per_session": [],
-                "median_compaction_tokens": None}  # fmt: skip
-    per = [(_logged_cost(s, pricing), len(s.turns), len(s.compactions)) for s in ss]
-    pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens]
+        return {
+            "sessions": 0, "turns": 0, "active_days": 0, "cost": 0.0, "compaction_call_cost": 0.0, "compactions": 0,
+            "idle_compactions": 0, "manual_compactions": 0, "per_session": [], "median_compaction_tokens": None,
+        }  # fmt: skip
+    # `compactions` counts only what the threshold caused: a hand-typed /compact or an idle compaction says nothing
+    # about the setting. All three cost a summary request, so all three are in the cost.
+    calls = [_compaction_calls(s, pricing) for s in ss]
+    per = [
+        (_logged_cost(s, pricing) + calls[i], len(s.turns), sum(is_threshold(c) for c in s.compactions),
+         sum(c.idle for c in s.compactions))
+        for i, s in enumerate(ss)
+    ]  # fmt: skip
+    pre = [c.pre_tokens for s in ss for c in s.compactions if c.pre_tokens and is_threshold(c)]
     return {
         "sessions": len(ss),
         "turns": sum(p[1] for p in per),
         "active_days": _active_days(ss),
         "cost": sum(p[0] for p in per),
+        "compaction_call_cost": sum(calls),
         "compactions": sum(p[2] for p in per),
+        "idle_compactions": sum(p[3] for p in per),
+        "manual_compactions": sum(not is_auto(c) for s in ss for c in s.compactions),
         "per_session": per,
         "median_compaction_tokens": int(statistics.median(pre)) if pre else None,
     }
 
 
-def _cost_per_kturn(rows: list[tuple[float, int, int]]) -> float | None:
+def _cost_per_kturn(rows: list[tuple[float, int, int, int]]) -> float | None:
     turns = sum(r[1] for r in rows)
     return sum(r[0] for r in rows) / turns * 1000 if turns else None
 
 
-def _comp_per_kturn(rows: list[tuple[float, int, int]]) -> float | None:
+def _comp_per_kturn(rows: list[tuple[float, int, int, int]]) -> float | None:
     turns = sum(r[1] for r in rows)
     return sum(r[2] for r in rows) / turns * 1000 if turns else None
+
+
+def _idle_per_kturn(rows: list[tuple[float, int, int, int]]) -> float | None:
+    turns = sum(r[1] for r in rows)
+    return sum(r[3] for r in rows) / turns * 1000 if turns else None
 
 
 def _change(b: float | None, a: float | None, pct: bool) -> float | None:
@@ -189,10 +225,19 @@ def _interval(before: list, after: list, fn: Any, pct: bool) -> list[float] | No
 
 
 def replay_pair(
-    ss: list[Session], pricing: PricingTable, harness: str, model: str, old: int | None, new: int
+    ss: list[Session],
+    pricing: PricingTable,
+    harness: str,
+    model: str,
+    old: int | None,
+    new: int,
+    base: SimOptions | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Replay a period's sessions at the old (None = harness default) and the new threshold, per role."""
-    opts = SimOptions(grid_start=100_000, grid_stop=100_000)  # the grid is unused; only default / current points are
+    """Replay a period's sessions at the old (None = harness default) and the new threshold, per role. `base` carries
+    options such as the idle-compaction setting; the grid is unused (only the default / current points are)."""
+    opts = SimOptions(grid_start=100_000, grid_stop=100_000)
+    if base is not None:
+        opts.idle_compaction, opts.idle_min_tokens = base.idle_compaction, base.idle_min_tokens
     at_new = analyze(ss, pricing, opts, current={(harness, model): (new, "")})
     at_old = analyze(ss, pricing, opts, current={(harness, model): (old, "")}) if old is not None else None
     out = {}
@@ -209,11 +254,18 @@ def replay_pair(
     return out
 
 
+def _threshold_comps(p: dict[str, Any]) -> int:
+    """Replayed compactions the threshold caused: not idle ones, not the hand-typed /compact the replay keeps."""
+    return int(p["compactions"] - p.get("idle_compactions", 0) - p.get("manual_compactions", 0))
+
+
 def _predicted(r: dict[str, Any]) -> dict[str, float | None]:
     o, n, turns = r["old"], r["new"], max(r["turns"], 1)
     return {
         "cost_pct": (n["cost"] / o["cost"] - 1) * 100 if o["cost"] else None,
-        "compactions_per_kturn": (n["compactions"] - o["compactions"]) / turns * 1000,
+        "compactions_per_kturn": (_threshold_comps(n) - _threshold_comps(o)) / turns * 1000,
+        "idle_per_kturn": (n.get("idle_compactions", 0) - o.get("idle_compactions", 0)) / turns * 1000,
+        "threshold_reached": bool(_threshold_comps(n) or _threshold_comps(o)),
     }
 
 
@@ -223,6 +275,12 @@ def _verdict(g: dict[str, Any], min_sessions: int, min_days: int) -> tuple[str, 
         return "already", (
             "the sessions before this date already compacted near the new threshold, so it took effect earlier "
             "than the time given: use an earlier --applied-at (the settings file's modification time is not it)"
+        )
+    if not (b["compactions"] or a["compactions"] or g["predicted"]["threshold_reached"]
+            or (g["replay_after"] or {}).get("threshold_reached")):  # fmt: skip
+        return "untouched", (
+            "the threshold was not reached before or after, nor in the replays: the cost change comes from the work, "
+            "not from this setting"
         )
     if min(b["sessions"], a["sessions"]) < min_sessions or min(b["active_days"], a["active_days"]) < min_days:
         return "too_early", (
@@ -249,6 +307,7 @@ def verify(
     *,
     min_sessions: int = MIN_SESSIONS,
     min_days: int = MIN_ACTIVE_DAYS,
+    opts: SimOptions | None = None,
 ) -> dict[str, Any]:
     t = float(manifest["created"])
     groups = []
@@ -262,8 +321,8 @@ def verify(
             if not before or not after:
                 groups.append(_empty(ch, model, t, bool(before)))
                 continue
-            pb = replay_pair(before, pricing, ch.harness, model, ch.old, ch.new)
-            pa = replay_pair(after, pricing, ch.harness, model, ch.old, ch.new)
+            pb = replay_pair(before, pricing, ch.harness, model, ch.old, ch.new, opts)
+            pa = replay_pair(after, pricing, ch.harness, model, ch.old, ch.new, opts)
             for role in sorted(pb):
                 rb = [s for s in before if s.role == role]
                 ra = [s for s in after if s.role == role]
@@ -277,7 +336,7 @@ def verify(
                     "old_effective": pb[role]["old_threshold"],
                     "new": ch.new,
                     "new_effective": pb[role]["new"]["threshold"],  # what the harness honours (clamped to its window)
-                    "expected_compactions_after": pa[role]["new"]["compactions"] if role in pa else 0,
+                    "expected_compactions_after": _threshold_comps(pa[role]["new"]) if role in pa else 0,
                     "before": {k: v for k, v in ob.items() if k != "per_session"},
                     "after": {k: v for k, v in oa.items() if k != "per_session"},
                     "predicted": _predicted(pb[role]),
@@ -295,6 +354,11 @@ def verify(
                             _comp_per_kturn(ob["per_session"]), _comp_per_kturn(oa["per_session"]), False
                         ),
                         "compactions_interval": _interval(ob["per_session"], oa["per_session"], _comp_per_kturn, False),
+                        "idle_per_kturn_before": _idle_per_kturn(ob["per_session"]),
+                        "idle_per_kturn_after": _idle_per_kturn(oa["per_session"]),
+                        "idle_per_kturn": _change(
+                            _idle_per_kturn(ob["per_session"]), _idle_per_kturn(oa["per_session"]), False
+                        ),
                     },
                 }
                 g["in_effect"] = _in_effect(g)
@@ -364,6 +428,12 @@ def render(res: dict[str, Any]) -> str:
             f"{(_fmt(o['compactions_per_kturn'], '+.2f') + _range(o['compactions_interval'], '+.1f')):<30}"
             f"{_fmt(p['compactions_per_kturn'], '+.2f'):>10}{_fmt(r.get('compactions_per_kturn'), '+.2f'):>17}",
         ]
+        if o.get("idle_per_kturn_before") or o.get("idle_per_kturn_after") or p.get("idle_per_kturn"):
+            lines.append(
+                f"  {'idle compactions per 1k turns':30}{_fmt(o['idle_per_kturn_before'], '.2f'):>5}"
+                f"{_fmt(o['idle_per_kturn_after'], '.2f'):>9}   {_fmt(o['idle_per_kturn'], '+.2f'):<30}"
+                f"{_fmt(p.get('idle_per_kturn'), '+.2f'):>10}{_fmt(r.get('idle_per_kturn'), '+.2f'):>17}"
+            )
         med = a["median_compaction_tokens"]
         near = _k(g["new_effective"])
         eff = {
@@ -378,9 +448,15 @@ def render(res: dict[str, Any]) -> str:
         lines.append(f"  → {g['summary']}")
     lines += [
         "",
-        "Cost is the logged list-price figure per 1k turns, so a busier week does not look like a cost rise.",
+        "Cost is the logged list-price figure per 1k turns, so a busier week does not look like a cost rise, plus"
+        " an estimate of each compaction's summary request, which the logs do not record.",
         "It is not your invoice and does not control for a change in what you worked on. Wall-clock is not verified.",
     ]
+    manual = sum(g[side]["manual_compactions"] for g in res["groups"] if "before" in g for side in ("before", "after"))
+    if manual:
+        lines.append(
+            f"{manual} hand-typed /compact left out of the compaction counts: they say nothing about the threshold."
+        )
     if res["dropped_sessions"]:
         lines.append(f"{res['dropped_sessions']} session(s) spanning the change, or without timestamps, were left out.")
     return "\n".join(lines)

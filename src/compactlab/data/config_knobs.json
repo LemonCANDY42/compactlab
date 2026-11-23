@@ -38,6 +38,19 @@
       "note": "One launch only; overrides saved settings, not the env var.",
       "status": "documented", "source": "https://code.claude.com/docs/en/model-config#set-the-auto-compact-window", "verified_on": "2026-10-29"
     },
+    "claude.settings.idleCompaction": {
+      "harness": "claude-code", "where": "settings.json: idleCompaction (top level)",
+      "values": "false turns idle compaction off; on when unset", "min_version": "2.1.290",
+      "scopes": ["~/.claude/settings.json", ".claude/settings.json", ".claude/settings.local.json"],
+      "note": "Summarizes a long conversation left idle on the one-hour cache before that cache expires, and applies the summary when you return. Global, not per model.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/prompt-caching", "verified_on": "2026-11-23"
+    },
+    "claude.env.CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": {
+      "harness": "claude-code", "where": "environment variable (or the env block of settings.json)",
+      "values": "token count; default 200000; values below 100000 count as 100000", "min_version": "2.1.290",
+      "note": "Smallest context idle compaction acts on. compactlab reads it; it does not recommend a value.",
+      "status": "documented", "source": "https://code.claude.com/docs/en/env-vars", "verified_on": "2026-11-23"
+    },
     "claude.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS": {
       "harness": "claude-code", "where": "environment variable",
       "values": "context window in tokens", "min_version": "2.1.193",

@@ -25,6 +25,84 @@ versioning: [SemVer](https://semver.org/).
 - `simulate` reads the configured threshold for OpenCode (`--opencode-config`) and Gemini CLI (`--gemini-settings`);
   `verify --applied-at` accepts OpenCode (`--model provider/model`) and Gemini CLI changes. `apply` does not write
   either harness's config yet.
+- **Codex gets one decision for its one limit.** `model_auto_compact_token_limit` covers every model, but `recommend`
+  printed the pick of the model with the most turns (175k from `gpt-6.1-sol` history), which would also apply to the
+  GPT-6.2 models now in use and leave them worse off. The value is now chosen across the Codex models in use, each
+  scored at the lower of the value and its own clamp, with the usual tolerance rules; every Codex group, `recommend`,
+  `apply` and auto-apply follow that one decision. A model that a newer version of its family took over is left out
+  and listed (`gpt-6.1-sol` → `gpt-6.2-sol`).
+- **Keep the current setting when it is within the tolerance.** A profile's pick that would not beat your current
+  setting's score by more than the 2% selection tolerance is now **keep current** instead of a change: the pick is
+  the largest threshold within 2% of the best, so it could even score slightly worse than a setting already nearer
+  the best. `recommend`, `apply` and auto-apply leave such a setting alone, the idle-compaction verdict counts it as
+  in force, and the terminal views, report and `share` say why.
+- **Prices, windows and defaults that change over time.** Auto refresh also runs weekly for known models, and every
+  price or window a refresh moves is logged (`pricing-changes.json`; recent ones for your models appear in `simulate`
+  and `pricing auto status`). A refresh older than the bundled snapshot no longer overrides the bundle's newer rows.
+  Each group keeps the price it was replayed with, so loading a saved result after a change says what moved. The
+  window is the most common among a group's latest sessions (Codex can change a model's window; a clean switch is
+  reported), a Claude Code context beyond the assumed window means the window grew, and threshold compactions landing
+  more than 10% from the assumed default are flagged (the harness changed its default, or a setting compactlab cannot
+  read is in force). A model no public file lists stops triggering refreshes after 5 tries.
+- **New models and other platforms are priced from the right row.** Model IDs are reduced to the vendor's ID and the
+  platform they point at (Bedrock, Vertex, OpenRouter, Azure; Codex sessions record `model_provider`), and a lookup
+  says how it matched: the platform's own row, the vendor's list price, a borrowed row from the closest model of the
+  same family, or the fallback. Before, `claude-fable-5-2` picked up Fable 5's prices by substring (cache reads 5×
+  too high) and every GPT-6 model in Codex got the $3/$15 fallback. `pricing refresh` now keeps every vendor's own
+  models (not resellers' re-spelled copies) and each platform's prices under `<platform>:<id>`; `pricing show` gains
+  `--platform` and a match column. The bundled snapshot adds Fable 5.2 and the GPT-6 family. Codex parser version 6
+  re-reads Codex logs once.
+- **`compactlab pricing auto on|off|status`: opt-in refresh for new models.** When on, `serve` and scheduled runs
+  download models.dev (LiteLLM if that fails) when the logs show a model with no price row of its own, at most once a
+  day or once an hour for a model the last attempt did not cover. Off by default; `simulate` and the other commands
+  stay offline and say which models need it.
+- **`simulate` lists models priced from someone else's row, and Claude Code models with no window of their own** while
+  others have one and whose sessions reach it, with the closest configured model's value as a stand-in when the new
+  model has under 3 active days of data.
+- **Third-party models in Claude Code** (DeepSeek, Kimi, GLM behind `ANTHROPIC_BASE_URL`) are replayed with the 200K
+  window Claude Code assumes for an ID it does not recognize, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from settings.json's
+  `env` block or the environment. A Claude model missing from the default rules compacts at about 967K when its window
+  is 1M. `recommend`, `apply` and auto-apply key `modelSettings` by the canonical Claude name, which also covers
+  Bedrock, Vertex and dated IDs (a preauthorization or consent listing either spelling matches), and the current
+  setting is read the same way; a `[1m]` variant keeps its own key (`claude-opus-4-6[1m]`), read and written apart
+  from the base model's. A Claude Code context
+  beyond 200K for an unrecognized ID widens the window to what the logs show (the env var is probably set in a shell
+  compactlab does not see).
+- **Claude Code's idle compaction is modelled and gets its own advice.** `idleCompaction` (on by default) summarizes a
+  long conversation left idle on the one-hour cache while the cache is still warm, about 55 minutes in, and applies
+  the summary on return. The adapter tells these compactions apart (an `auto` boundary an hour or more after the last
+  turn that took under 5 s, or `precomputed: true`); they no longer count as the threshold, as compaction wait or as
+  the "history" threshold. The replay charges the summary (a cached read and its output), returns you to the smaller
+  context, adds the re-discovery after it, and charges summaries for sessions never resumed at the observed rate.
+  Whether a gap fires depends on the app and machine, not the context size (124 of 335 eligible gaps in the
+  maintainer's logs), so each gap keeps its logged outcome and the rest fire at the group's rate. Groups on the
+  one-hour cache are replayed with the setting flipped too; `simulate` prints a keep-on / turn-off verdict over all of
+  them (it is one global setting) and `recommend` adds an `idleCompaction` snippet when flipping wins by more than 2%,
+  even when no window changes. Main sessions only; the flipped sweep is saved in the result, so re-selecting a saved
+  result (`--profile`, `--value-of-time`) updates the verdict too. `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` is read from
+  settings.json's `env` block or the environment; `verify` uses the same setting.
+- **`verify` counts the compaction requests the logs leave out.** Each compaction's summary request (a cached read of
+  the context and the summary output) is not a logged turn; observed cost now adds an estimate, as the replay does.
+  Threshold, idle and hand-typed compactions are counted apart, the "setting in effect" check uses threshold
+  compactions only, and a role that never reached the threshold gets `untouched` instead of "saved less than
+  predicted".
+
+### Fixed
+- **Codex: most tool calls were missed.** Current Codex runs commands as `custom_tool_call` (`exec`), which the
+  adapter ignored (24,107 calls in 30 days of the maintainer's logs); tool outputs as lists of content blocks are now
+  counted by their text, not their JSON (an image's base64 no longer counts as context). Codex writes a response's
+  `token_count` after that response's tool has run, so turn latency now runs from the input before the response's
+  first output item to its last one (it had been the tool's run time, or zero; an aborted response no longer stretches
+  the next turn), and a tool output that arrives before its turn is recorded on that turn instead of the previous
+  one. Parser version 5 re-reads Codex logs.
+- **Re-discovery time could explode.** It divided the re-discovered tokens by the median of all tool results; for a
+  Codex group whose logged results were ~4 tokens that gave 134 hours of re-discovery in a 39-hour history (+4,826
+  min/day). The step is now in the same units as the tokens: the mean re-discovery result with an observed penalty,
+  the prior's 2,000 tokens with the prior.
+- **"No action needed" now means the default threshold is never reached.** Idle compactions and the hand-typed
+  `/compact` the replay keeps no longer count; `verify`'s predicted threshold compactions leave them out too.
+- **"Change" for a negligible gain.** A profile now keeps the default unless it beats it by more than the 2% selection
+  tolerance (by the selection rule the default is as good a choice); the reason says "net gain under 2%".
 
 ### Changed
 - **Clearer terminal and report wording** (from a review while making the promo video):
@@ -42,6 +120,24 @@ versioning: [SemVer](https://semver.org/).
   - panel subtitles and `top` show the prompt-cache TTL the replay used for Claude Code (`cache 1 h`).
 
 ### Fixed
+- **History copied into a resumed or forked Claude Code log is no longer counted twice.** The new log repeats the
+  parent's messages with their original timestamps; the same API call was priced and counted once per copy (in one
+  period a third of the turns and a third of the compactions). The earliest session keeps them; later copies drop
+  them and report `skipped_inherited`.
+- **The replay keeps your hand-typed `/compact`.** It used to drop every recorded compaction, so the "default"
+  baseline assumed you never compact by hand and the estimated saving was credited to the threshold. Now a manual
+  `/compact` is replayed at the same place while the replayed context is still at least 70% of the size it was typed
+  at (`MANUAL_KEEP`). On a session with 31 manual and 6 automatic compactions the default baseline went from $1,276 to
+  $932 against $915 actually logged, and the balanced pick's saving from −31% to −6.5%. The report's single-session
+  chart does the same.
+- **Claude Code re-writes old compaction records later in a log.** One long session showed 64 compactions, 37 real.
+  They are now read once (by record id), and the re-written summary line is skipped with them.
+- **Hand-typed `/compact` no longer counts as the threshold.** Claude Code logs whether a compaction was `auto` or
+  `manual`; compactlab ignored it, so `verify`, `share --verify` and the "historical" replay counted manual ones in
+  the observed compactions and the median size at compaction. A user who types `/compact` often saw "already in
+  effect" for a threshold that never was (real logs: 2.9 → 0.5 auto compactions per 1k turns before the change).
+  The adapter now records `trigger`; unknown (Codex, dsh) still counts as auto; `observed_manual_compactions` is
+  reported separately. The scan cache version is 3, so the first run after upgrading re-reads the logs.
 - **Replay model and presentation fixes** (from an independent review of the simulator, selection and report):
   - sessions are grouped by harness, model and role, so one model name under two harnesses is two groups; a session
     that switched models is still replayed with every turn priced at the model that served it (and its logged cost
