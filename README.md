@@ -60,7 +60,8 @@ Within its guardrails, each profile picks the largest threshold whose score (lis
 penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
 `--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
 profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
-number when the default never compacts in those sessions, and **keep default** when a profile would not beat it.
+number when the default never compacts in those sessions, and **keep default** when a profile would not beat it by
+more than the 2% selection tolerance.
 
 Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
 added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
@@ -172,7 +173,9 @@ Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/comp
 
 `compactlab verify` splits your logs at the time of the last `apply` and compares, per model and role, the logged cost
 and compactions per 1k turns before and after with what a replay of the *before* sessions predicted (plus a replay
-of the *after* sessions, to show when the workload changed). It also checks that compactions really happen near the
+of the *after* sessions, to show when the workload changed). Cost includes an estimate of each compaction's summary
+request, which the logs do not record; threshold, idle and hand-typed compactions are counted apart, and a role whose
+threshold was never reached gets no verdict on it. It also checks that compactions really happen near the
 new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
 each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
 verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
@@ -182,6 +185,16 @@ too-late date).
 
 Does it hold up on real logs? One checked case, with the control that makes the replay trustworthy:
 [docs/RESULTS.md](docs/RESULTS.md).
+
+## Idle compaction
+
+Claude Code also compacts on its own when you leave a long conversation idle on the one-hour cache (`idleCompaction`,
+on by default, from 200k tokens): it makes the summary while the cache is still warm, about 55 minutes in, and
+applies it when you return. compactlab tells these compactions apart in the logs, replays them (the summary's read
+and output, the smaller context you return to, the re-discovery after it, and summaries made for sessions you never
+resumed), and replays the groups it applies to with the setting flipped. After the groups it says whether to keep it
+on, with the cost, wall-clock and compaction change per day; `recommend` prints an `idleCompaction` snippet only when
+flipping it beats the current state by more than 2%.
 
 ## Run as a service
 

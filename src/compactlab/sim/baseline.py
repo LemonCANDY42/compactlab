@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from importlib import resources
 from pathlib import Path
@@ -81,6 +82,34 @@ def read_current(harness: str, model: str, path: Path | None) -> tuple[int | Non
             return None, "not set (harness default)"
         return int(mm.group(1).replace("_", "")), f"model_auto_compact_token_limit in {path.name}"
     return None, "unsupported harness"
+
+
+IDLE_ENV = "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS"
+
+
+def read_idle(path: Path | None, environ: dict[str, str] | None = None) -> tuple[bool | None, int | None, str]:
+    """Claude Code's idle compaction as configured, read-only: (`idleCompaction` or None when not set, the minimum
+    context from CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS or None, description). The env var counts from settings.json's
+    `env` block first, then this process's environment."""
+    d: dict = {}
+    if path is not None and path.exists():
+        try:
+            text = path.read_text()
+            d = json.loads(text) if text.strip() else {}
+        except (OSError, ValueError):
+            return None, None, f"{path.name} unreadable: idle compaction assumed on"
+    d = d if isinstance(d, dict) else {}
+    v = d.get("idleCompaction")
+    enabled = v if isinstance(v, bool) else None
+    env = d.get("env")
+    env = env if isinstance(env, dict) else {}
+    raw = env.get(IDLE_ENV) or (environ if environ is not None else os.environ).get(IDLE_ENV)
+    try:
+        min_tokens = int(str(raw).replace("_", "")) if raw else None
+    except ValueError:
+        min_tokens = None
+    where = f"idleCompaction in {path.name}" if enabled is not None and path else "not set (on by default)"
+    return enabled, min_tokens, where + (f"; {IDLE_ENV}={min_tokens:,}" if min_tokens else "")
 
 
 def default_note_zh(harness: str, model: str) -> str:

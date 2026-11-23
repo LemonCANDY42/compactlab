@@ -42,6 +42,7 @@ W: dict[str, dict[str, str]] = {
            "next": "next {t}", "up": "up", "down": "not running", "none": "–",
            "kw_above": "{a} is not below the default {b}",
            "kw_score": "no net gain at ${v:g}/h (net {n}/day)",
+           "kw_small": "net gain under {tol:g}% at ${v:g}/h ({n}/day)",
            "kw_worth": "not worth it at ${v:g}/h: saves {u}/day but adds {m}/day of wall-clock (= {tv})",
            "unsafe": "░ recall < {f:g}", "saved": "░ = saved", "cache": "cache {t}", "to": "set", "more": "+{n} more"},
     "zh": {"history": "历史", "harnesses": "工具", "models": "模型", "calibrated": "校准", "service": "服务",
@@ -53,6 +54,7 @@ W: dict[str, dict[str, str]] = {
            "lite 代理值 · --plain 输出完整表格", "models_set": "{n} 个模型建议改", "ago": "{t}前", "next": "下次 {t}",
            "up": "运行中", "down": "未运行", "none": "–", "kw_above": "{a} 不低于默认值 {b}",
            "kw_score": "按 ${v:g}/小时 没有净收益(每天净 {n})",
+           "kw_small": "按 ${v:g}/小时 净收益不到 {tol:g}%(每天 {n})",
            "kw_worth": "按 ${v:g}/小时 不划算:每天省 {u},但总耗时每天多 {m}(折合 {tv})", "unsafe": "░ 召回 < {f:g}",
            "saved": "░ = 省下的部分", "cache": "缓存 {t}", "to": "设为", "more": "另 {n} 个"},
 }  # fmt: skip
@@ -101,6 +103,9 @@ def keep_reason(g: dict[str, Any], prof: str, lang: str = "en") -> str:
     assert f is not None
     vot = float(p["value_of_time"])
     tv = f["dm"] / 60 * vot
+    if f["d"] + tv < 0:  # better than the default, but within the selection tolerance
+        tol = p.get("recommendation", {}).get("tolerance", 0.02) * 100
+        return w["kw_small"].format(v=vot, n=fusd(f["d"] + tv, True), tol=tol)
     if f["d"] < 0 < f["dm"]:
         return w["kw_worth"].format(v=vot, u=f"${-f['d']:,.1f}", m=f"{f['dm']:.1f} min", tv=f"${tv:,.1f}")
     return w["kw_score"].format(v=vot, n=fusd(f["d"] + tv, True))
@@ -325,6 +330,71 @@ def recs_table(res: dict[str, Any], cols: int, lang: str = "en", unit: str = "pc
     return out
 
 
+IDLE_W: dict[str, dict[str, Any]] = {
+    "en": {
+        "head": "idle compaction (Claude Code idleCompaction: {state}{src}; min context {m}) · {groups}",
+        "on": "on", "off": "off", "default": ", the default",
+        "rate": "{g}: fires on {r:.0%} of eligible idle gaps ({src}); {n} in the logs",
+        "scope": {"group": "{f} of {e} in this group", "harness": "{f} of {e} across this harness",
+                  "assumed": "assumed: too few eligible gaps in the logs"},
+        "with": {"profile": "with the {p} picks", "current": "with your current settings"},
+        "flip": {True: "turning it off", False: "turning it on"},
+        "line": "{w}, {f}: {u}/day ({pc}), {m}/day wall-clock, {c:+.1f} compactions/day, recall {r:+.3f} → {v}",
+        "verdict": {(True, True): "turn it off", (True, False): "turn it on",
+                    (False, True): "keep it on", (False, False): "keep it off"},
+        "tail": "includes {u}/day of summaries for sessions left idle and never resumed (expected; not in the logs)",
+    },
+    "zh": {
+        "head": "空闲压缩(Claude Code idleCompaction:{state}{src};最小上下文 {m})· {groups}",
+        "on": "开", "off": "关", "default": ",默认",
+        "rate": "{g}:符合条件的空闲间隔里有 {r:.0%} 触发({src});日志里 {n} 次",
+        "scope": {"group": "本组 {e} 次里 {f} 次", "harness": "该 harness 全部会话 {e} 次里 {f} 次",
+                  "assumed": "假定:日志里符合条件的间隔太少"},
+        "with": {"profile": "按{p}方案的阈值", "current": "按你当前的设置"},
+        "flip": {True: "关掉它", False: "打开它"},
+        "line": "{w},{f}:每天 {u}({pc}),耗时每天 {m},压缩每天 {c:+.1f} 次,召回 {r:+.3f} → {v}",
+        "verdict": {(True, True): "建议关掉", (True, False): "建议打开",
+                    (False, True): "保持开启", (False, False): "保持关闭"},
+        "tail": "其中每天 {u} 是空闲后没再回来的会话做的摘要(期望值,日志里看不到)",
+    },
+}  # fmt: skip
+PROFILE_ZH = {"cost": "省钱", "balanced": "均衡", "time": "省时"}
+
+
+def idle_lines(res: dict[str, Any], lang: str = "en") -> list[str]:
+    """Keep Claude Code's idle compaction on or off, in plain lines (empty when it applies to no group)."""
+    adv = res.get("idle_compaction")
+    if not adv:
+        return []
+    w = IDLE_W[lang]
+    on = adv["enabled"]
+    gs = [g for g in res["groups"] if g.get("idle", {}).get("alt")]
+    out = [w["head"].format(state=w["on"] if on else w["off"], src="" if adv.get("configured") else w["default"],
+                            m=k(adv["min_tokens"]), groups=", ".join(adv["groups"]))]  # fmt: skip
+    for g in gs:
+        if g["idle"]["rate_scope"] == "group":  # groups with enough eligible gaps of their own
+            i = g["idle"]
+            src = w["scope"][i["rate_scope"]].format(f=i["rate_fired"], e=i["rate_eligible"])
+            out.append(
+                "  · "
+                + w["rate"].format(
+                    g=f"{label(g['model'])} {g['role']}", r=i["rate"], src=src, n=g["observed_idle_compactions"]
+                )
+            )
+    rows = [("profile", adv["profiles"][adv["profile"]]), ("current", adv["current"])]
+    for which, v in rows:
+        base = v["configured"]["combined_cost"]
+        pname = adv["profile"] if lang == "en" else PROFILE_ZH.get(adv["profile"], adv["profile"])
+        out.append("  · " + w["line"].format(
+            w=w["with"][which].format(p=pname), f=w["flip"][on], u=fusd(v["d_usd_per_day"], True),
+            pc=fpct(v["d_usd_per_day"] / base if base else None), m=fmin(v["d_min_per_day"], True),
+            c=v["d_compactions_per_day"], r=v["d_recall"], v=w["verdict"][(v["switch"], on)]))  # fmt: skip
+    tail = adv["profiles"][adv["profile"]]["configured"].get("idle_tail_cost", 0.0) if on else 0.0
+    if tail >= 0.05:
+        out.append("  · " + w["tail"].format(u=fusd(tail)))
+    return out
+
+
 def summary_view(res: dict[str, Any], cols: int, lang: str = "en", unit: str = "pct",
                  service: str | None = None) -> list[Line]:  # fmt: skip
     cols = max(30, min(cols, 200))
@@ -340,6 +410,9 @@ def summary_view(res: dict[str, Any], cols: int, lang: str = "en", unit: str = "
     nl = noop_lines(res, pw, lang)
     if nl:
         lines += [[], *nl]
+    il = idle_lines(res, lang)
+    if il:
+        lines += [[], [(il[0], "ink_b")], *([(x, "dim")] for x in il[1:])]
     lines += [
         [],
         *recs_table(res, pw, lang, unit),
