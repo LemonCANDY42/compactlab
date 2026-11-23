@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from . import Omitted, Recommender, Snippet, evidence, knobs, register, safe_value
+from . import Omitted, Recommender, Snippet, evidence, k, knobs, register, safe_value
 
 KEY = "model_auto_compact_token_limit"
 KN = "codex.config.model_auto_compact_token_limit"
@@ -44,22 +44,42 @@ class CodexRecommender(Recommender):
         role = "subagent" if scope == "agent" else "main"
         groups = [g for g in result["groups"] if g["harness"] == self.harness and g["role"] == role]
         out: list[Snippet | Omitted] = []
-        picks = []
-        for g in sorted(groups, key=lambda g: -g["n_turns"]):
-            v, why = safe_value(g, profile, result, 1, 10**9)
-            if v is None:
-                out.append(Omitted(self.harness, why))
-            else:
-                picks.append((g, v))
-        if not picks:
-            return out or [Omitted(self.harness, f"no Codex {role} sessions in this history")]
-        g, v = picks[0]
         prov = knobs()["providers"]["codex"]
-        notes = [
-            "Codex has one global limit, not one per model: this value follows " + g["model"] + " (most turns).",
-            prov.get(provider, prov["openai"]) if provider != "default" else prov["openai"],
-        ]
-        notes += [f"Also seen: {o['model']} would get {o_v // 1000}k." for o, o_v in picks[1:]]
+        pnote = prov.get(provider, prov["openai"]) if provider != "default" else prov["openai"]
+        glob = (result.get("global_keys") or {}).get(self.harness)
+        if glob and role == "main":
+            # one limit for every model: the value chosen across the models in use (compactlab.sim.engine.global_keys)
+            gp = glob["profiles"][profile]
+            gone = ", ".join(f"{a} (replaced by {b})" for a, b in glob["superseded"].items())
+            across = "Codex has one limit for every model; chosen across " + ", ".join(glob["models"]) + (
+                f"; not counted: {gone}" if gone else "")  # fmt: skip
+            if gp["action"] != "set":
+                what = {
+                    "keep current": f"keep current ({k(gp.get('current'))} is within the selection tolerance)",
+                    "keep default": "keep default (no single value beats it by more than the selection tolerance)",
+                    "no action needed": "no action needed (the default never compacts in these sessions)",
+                }.get(gp["action"], gp["action"])
+                return [Omitted(self.harness, f"Codex: {what}. {across}.")]
+            used = [g for g in groups if f"{g['model']} · {g['role']}" in glob["models"]] or groups
+            g, v = max(used, key=lambda x: x["n_turns"]), int(gp["threshold"])
+            notes = [across + ".", pnote]
+            notes += [
+                f"{m}: {k(t) if t else 'unchanged (its own default is lower)'}" for m, t in gp["per_model"].items()
+            ]
+        else:
+            picks = []
+            for x in sorted(groups, key=lambda x: -x["n_turns"]):
+                xv, why = safe_value(x, profile, result, 1, 10**9)
+                if xv is None:
+                    out.append(Omitted(self.harness, why))
+                else:
+                    picks.append((x, xv))
+            if not picks:
+                return out or [Omitted(self.harness, f"no Codex {role} sessions in this history")]
+            g, v = picks[0]
+            notes = [f"Codex has one global limit, not one per model: this value follows {g['model']} (most turns).",
+                     pnote]  # fmt: skip
+            notes += [f"Also seen: {o['model']} would get {o_v // 1000}k." for o, o_v in picks[1:]]
         ev = [evidence(g, profile)]
         if scope in ("global", "project"):
             path = "~/.codex/config.toml" if scope == "global" else ".codex/config.toml"

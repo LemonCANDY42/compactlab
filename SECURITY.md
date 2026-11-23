@@ -5,7 +5,11 @@ file paths and tool output) and harness configuration files it may modify.
 
 ## What compactlab does to protect it
 
-- Lite mode (default) makes no network calls and no model calls.
+- Lite mode (default) makes no network calls and no model calls. The one exception you can turn on is
+  `compactlab pricing auto on`: background runs (`serve`, `recalibrate`) then download the public price files
+  (models.dev, else LiteLLM) when the logs show a model with no price row (retried daily, or after an hour for a newly
+  seen model, up to 5 times) and once a week otherwise. The request is a plain GET of the whole file with a generic
+  User-Agent; no model names, paths or usage leave the machine.
 - The scan cache (`~/.compactlab/cache`, mode 0600) stores parsed excerpts: tool commands and 400-character output
   snippets. Disable it with `--no-cache`; wipe it with `compactlab cache clear`.
 - Reports and `result.json` contain token counts, model names and session ids, never transcript text or paths.

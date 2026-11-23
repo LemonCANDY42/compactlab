@@ -54,6 +54,7 @@ class Session:
     turns: list[Turn] = field(default_factory=list)
     compactions: list[Compaction] = field(default_factory=list)
     context_window: int | None = None
+    platform: str | None = None  # where the model ran, when the log says (Codex `model_provider`)
     parent_id: str | None = None  # fork/resume lineage, when the harness records it
     unknown_events: dict[str, int] = field(default_factory=dict)  # event types the parser did not use
     parse_errors: int = 0  # malformed lines skipped

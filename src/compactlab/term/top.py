@@ -202,7 +202,7 @@ def _tree(st: TopState, cols: int, height: int) -> list[Line]:
                     _, b = was_now(f["was"], f["now"], 6)
                     tail = [*b, (" ", None), *chip(f["pc"], None, st.unit)]
                 else:
-                    tail = [("keep default", "dim")]
+                    tail = [("keep current" if s == "cur" else "keep default", "dim")]
             room = cols - width(line) - width(tail) - 1
             line = [*line, (" " * max(room, 1), None), *tail] if room >= 1 else clip(line, cols)
         out.append(pad(line, cols))
@@ -246,8 +246,9 @@ def _detail(st: TopState, cols: int, height: int) -> list[Line]:
             ans[1] = [(fusd(f["d"], True), ("good" if f["d"] < 0 else "warn") + "_b"), (" cost", "dim")]
             ans[2] = [(fmin(f["dm"], True), ("good" if f["dm"] < 0 else "warn") + "_b"), (" wall-clock", "dim")]
         body += pack(ans, cols)
-        if s == "keep":
-            body += pack([[("▪ keep default: " + keep_reason(g, p), "dim")]], cols)
+        if s in ("keep", "cur"):
+            body += pack([[(("▪ keep current: " if s == "cur" else "▪ keep default: ") + keep_reason(g, p), "dim")]],
+                         cols)  # fmt: skip
         # cost and time vs threshold, both as % of the default, with default / current / profile marks
         grid = g["grid"]
         cc = [
@@ -411,7 +412,7 @@ def act(st: TopState, action: str, state_dir: Path, recalibrate: Callable[[], di
         g = st.res["groups"][cur[1]]
         p = prof_of(st, g)
         if status(g, p) != "set":
-            what = {"keep": "keep default", "noop": "no change"}[status(g, p)]
+            what = {"keep": "keep default", "cur": "keep current", "noop": "no change"}[status(g, p)]
             st.msg = f"{label(g['model'])}: {what}: nothing to copy"
             return
         text = snippet(g, g["profiles"][p]["threshold"])

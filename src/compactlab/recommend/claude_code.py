@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, ClassVar
 
+from ..pricing.ids import claude_settings_key as settings_key
 from . import Omitted, Recommender, Snippet, evidence, k, knobs, register, safe_value
 
 LO, HI = 100_000, 1_000_000
@@ -80,7 +81,7 @@ class ClaudeCodeRecommender(Recommender):
     }
 
     def setting(self, g: dict[str, Any], threshold: int) -> str:
-        return json.dumps({"modelSettings": {g["model"]: {"autoCompactWindow": threshold}}})
+        return json.dumps({"modelSettings": {settings_key(g["model"]): {"autoCompactWindow": threshold}}})
 
     def generate(self, result: dict[str, Any], scope: str, profile: str, fmt: str | None, provider: str) -> list:
         fmt = fmt or self.formats[scope][0]
@@ -97,7 +98,7 @@ class ClaudeCodeRecommender(Recommender):
             if v is None:
                 out.append(Omitted(self.harness, why))
                 continue
-            values[g["model"]] = v
+            values[settings_key(g["model"])] = v
             ev.append(evidence(g, profile))
         idle_snip = self._idle_snippet(result, scope, profile, fmt)
         if not values:  # no window to change; the idle-compaction setting may still be worth flipping

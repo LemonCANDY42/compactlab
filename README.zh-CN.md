@@ -28,7 +28,7 @@ Claude Code 和 Codex 会在上下文达到某个 token 阈值时压缩对话。
 
 ## 与默认设置对比
 
-每个方案都会和 **harness 默认值**(什么都不改时的压缩点)对比,能读到配置时也和**你当前的设置**对比:成本差、耗时差(按小时和每天分钟数;更小上下文省下的时间减去压缩和找回增加的时间,用你自己的时间戳拟合)、每天压缩次数、召回率。默认设置在某组会话里从未触发压缩时显示"无需调整";方案不比默认好、或者好得不到 2%(选择用的容差)时显示"保持默认"。
+每个方案都会和 **harness 默认值**(什么都不改时的压缩点)对比,能读到配置时也和**你当前的设置**对比:成本差、耗时差(按小时和每天分钟数;更小上下文省下的时间减去压缩和找回增加的时间,用你自己的时间戳拟合)、每天压缩次数、召回率。默认设置在某组会话里从未触发压缩时显示"无需调整";你当前的设置与方案选值的得分相差在同样的 2% 以内时显示"保持当前"(改了也只是来回折腾);方案不比默认好、或者好得不到 2%(选择用的容差)时显示"保持默认"。
 
 几点说明:成本是按公开标价的**估算**,不含折扣、套餐或额度;lite 模式的召回率是**代理值**,不是实测;某组可计时的压缩少于 20 次时,不用它自己的拟合,改用同工具全部会话的汇总拟合或偏保守的先验值,并会写明。命令行输出和 HTML 报告默认中英双语,`--lang zh|en` 可切换。
 
@@ -129,13 +129,16 @@ Claude Code 还会自己压缩:长对话在 1 小时缓存下闲置时(`idleComp
 - 报告和 `result.json` 只包含 token 数、模型名和会话 id,不包含对话内容和路径;`--redact` 可把 id 换成哈希。
 - `apply` 默认只出 dry-run diff;写入需要 `--write` 加预授权文件(或 `--i-authorize`),写入前自动备份,`revert` 只还原改过的键。
 - `compactlab share` 只生成一份匿名的预估节省记录(数字和模型名,不含 id、路径、时间戳),写到本地文件,由你自己决定是否贴到研究用的 Issue 表单;它不会发送任何东西。详见 [docs/SHARING.md](docs/SHARING.md)。
-- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分)。
+- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分:按在用的各模型一起算出一个值,已被新版本取代的模型如 6.1-sol 不计入)。
 
 ## 局限
 
 - lite 模式的召回率是**假设曲线**,不是任何模型的实测数据;deep 模式测的是对 compactlab 摘录的抽样结果。
 - 回放成本是按公开标价的估算,用于比较不同阈值,不等于你的账单(不考虑订阅、折扣和额度)。
-- 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。
+- 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。`compactlab pricing auto on` 之后,`serve` 和定时任务会自动下载同样的公开数据:日志里出现没有价格的模型时(每天重试,新模型一小时后可再试,最多 5 次),以及每周一次(厂商会调价、改窗口)。不发送任何关于你的信息;变化会记下来,`simulate` 列出与你的模型相关的近期变化。
+- 模型优先按自己的价格行计费。平台 ID(Bedrock `us.anthropic.…`、Vertex `…@日期`、OpenRouter `anthropic/…`、Azure、Codex 的 `model_provider`)刷新后按该平台的价格,刷新前按厂商官方价。表里没有的新模型借用同族最接近的型号(如 `claude-fable-5-3` 借 `claude-fable-5-2`),再不行用兜底价;`simulate` 会列出这些模型,`pricing show --model <id> [--platform <p>]` 可查看匹配方式。
+- 随时间变化的情况按最新的算:历史按现价回放(比内置快照旧的刷新数据不再覆盖它;载入在调价前保存的结果会提示);Codex 的窗口按最近会话记录的值(干净切换时会提示);Claude Code 的上下文超过假设窗口说明窗口变大了;最近的阈值压缩点离假设的默认值超过 10% 时,`simulate` 会提示 harness 可能改了默认值,或有读不到的设置在生效。
+- Claude Code 按模型 ID 决定窗口:通过 `ANTHROPIC_BASE_URL` 接入的第三方模型(DeepSeek、Kimi、GLM 等)按 Claude Code 对未知 ID 假设的 200K 窗口回放,设置了 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 时按它。
 - DeepSeek Harness(dsh)为**实验性**支持:按 dsh 源码和它自带的快照日志实现,还没在真实历史上跑过。日志在 `~/.dsh/sessions`(`.jsonl.zstd` 需要 Python 3.14+ 或 `zstd` 命令);`recommend` 给出 compaction-basic 插件的 `modelPolicies`(`thresholdRatio`)片段,`apply` 不改 dsh 配置。
 - OpenCode、Gemini CLI、Hermes、Qwen Code、Kimi CLI、Goose 的适配器在计划中,顺序见 [路线图](docs/ROADMAP.md),欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
 
