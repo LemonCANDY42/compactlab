@@ -179,17 +179,17 @@ compactlab.app（LSUIElement，无 Dock 图标）
 外部引擎：compactlab（uv tool / Homebrew formula 安装）
 ```
 
-引擎发现顺序：设置里手填的路径 → `PATH` → `~/.local/bin` → `/opt/homebrew/bin` → `uv tool dir`。启动时执行 `compactlab engine hello --json` 握手，版本不兼容就进入“引擎过旧”状态：只读功能照常，写操作停用，并给出升级命令。
+引擎发现顺序：设置里手填的路径 → `PATH` → `~/.local/bin` → `/opt/homebrew/bin` → `uv tool dir`。启动时执行 `compactlab engine hello` 握手，版本不兼容就进入“引擎过旧”状态：只读功能照常，写操作停用，并给出升级命令。
 
 两类引擎调用：
 
 | 调用 | 形态 | 频率 | 内存目标 |
 | --- | --- | --- | --- |
-| `compactlab engine watch --stdio` | 常驻、轻量；只读活跃文件尾部，输出 JSON Lines：会话上下文、模型、最后活动时间、缓存 TTL | FSEvents 触发，活跃时最多每 5 s 一次 | < 40 MB |
-| `compactlab engine calibrate / verify / plan / apply / revert --json` | 一次性子进程，跑完退出 | 定时（默认每天）+ 手动 | 峰值 < 300 MB（现在约 1 GB） |
+| `compactlab engine watch` | 常驻、轻量；只读活跃文件尾部，输出 JSON Lines：会话上下文、模型、生效阈值、最后活动时间、缓存何时变冷 | FSEvents 触发（stdin 发 `refresh`），活跃时最多每 5 s 一次 | < 40 MB（实测峰值 32 MB） |
+| `compactlab engine calibrate / result`（已有）；`verify / plan / apply / revert`（Phase 0 第 5 项和 Phase 2） | 一次性子进程，跑完退出 | 定时（默认每天）+ 手动 | 峰值 < 300 MB（现在约 1 GB） |
 
 - 活跃会话放在 Python 里做，是为了让格式知识（resume 复制的历史、fork、subagent 目录、Codex token_count）只有一份。如果 watch 进程的常驻开销实测不达标，退路是只把“读最后一条 usage”这一小段移到 Swift，并用同一套夹具测试。
-- 契约：每个输出带 `engine_api` 版本；Python 测试和 Swift 测试共用一套 JSON 夹具。
+- 契约：每个输出带 `engine_api` 版本；Python 测试和 Swift 测试共用一套 JSON 夹具（`tests/contract/`）。字段和命令见 [ENGINE_API.md](ENGINE_API.md)。
 - 写配置只走 `engine apply`，并带 `--expect-plan <hash>`：引擎重算的计划和用户在审阅页看到的不一致就拒绝写。
 - 跨进程单飞：`~/.compactlab/service/lock`（`flock`）。应用、CLI、launchd 定时任务，谁拿到锁谁跑。
 - URL scheme 只用于“打开报告 / 打开某页”，不接受任何写操作。
@@ -223,11 +223,11 @@ compactlab.app（LSUIElement，无 Dock 图标）
 1. ~~修 §6.1 的时间模型 bug~~（已完成）。
 2. ~~空闲压缩分类与建模~~（已完成，§6.2）。
 3. 缓存重做：按文件分片或 SQLite，只加载需要的条目；清掉已删除文件的条目；版本升级时删旧缓存。验收：同一份 30 天日志，增量重算峰值 < 300 MB，没有变化时 < 5 s。
-4. `engine` 子命令组、版本化 JSON 契约、`watch --stdio`。
+4. ~~`engine` 子命令组、版本化 JSON 契约、`watch`~~（已完成）：`hello / sessions / watch / result / calibrate`，契约见 [ENGINE_API.md](ENGINE_API.md)。用真实日志（3,200 个文件；83 个活跃会话，外加一个末尾有 20 MB 重写历史的 109 MB 日志）核对：尾部读取的最新请求时间、上下文、模型、会话关系、压缩状态和全量解析逐个一致；Claude Code 在末尾追加旧消息副本（原时间戳）时按时间取最新请求，必要时往前多读，最多 32 MiB；watch 峰值 32 MB（解释器加 CLI 导入约占 28 MB），会话持续写入、每 2 s 一次 `refresh` 时约占单核 1.5%。
 5. 跨进程文件锁；`apply --expect-plan`。
 6. `lens.json` 和结果按 harness 合并，不再整体覆盖。
-7. 日志里出现没设置的模型时，`recommend` / `doctor` 给借用值并提示。
-8. 合并 PR #5，处理 Dependabot，打 v0.1.0，出 Homebrew formula。
+7. ~~日志里出现没设置的模型时，`recommend` / `doctor` 给借用值并提示。~~（已完成）
+8. ~~合并 PR #5~~（已合并）；处理 Dependabot，打 v0.1.0，出 Homebrew formula。
 
 ### Phase 1：只读 MVP
 

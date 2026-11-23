@@ -215,6 +215,11 @@ Rescans are incremental, one run at a time, at low priority, with no network. Au
 weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
 [docs/SERVICE.md](docs/SERVICE.md).
 
+Apps and scripts use `compactlab engine` instead: versioned JSON on stdout, no port. `engine watch` keeps a live
+list of active sessions (context, model, threshold in force, when the prompt cache goes cold) from the ends of their
+log files; `engine calibrate` and `engine result` run and read the calibration. See
+[docs/ENGINE_API.md](docs/ENGINE_API.md).
+
 ## In the terminal
 
 On a terminal, `demo`, `simulate`, `recommend`, `doctor` and `serve` draw a compact view (colour, boxes, a

@@ -25,6 +25,13 @@ class Parser(abc.ABC):
     """Stateful, resumable line parser. `dump()` must return JSON-serializable state."""
 
     version: ClassVar[int] = 1
+    # records at the top of a file a reader of only the file's end must feed first (e.g. Codex's session_meta)
+    head_records: ClassVar[int] = 0
+    # the session's working directory as last logged; shown only by the live view, never stored or cached
+    cwd: str | None = None
+    # whether the harness appends copies of earlier messages (original times) that the full parse drops as seen, so
+    # a reader of only the file's end has to look further back when the newest record is well after the last request
+    rewrites_history: ClassVar[bool] = False
 
     @abc.abstractmethod
     def feed(self, record: dict[str, Any]) -> None: ...

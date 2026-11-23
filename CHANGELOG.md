@@ -6,6 +6,16 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **`compactlab engine`, the JSON interface for the menu bar app** ([docs/ENGINE_API.md](docs/ENGINE_API.md)).
+  `hello`, `sessions`, `watch`, `result` and `calibrate` print versioned JSON (`engine_api: 1`) on stdout, errors
+  included; examples of every message in `tests/contract/` are checked against the real output. `watch` is a resident
+  JSON Lines process driven by `refresh` / `snapshot` / `ping` / `quit` on stdin that lists the active sessions:
+  context of the latest request, model, threshold in force and where it comes from, window, and when the prompt
+  cache goes cold. It reads only the end of recently written logs with the analysis's own parsers, reading further
+  back when Claude Code has appended copies of earlier messages (on 85 real files, including a 109 MB log ending in
+  20 MB of copies, every value matched a full parse), and finds files incrementally; on a 3,200-file history it peaks
+  at 32 MB and uses about 1.5% of a core while sessions are being written.
+- Codex subagents whose session names their parent only in `source.subagent.thread_spawn` now get that parent.
 - **OpenCode adapter** (1.x storage). Reads `~/.local/share/opencode/opencode.db` (`$XDG_DATA_HOME`,
   `--opencode-root`) read-only with SQLite's normal locking, so a running OpenCode is never blocked or written to.
   One turn per `step-finish` part, reasoning counted as output, subagents from `session.parent_id`, compactions from
@@ -90,6 +100,9 @@ versioning: [SemVer](https://semver.org/).
   predicted".
 
 ### Fixed
+- `demo` scanned the real OpenCode, Gemini CLI and dsh logs too (only Claude Code and Codex were pointed at the
+  synthetic data), so a demo report could show your own models. It now reads only the synthetic logs.
+- Service logging set up twice in one process logged every line twice and kept writing to the first stderr.
 - **Codex: most tool calls were missed.** Current Codex runs commands as `custom_tool_call` (`exec`), which the
   adapter ignored (24,107 calls in 30 days of the maintainer's logs); tool outputs as lists of content blocks are now
   counted by their text, not their JSON (an image's base64 no longer counts as context). Codex writes a response's

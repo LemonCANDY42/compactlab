@@ -40,6 +40,7 @@ def _tool_key(block: dict[str, Any]) -> str:
 
 class ClaudeParser(Parser):
     version = 5  # 5: idle compactions, compaction duration from durationMs
+    rewrites_history = True  # resumes, rewinds and /compact can append copies of earlier messages
 
     def __init__(self, path: str):
         role = "subagent" if "subagents" in Path(path).parts else "main"
@@ -58,6 +59,8 @@ class ClaudeParser(Parser):
             self.note_unknown(s, str(typ))
         if s.parent_id is None and d.get("parentSessionId"):
             s.parent_id = str(d["parentSessionId"])
+        if d.get("cwd"):
+            self.cwd = str(d["cwd"])
         ts = parse_ts(d.get("timestamp"))
         if typ == "system" and d.get("subtype") == "compact_boundary":
             meta = d.get("compactMetadata")

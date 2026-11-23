@@ -1,0 +1,105 @@
+{
+ "commands": [
+  "hello",
+  "sessions",
+  "watch",
+  "result",
+  "calibrate"
+ ],
+ "engine_api": 1,
+ "harnesses": [
+  {
+   "config": {
+    "exists": true,
+    "path": "~/.claude/settings.json"
+   },
+   "live": true,
+   "name": "claude-code",
+   "roots": [
+    {
+     "exists": true,
+     "path": "~/.claude/projects"
+    },
+    {
+     "exists": false,
+     "path": "~/.config/claude/projects"
+    }
+   ]
+  },
+  {
+   "config": {
+    "exists": true,
+    "path": "~/.codex/config.toml"
+   },
+   "live": true,
+   "name": "codex",
+   "roots": [
+    {
+     "exists": true,
+     "path": "~/.codex/sessions"
+    },
+    {
+     "exists": false,
+     "path": "~/.codex/archived_sessions"
+    }
+   ]
+  },
+  {
+   "config": null,
+   "live": false,
+   "name": "dsh",
+   "roots": [
+    {
+     "exists": false,
+     "path": "~/.dsh/sessions"
+    }
+   ]
+  },
+  {
+   "config": {
+    "exists": false,
+    "path": "~/.gemini/settings.json"
+   },
+   "live": false,
+   "name": "gemini-cli",
+   "roots": [
+    {
+     "exists": false,
+     "path": "~/.gemini/tmp"
+    }
+   ]
+  },
+  {
+   "config": {
+    "exists": false,
+    "path": "~/.config/opencode/opencode.json"
+   },
+   "live": false,
+   "name": "opencode",
+   "roots": [
+    {
+     "exists": false,
+     "path": "~/.local/share/opencode"
+    }
+   ]
+  }
+ ],
+ "kind": "hello",
+ "live_harnesses": [
+  "claude-code",
+  "codex"
+ ],
+ "python": "3.12.13",
+ "result": {
+  "exists": false,
+  "path": "~/.compactlab/service/result.json"
+ },
+ "service": {
+  "failures": 0,
+  "last_attempt": null,
+  "last_calibrated": null,
+  "last_error": null
+ },
+ "state_dir": "~/.compactlab",
+ "version": "0.1.0"
+}
