@@ -565,3 +565,16 @@ def test_1m_variant_keeps_its_own_settings_key(tmp_path):
                                                "claude-opus-4-6[1m]": {"autoCompactWindow": 800000}}}))  # fmt: skip
     assert read_current("claude-code", "claude-opus-4-6[1m]", p)[0] == 800_000
     assert read_current("claude-code", "claude-opus-4-6", p)[0] == 650_000
+
+
+def test_window_note_hint_fits_the_harness():
+    """The 'window has probably grown' note names a setting only where that harness has one."""
+
+    def lines(harness):
+        ss = [Session("b", harness, "main", "p", turns=_turns("mystery-model", n=60))]
+        return "\n".join(model_lines(analyze(ss, PR, SimOptions(grid_start=100_000)), "en"))
+
+    cc, oc, ds = lines("claude-code"), lines("opencode"), lines("dsh")
+    assert "beyond the 200k window assumed" in cc and "CLAUDE_CODE_MAX_CONTEXT_TOKENS" in cc
+    assert "beyond the 200k window assumed" in oc and "OpenCode config" in oc and "CLAUDE_CODE" not in oc
+    assert "beyond the 200k window assumed" in ds and "CLAUDE_CODE" not in ds and "OpenCode" not in ds

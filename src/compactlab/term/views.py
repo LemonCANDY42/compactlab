@@ -432,8 +432,9 @@ MODEL_W: dict[str, dict[str, Any]] = {
         "own": " (`compactlab recommend` gives it a value from its own data)",
         "window_changed": "{m} {r}: {h} changed its window from {a} to {b} around {d}; the replay uses {b}",
         "peak_over_window": "{m} {r}: contexts reached {peak}, beyond the {a} window assumed, so it is replayed with "
-                            "{w} (the window has probably grown: refresh the price data, or "
-                            "CLAUDE_CODE_MAX_CONTEXT_TOKENS is set where compactlab cannot see it)",
+                            "{w} (the window has probably grown: refresh the price data{why})",
+        "peak_why": {"claude-code": ", or CLAUDE_CODE_MAX_CONTEXT_TOKENS is set where compactlab cannot see it",
+                     "opencode": ", or your OpenCode config sets this model's limit"},
         "drift": "{m} {r}: the last {n} threshold compactions were at about {o}, not the default {a} assumed: "
                  "{h} may have changed its default, or a setting compactlab cannot read is in force (an env var, a "
                  "project settings file, a CLI flag)",
@@ -456,7 +457,9 @@ MODEL_W: dict[str, dict[str, Any]] = {
         "own": "（`compactlab recommend` 会按它自己的数据给值）",
         "window_changed": "{m} {r}：{h} 在 {d} 前后把窗口从 {a} 改成 {b}，按 {b} 回放",
         "peak_over_window": "{m} {r}：上下文到过 {peak}，超出假设的 {a} 窗口，按 {w} 回放（窗口多半变大了："
-                            "更新价格数据，或 CLAUDE_CODE_MAX_CONTEXT_TOKENS 设在 compactlab 看不到的地方）",
+                            "更新价格数据{why}）",
+        "peak_why": {"claude-code": "，或 CLAUDE_CODE_MAX_CONTEXT_TOKENS 设在 compactlab 看不到的地方",
+                     "opencode": "，或你的 OpenCode 配置给这个模型设了上限"},
         "drift": "{m} {r}：最近 {n} 次阈值压缩在约 {o}，不是假设的默认 {a}：{h} 可能改了默认值，"
                  "或有 compactlab 读不到的设置在生效（环境变量、项目设置文件、命令行参数）",
         "price_change": "价格数据 {d}：{m} {f} {o} → {n}（历史按现价回放）",
@@ -492,8 +495,9 @@ def model_lines(res: dict[str, Any], lang: str = "en") -> list[str]:
         if x["kind"] == "window_changed":
             out.append("  · " + w["window_changed"].format(a=k(x["from"]), b=k(x["to"]), d=_day(x["since"]), **args))
         else:
+            why = w["peak_why"].get(x["harness"], "")  # a hint only where the harness has such a setting
             out.append("  · " + w["peak_over_window"].format(peak=k(x["peak"]), a=k(x["assumed"]), w=k(x["window"]),
-                                                            **args))  # fmt: skip
+                                                            why=why, **args))  # fmt: skip
     for x in notes.get("defaults", []):
         out.append("  · " + w["drift"].format(m=label(x["model"]), r=x["role"], h=x["harness"], n=x["n"],
                                               o=k(x["observed"]), a=k(x["assumed"])))  # fmt: skip
