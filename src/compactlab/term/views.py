@@ -372,6 +372,9 @@ def doctor_view(report: dict[str, Any], cols: int) -> list[Line]:
         for c in h["config"]:
             body.append([("✓ " if c["exists"] else "· ", "good" if c["exists"] else "dim"), ("config ", "dim"),
                          (c["path"], "ink")])  # fmt: skip
+        for c in h.get("checks", []):
+            body.append([("✓ " if c["ok"] else "· ", "good" if c["ok"] else "dim"), (f"{c['label']:7}", "dim"),
+                         (c["text"], "ink")])  # fmt: skip
         out += [[], *panel([(h["name"], "title")], body, pw)]
     return [clip(x, cols) for x in out]
 

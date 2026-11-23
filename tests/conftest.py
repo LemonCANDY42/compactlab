@@ -8,7 +8,7 @@ def isolated_home(tmp_path_factory, monkeypatch):
     """Tests never see the real home directory (no real transcripts, settings or caches)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
-    for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME"):
+    for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "GEMINI_CLI_HOME"):
         monkeypatch.delenv(v, raising=False)
     return home
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 _DEFAULTS: dict[str, Any] | None = None
+OPENCODE_OUTPUT_CAP = 32_000  # OpenCode's OUTPUT_TOKEN_MAX: the most output it reserves for any model
 
 
 def defaults() -> dict[str, Any]:
@@ -31,6 +32,10 @@ def default_threshold(harness: str, model: str, window: int) -> tuple[int, str]:
         return int(window * d["fraction"]), d["note"]
     if harness == "dsh" and d:
         return dsh_trigger(window, d["threshold_ratio"], d["headroom_tokens"]), d["note"]
+    if harness == "opencode" and d:
+        return max(window - int(d["output_reserve"]), 0), d["note"]
+    if harness == "gemini-cli" and d:
+        return int(window * d["fraction"]), d["note"]
     return window, "unknown harness: assuming compaction at the context window"
 
 
@@ -50,6 +55,8 @@ def effective_max(harness: str, window: int) -> int:
         return int(window * defaults()["codex"]["fraction"])
     if harness == "dsh":
         return dsh_trigger(window, 1.0, 0)  # thresholdRatio 1 with headroomTokens 0: only the output reserve remains
+    if harness == "opencode":
+        return max(window - int(defaults()["opencode"]["reserved_default"]), 0)  # limit.input = window, reserved kept
     return window
 
 
@@ -61,6 +68,14 @@ def read_current(harness: str, model: str, path: Path | None) -> tuple[int | Non
     if path is None or not path.exists():
         return None, "no config file"
     text = path.read_text()
+    if harness in ("opencode", "gemini-cli"):
+        try:
+            d = json.loads(text) if text.strip() else {}
+        except ValueError:
+            return None, f"{path.name} is not strict JSON (comments are not read)"
+        return (_opencode_current if harness == "opencode" else _gemini_current)(
+            d if isinstance(d, dict) else {}, model, path.name
+        )
     if harness == "claude-code":
         try:
             d = json.loads(text) if text.strip() else {}
@@ -81,6 +96,41 @@ def read_current(harness: str, model: str, path: Path | None) -> tuple[int | Non
             return None, "not set (harness default)"
         return int(mm.group(1).replace("_", "")), f"model_auto_compact_token_limit in {path.name}"
     return None, "unsupported harness"
+
+
+def _obj(v: Any) -> dict[str, Any]:
+    return v if isinstance(v, dict) else {}
+
+
+def _num(v: Any) -> int:
+    return int(v) if isinstance(v, int | float) and not isinstance(v, bool) and v > 0 else 0
+
+
+def _opencode_current(d: dict[str, Any], model: str, name: str) -> tuple[int | None, str]:
+    """OpenCode 1.x: limit.input - compaction.reserved when the model's limit sets input, else context - output."""
+    comp = _obj(d.get("compaction"))
+    if comp.get("auto") is False:
+        return None, f"compaction.auto is false in {name}: OpenCode does not compact by itself"
+    prov, _, mid = model.partition("/")
+    lim = _obj(_obj(_obj(_obj(_obj(d.get("provider")).get(prov)).get("models")).get(mid)).get("limit"))
+    if not _num(lim.get("context")):
+        return None, "not set (harness default)"
+    out = min(_num(lim.get("output")), OPENCODE_OUTPUT_CAP) or OPENCODE_OUTPUT_CAP
+    key = f"provider.{prov}.models.{mid}.limit"
+    if _num(lim.get("input")):
+        res = comp.get("reserved")
+        reserved = int(res) if isinstance(res, int) else min(int(defaults()["opencode"]["reserved_default"]), out)
+        return max(_num(lim["input"]) - reserved, 0), f"{key}.input - reserved {reserved:,} in {name}"
+    return max(_num(lim["context"]) - out, 0), f"{key}.context - output {out:,} in {name}"
+
+
+def _gemini_current(d: dict[str, Any], model: str, name: str) -> tuple[int | None, str]:
+    from ..adapters.gemini_cli import token_limit
+
+    v = _obj(d.get("model")).get("compressionThreshold")
+    if not isinstance(v, int | float) or isinstance(v, bool) or not 0 < v <= 1:
+        return None, "not set (harness default)"
+    return int(v * token_limit(model)), f"model.compressionThreshold {v:g} in {name}"
 
 
 def default_note_zh(harness: str, model: str) -> str:

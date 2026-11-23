@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from . import Omitted, Recommender, Snippet, evidence, knobs, register, safe_value
+from .units import fraction_for
 
 KN = "dsh.plugin.compaction-basic.modelPolicies"
 RETAIN_RATIO = 0.16  # plugin default; thresholdRatio must stay above it
@@ -20,7 +21,7 @@ SUMMARY_MAX = 65_536  # the plugin's default summary cap (= default headroomToke
 
 def ratio_for(v: int, window: int) -> float:
     """thresholdRatio that triggers at or just below v tokens (rounded down to 3 decimals)."""
-    return int(v / window * 1000) / 1000
+    return fraction_for(v, window, 3).value
 
 
 def policy_row(model: str, window: int, v: int) -> str:

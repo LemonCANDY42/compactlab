@@ -165,6 +165,8 @@ only command that writes, under pre-authorization. The report has the same panel
 | Codex | session | `codex -c model_auto_compact_token_limit=N` | documented |
 | Codex | agent / profile | role `config_file` layer, profile file | **unverified**: emitted with a warning |
 | Codex | env var | none documented | not emitted |
+| OpenCode 1.x | global / project | per-model `provider.<id>.models.<model>.limit` (`input` = threshold + 20,000) | public source; the note gives the 2.x `compaction.buffer` share |
+| Gemini CLI | global / project | `model.compressionThreshold` (fraction of the token limit, one value for every model) | documented; adapter experimental |
 
 Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
 
@@ -178,7 +180,8 @@ each side has 3 sessions and 2 active days. Cost is the list-price figure, not y
 verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
 `compactlab verify --applied-at 2026-10-29T21:05 --model claude-opus-5-5 --new 625k [--old 967k]` (the time and old
 value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
-too-late date).
+too-late date). For OpenCode add `--harness opencode` and name the model as `provider/model`; for Gemini CLI add
+`--harness gemini-cli` and give `--new` in tokens (the fraction times the model's token limit).
 
 ## Run as a service
 
@@ -270,9 +273,20 @@ from latency curves fitted to your own timestamps. Details and formulas:
 | Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
 | Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only) | supported |
 | DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
-| OpenCode, Gemini CLI, Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
+| OpenCode 1.x | `~/.local/share/opencode/opencode.db` (SQLite, opened read-only; `$XDG_DATA_HOME`) | none: `recommend` prints a per-model `limit` for `opencode.json` | supported: parsed on a real 1.19.5 database (token sums match OpenCode's own totals); compaction records are from the source, since that history had none. 2.x pre-release storage is not read (`doctor` counts it) |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/*.jsonl` (`$GEMINI_CLI_HOME`; older `session-*.json` too) | none: `recommend` prints `model.compressionThreshold` | experimental: built from Gemini CLI 0.46/0.70 source, not yet run on real history |
+| Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
 
 None of these harnesses lets subagents have their own threshold, so `apply` writes the main-role value. dsh reads its threshold as a fraction of the window (default: the lower of 80% and window − 256k output reserve − 65,536, about 727k on DeepSeek's 1M models); where its plugin config lives is not verified, so `apply` leaves it alone.
+
+OpenCode 1.x has no threshold key. It compacts at the window minus the model's output reserve (at most 32,000), or at
+`limit.input − compaction.reserved` for a model whose `limit` sets `input`, so `compaction.reserved` alone does
+nothing for most models; `recommend` sets a per-model `limit` with `input` = threshold + 20,000 and gives the 2.x
+`compaction.buffer` share in a note. A custom model without a `limit` has no known window, and OpenCode never
+compacts it by itself. Gemini CLI compresses at `model.compressionThreshold` × the model's token limit (0.5 ×
+1,048,576 by default); the key is global, so one fraction serves every model and the snippet says where it lands for
+the others. Fractions are rounded so the trigger never lands above the pick, with a note when the window makes the
+step coarse. `apply` writes neither until their config locations and precedence are checked on real setups.
 
 ## Safety and privacy
 
@@ -315,7 +329,8 @@ window; `--profile cost` is there if money is what you want to minimize.
 
 **What is the baseline?** The harness default from its docs or source: about 967K tokens for Claude models with a
 native 1M window, 200K for Sonnet/Opus 4.6 without extended context, the context limit otherwise; 90% of the
-context window for Codex. Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
+context window for Codex; the window minus 32K for OpenCode 1.x; half the token limit (about 524K) for Gemini CLI.
+Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
 
 **Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Deep mode
 gives sampled measurements with their own noise.
