@@ -231,7 +231,7 @@ compactlab.app（LSUIElement，无 Dock 图标）
 
 ### Phase 1：只读 MVP
 
-菜单栏图标与状态、活跃会话、阈值表、立即重算、打开报告、登录启动、基本设置；本地签名构建。
+菜单栏图标与状态、活跃会话、阈值表、立即重算、打开报告、登录启动、基本设置；Developer ID 签名并公证的构建（CI 里做），从第一版起就能发给别人试。
 验收：连续运行 7 天不崩；内存和 CPU 达标；活跃会话的上下文数和日志一致（误差 < 1%）。
 
 ### Phase 2：闭环
@@ -241,7 +241,7 @@ compactlab.app（LSUIElement，无 Dock 图标）
 
 ### Phase 3：发布
 
-公证、DMG、Homebrew cask、Sparkle、中英本地化、无障碍检查；可选 WidgetKit 小组件；视需要评估内置 Python。
+DMG、Homebrew cask、Sparkle、中英本地化、无障碍检查；可选 WidgetKit 小组件；视需要评估内置 Python。
 
 ## 6. 其他优化建议（不做应用也值得做）
 
@@ -267,6 +267,6 @@ compactlab.app（LSUIElement，无 Dock 图标）
 4. 最低系统 macOS 14。
 5. 应用名沿用项目名 compactlab（菜单栏和 Dock 外显示为 “compactlab”），bundle id 形如 `<你的域名>.compactlab`。
 
-待定：
+6. 有 Apple Developer ID：Phase 1 起用它签名、开 Hardened Runtime 并公证；Sparkle 更新和 Homebrew cask 在 Phase 3 接上。证书和公证凭据只放 CI 的加密变量，不进仓库。
 
-1. 有没有 Apple Developer ID（公证、Sparkle 和 Homebrew cask 都需要）？没有的话 Phase 1 只能本地签名使用。
+待定：无。
