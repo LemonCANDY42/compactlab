@@ -65,7 +65,7 @@ def _tool_key(d: dict[str, Any]) -> str:
 class OpenCodeParser(Parser):
     """Fed one session's rows in order: {"kind": "session" | "message" | "part" | "end", ...} (see `records`)."""
 
-    version = 1
+    version = 2  # 2: the provider is the session's platform (prices: direct vendor, OpenRouter, Bedrock, ...)
 
     def __init__(self, path: str):
         self.session = Session(id=Path(path).stem, harness="opencode", role="main", path=path)
@@ -141,6 +141,8 @@ class OpenCodeParser(Parser):
         end = min(max(starts), ts) if starts and ts else (max(starts) if starts else ts)
         model = self.msg.get("modelID") or "unknown"
         provider = self.msg.get("providerID")
+        if provider:
+            s.platform = str(provider)  # OpenCode's provider ID: `anthropic` is the vendor's API, not OpenRouter
         s.turns.append(
             Turn(
                 ts=end,

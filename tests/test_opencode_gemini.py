@@ -327,3 +327,13 @@ def test_manual_verify_keys():
     with pytest.raises(ValueError, match="--model"):
         manual_manifest(1.0, "gemini-cli", "", 400_000)
 
+
+def test_opencode_provider_is_the_platform():
+    from compactlab.pricing import PricingTable
+
+    t = PricingTable.load(offline=True)
+    # OpenCode's `anthropic/...` is Anthropic's own API: the vendor's price, not an OpenRouter lookup
+    p = t.lookup("anthropic/claude-opus-5-5", "anthropic")
+    assert (p.key, p.kind, p.platform) == ("claude-opus-5-5", "exact", None)
+    assert t.lookup("openrouter/claude-opus-5-5", "openrouter").platform == "openrouter"
+    assert t.lookup("anthropic/claude-opus-5-5").platform == "openrouter"  # no recorded platform: the ID's shape

@@ -14,6 +14,8 @@ versioning: [SemVer](https://semver.org/).
   is window − min(max output, 32,000); `recommend` prints a per-model `provider.<id>.models.<model>.limit` (OpenCode
   1.x has no threshold key, and `compaction.reserved` only applies to models whose limit sets `input`) and gives the
   2.x `compaction.buffer` share in a note. `doctor` counts sessions in the 2.x storage, which is not read yet.
+  OpenCode's provider ID is the session's platform for pricing (`anthropic/…` is Anthropic's own API, not
+  OpenRouter).
 - **Gemini CLI adapter, experimental** (built from the 0.46/0.70 source; no real log checked yet). Reads
   `~/.gemini/tmp/<project>/chats/*.jsonl` and subagent chats (`$GEMINI_CLI_HOME`, `--gemini-root`), and the older
   single `session-*.json` files. Messages re-written by id are merged, tool-result messages are not prompts, and a
