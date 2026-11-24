@@ -14,6 +14,13 @@ from ..model import Compaction, Session, Turn
 from .base import Adapter, BadRecord, Parser, count, env_roots, parse_ts, register
 
 KNOWN_TYPES = {"user", "assistant", "system", "summary", "file-history-snapshot", "attachment", "progress"}
+# Idle compaction (`idleCompaction`, on by default) summarizes a long conversation left idle on the one-hour cache
+# while that cache is still warm (about 55 min in) and applies the summary when the user returns. In the log it is an
+# "auto" boundary written on return, an hour or more after the last turn, that took almost no time (the summary was
+# ready; newer versions also say `precomputed: true`). A boundary on return that did take a summarizer call's time is
+# the threshold: the context was already over it.
+IDLE_GAP_S = 50 * 60
+IDLE_DONE_MS = 5000
 
 
 def _text_of(content: Any) -> str:
@@ -32,12 +39,15 @@ def _tool_key(block: dict[str, Any]) -> str:
 
 
 class ClaudeParser(Parser):
-    version = 4
+    version = 5  # 5: idle compactions, compaction duration from durationMs
+    rewrites_history = True  # resumes, rewinds and /compact can append copies of earlier messages
 
     def __init__(self, path: str):
         role = "subagent" if "subagents" in Path(path).parts else "main"
         self.session = Session(id=Path(path).stem, harness="claude-code", role=role, path=path)
         self.seen: set[str] = set()
+        self.replayed_summary = False
+        self.boundaries: set[tuple[str, float | None, Any]] = set()  # Claude Code re-writes old boundaries later
         self.pending_user = ""
         self.tool_turn: dict[str, int] = {}
         self.last_input_ts: float | None = None  # last user / tool-result / system line
@@ -49,22 +59,43 @@ class ClaudeParser(Parser):
             self.note_unknown(s, str(typ))
         if s.parent_id is None and d.get("parentSessionId"):
             s.parent_id = str(d["parentSessionId"])
+        if d.get("cwd"):
+            self.cwd = str(d["cwd"])
         ts = parse_ts(d.get("timestamp"))
         if typ == "system" and d.get("subtype") == "compact_boundary":
             meta = d.get("compactMetadata")
             meta = meta if isinstance(meta, dict) else {}
+            key = (str(d.get("uuid") or ""), ts, meta.get("preTokens"))
+            if key in self.boundaries:
+                self.replayed_summary = True  # its summary line is re-written too
+                return
+            self.boundaries.add(key)
             try:
                 pre = count(meta.get("preTokens")) if meta.get("preTokens") is not None else None
             except BadRecord:
                 s.parse_errors += 1
                 return
-            dur = (ts - self.last_input_ts) if (ts and self.last_input_ts) else None
+            trigger = str(meta["trigger"]) if meta.get("trigger") in ("auto", "manual") else ""
+            ms = meta.get("durationMs")
+            ms = float(ms) if isinstance(ms, (int, float)) and not isinstance(ms, bool) and ms >= 0 else None
+            last_turn = s.turns[-1].ts if s.turns else None
+            idle = (
+                trigger == "auto"
+                and bool(ts and last_turn and ts - last_turn >= IDLE_GAP_S)
+                and (meta.get("precomputed") is True or (ms is not None and ms < IDLE_DONE_MS))
+            )
+            if ms is not None:
+                dur: float | None = ms / 1000
+            else:
+                dur = (ts - self.last_input_ts) if (ts and self.last_input_ts) else None
             s.compactions.append(
                 Compaction(
                     turn_index=len(s.turns),
                     pre_tokens=pre,
                     ts=ts,
-                    duration_s=dur if dur is not None and 0 < dur <= 900 else None,
+                    duration_s=None if idle or dur is None or not 0 < dur <= 900 else dur,
+                    trigger=trigger,
+                    idle=idle,
                 )
             )
             self.last_input_ts = ts
@@ -84,7 +115,9 @@ class ClaudeParser(Parser):
         content = m.get("content")
         text = _text_of(content)
         if d.get("isCompactSummary"):
-            if s.compactions:
+            if self.replayed_summary:
+                self.replayed_summary = False
+            elif s.compactions:
                 s.compactions[-1].summary_text = text
             return
         if isinstance(content, list):

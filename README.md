@@ -60,7 +60,9 @@ Within its guardrails, each profile picks the largest threshold whose score (lis
 penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
 `--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
 profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
-number when the default never compacts in those sessions, and **keep default** when a profile would not beat it.
+number when the default never compacts in those sessions, **keep current** when your setting scores within the same
+2% of the profile's pick (changing it would be churn for no real gain), and **keep default** when a profile would not
+beat the default by more than that.
 
 Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
 added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
@@ -165,6 +167,8 @@ only command that writes, under pre-authorization. The report has the same panel
 | Codex | session | `codex -c model_auto_compact_token_limit=N` | documented |
 | Codex | agent / profile | role `config_file` layer, profile file | **unverified**: emitted with a warning |
 | Codex | env var | none documented | not emitted |
+| OpenCode 1.x | global / project | per-model `provider.<id>.models.<model>.limit` (`input` = threshold + 20,000) | public source; the note gives the 2.x `compaction.buffer` share |
+| Gemini CLI | global / project | `model.compressionThreshold` (fraction of the token limit, one value for every model) | documented; adapter experimental |
 
 Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
 
@@ -172,13 +176,30 @@ Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/comp
 
 `compactlab verify` splits your logs at the time of the last `apply` and compares, per model and role, the logged cost
 and compactions per 1k turns before and after with what a replay of the *before* sessions predicted (plus a replay
-of the *after* sessions, to show when the workload changed). It also checks that compactions really happen near the
+of the *after* sessions, to show when the workload changed). Cost includes an estimate of each compaction's summary
+request, which the logs do not record; threshold, idle and hand-typed compactions are counted apart, and a role whose
+threshold was never reached gets no verdict on it. It also checks that compactions really happen near the
 new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
 each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
 verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
 `compactlab verify --applied-at 2026-10-29T21:05 --model claude-opus-5-5 --new 625k [--old 967k]` (the time and old
 value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
-too-late date).
+too-late date). For OpenCode add `--harness opencode` and name the model as `provider/model`; for Gemini CLI add
+`--harness gemini-cli`, name the model, and give `--new` in tokens for it (the fraction times that model's token
+limit; one fraction is a different token count on each window).
+
+Does it hold up on real logs? One checked case, with the control that makes the replay trustworthy:
+[docs/RESULTS.md](docs/RESULTS.md).
+
+## Idle compaction
+
+Claude Code also compacts on its own when you leave a long conversation idle on the one-hour cache (`idleCompaction`,
+on by default, from 200k tokens): it makes the summary while the cache is still warm, about 55 minutes in, and
+applies it when you return. compactlab tells these compactions apart in the logs, replays them (the summary's read
+and output, the smaller context you return to, the re-discovery after it, and summaries made for sessions you never
+resumed), and replays the groups it applies to with the setting flipped. After the groups it says whether to keep it
+on, with the cost, wall-clock and compaction change per day; `recommend` prints an `idleCompaction` snippet only when
+flipping it beats the current state by more than 2%.
 
 ## Run as a service
 
@@ -189,10 +210,16 @@ compactlab consent set --file ~/.claude/settings.json --models claude-opus-5-5  
 compactlab recalibrate --auto-apply --dry-run
 ```
 
-Rescans are incremental, one run at a time, at low priority, with no network. Auto-apply is opt-in and goes through
+Rescans are incremental, at low priority, with no network, and one at a time: the service, the CLI, a schedule and
+the app share one lock, so a run that finds another calibration or config write going is skipped, not doubled. Auto-apply is opt-in and goes through
 `apply`'s backups and manifests (`compactlab revert` undoes it). It moves a setting at most 100k per run, at most
 weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
 [docs/SERVICE.md](docs/SERVICE.md).
+
+Apps and scripts use `compactlab engine` instead: versioned JSON on stdout, no port. `engine watch` keeps a live
+list of active sessions (context, model, threshold in force, when the prompt cache goes cold) from the ends of their
+log files; `engine calibrate` and `engine result` run and read the calibration. See
+[docs/ENGINE_API.md](docs/ENGINE_API.md).
 
 ## In the terminal
 
@@ -268,21 +295,37 @@ from latency curves fitted to your own timestamps. Details and formulas:
 | Harness | Logs | Setting `apply` writes | Status |
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only) | supported |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only: one value chosen across the models in use) | supported |
 | DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
-| OpenCode, Gemini CLI, Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
+| OpenCode 1.x | `~/.local/share/opencode/opencode.db` (SQLite, opened read-only; `$XDG_DATA_HOME`) | none: `recommend` prints a per-model `limit` for `opencode.json` | supported: parsed on a real 1.19.5 database (token sums match OpenCode's own totals); compaction records are from the source, since that history had none. 2.x pre-release storage is not read (`doctor` counts it) |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/*.jsonl` (`$GEMINI_CLI_HOME`; older `session-*.json` too) | none: `recommend` prints `model.compressionThreshold` | experimental: built from Gemini CLI 0.46/0.70 source, not yet run on real history |
+| Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
 
 None of these harnesses lets subagents have their own threshold, so `apply` writes the main-role value. dsh reads its threshold as a fraction of the window (default: the lower of 80% and window − 256k output reserve − 65,536, about 727k on DeepSeek's 1M models); where its plugin config lives is not verified, so `apply` leaves it alone.
+
+OpenCode 1.x has no threshold key. It compacts at the window minus the model's output reserve (at most 32,000), or at
+`limit.input − compaction.reserved` for a model whose `limit` sets `input`, so `compaction.reserved` alone does
+nothing for most models; `recommend` sets a per-model `limit` with `input` = threshold + 20,000 and gives the 2.x
+`compaction.buffer` share in a note. A custom model without a `limit` has no known window, and OpenCode never
+compacts it by itself. Gemini CLI compresses at `model.compressionThreshold` × the model's token limit (0.5 ×
+1,048,576 by default); the key is global, so one fraction serves every model and the snippet says where it lands for
+the others. Fractions are rounded so the trigger never lands above the pick, with a note when the window makes the
+step coarse. `apply` writes neither until their config locations and precedence are checked on real setups.
 
 ## Safety and privacy
 
 - **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` fetches public
-  prices, and only deep mode calls a model, and only after you confirm.
+  prices, and only deep mode calls a model, and only after you confirm. `compactlab pricing auto on` lets `serve` and
+  scheduled runs fetch the same public files by themselves: when your logs show a model with no price row of its own
+  (retried daily, or after an hour for a newly seen model, up to 5 times) and once a week for the models already
+  known, since vendors change prices and windows. The download sends nothing about you or your models; changes are
+  logged and `simulate` lists the recent ones for your models.
 - **Nothing leaves your machine in lite mode.** Reports and `result.json` hold token counts, model names and
   session ids, never transcript text or file paths. `report --redact` hashes the ids.
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
   [pre-authorization file](docs/SAFETY.md) (allowed files, keys, models, value bounds, expiry) or `--i-authorize`.
-  Every write is backed up, and `revert` restores only the keys it changed.
+  Every write is backed up, and `revert` restores only the keys it changed. `--expect-plan <hash>` (the hash a
+  dry-run prints) writes only the plan you reviewed and refuses if anything in it changed since.
 - **Sharing is a file you post yourself.** `compactlab share` writes an anonymous record of the estimated savings
   (numbers and model names, no ids, paths or timestamps) for the research issue form; it sends nothing. See
   [docs/SHARING.md](docs/SHARING.md).
@@ -299,7 +342,19 @@ None of these harnesses lets subagents have their own threshold, so `apply` writ
   (subscriptions, discounts and credits are ignored). Wall-clock estimates come from
   log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
 - The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
-  row; refresh or override them as needed.
+  row; refresh or override them as needed. A model is priced from its own row when there is one, with platform IDs
+  (Bedrock `us.anthropic.…`, Vertex `…@date`, OpenRouter `anthropic/…`, Azure, Codex's `model_provider`) mapped to
+  that platform's price after a refresh and to the vendor's list price before. A model the table does not know borrows
+  the closest model of its family (`claude-fable-5-3` from `claude-fable-5-2`), and anything else gets the fallback
+  row; `simulate` lists both, and `pricing show --model <id> [--platform <p>]` shows how one is matched.
+- Claude Code sizes the window from the model ID: a third-party model behind `ANTHROPIC_BASE_URL` (DeepSeek, Kimi,
+  GLM, ...) is replayed with the 200K window Claude Code assumes for it, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` when set.
+- Things change over time, and the replay follows the latest: history is priced at today's prices (a refresh older
+  than the bundled snapshot no longer overrides it, and a saved result made before a price change says so when
+  loaded); Codex's window is the one its latest sessions logged (a clean switch is reported); a Claude Code context
+  larger than the assumed window means the window grew; and when your latest threshold compactions land more than
+  10% from the assumed default, `simulate` says the harness default may have changed or a setting it cannot read is
+  in force.
 - Some log-format details (Codex fork replay, compaction events) are marked `assumed` in
   [`data/harness_formats.json`](src/compactlab/data/harness_formats.json) until checked against more real files.
 - Tested on macOS; Linux paths follow the same defaults and run in CI. Windows is untested.
@@ -318,7 +373,8 @@ window; `--profile cost` is there if money is what you want to minimize.
 
 **What is the baseline?** The harness default from its docs or source: about 967K tokens for Claude models with a
 native 1M window, 200K for Sonnet/Opus 4.6 without extended context, the context limit otherwise; 90% of the
-context window for Codex. Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
+context window for Codex; the window minus 32K for OpenCode 1.x; half the token limit (about 524K) for Gemini CLI.
+Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
 
 **Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Deep mode
 gives sampled measurements with their own noise.

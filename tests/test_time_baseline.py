@@ -84,7 +84,13 @@ def test_analyze_baselines_and_no_action(claude_root, codex_root):
     main_g = by[("claude-opus-5-5", "main")]
     assert main_g["default"]["threshold"] == 967_000 and main_g["current"]["configured"] == 600_000
     hd = main_g["comparison"]["balanced"]
-    assert hd["action"] == "set" and hd["vs_default"]["ref_compactions"] == main_g["default"]["compactions"]
+    # 600k is within the tolerance of the balanced pick here: keep it rather than churn the setting
+    p, c = main_g["profiles"]["balanced"], main_g["current"]
+    assert c["combined_cost"] + c["time_s"] / 3600 * p["value_of_time"] <= p["combined"] * 1.02
+    assert hd["action"] == "keep current" and hd["vs_default"]["ref_compactions"] == main_g["default"]["compactions"]
+    free = analyze(ss, PricingTable.load(offline=True), SimOptions())  # nothing set: the same pick is a change
+    assert next(g for g in free["groups"] if g["model"] == "claude-opus-5-5" and g["role"] == "main")[
+        "comparison"]["balanced"]["action"] == "set"  # fmt: skip
     assert {"d_cost", "d_time_s", "time_saved_context_s", "time_added_compaction_s", "d_recall"} <= set(
         hd["vs_default"]
     )
@@ -92,7 +98,11 @@ def test_analyze_baselines_and_no_action(claude_root, codex_root):
     sub = by[("claude-opus-5-5", "subagent")]
     assert sub["no_action_needed"] and sub["comparison"]["balanced"]["action"] == "no action needed"
     cx = by[("gpt-5-codex", "main")]
-    assert cx["max_window"] == 400_000 and max(cx["grid"]) <= 360_000 and cx["window_source"] == "observed in logs"
+    assert (
+        cx["max_window"] == 400_000
+        and max(cx["grid"]) <= 360_000
+        and cx["window_source"].startswith("observed in logs")
+    )
     zero = analyze(ss, PricingTable.load(offline=True), SimOptions(value_of_time=0))
     g0 = next(g for g in zero["groups"] if g["model"] == "claude-opus-5-5" and g["role"] == "main")
     assert g0["combined"] == g0["combined_cost"] and g0["profiles"]["balanced"]["value_of_time"] == 0
@@ -114,3 +124,34 @@ def test_cli_summary_languages_and_apply_skips_no_action(tmp_path, claude_root, 
     plan = json.loads(capsys.readouterr().out)
     assert all(c["key"].endswith("autoCompactWindow") for c in plan["changes"])
     assert {c["key"].split(".")[1] for c in plan["changes"]} <= {"claude-opus-5-5", "claude-sonnet-5-5"}
+
+
+def test_read_idle_settings(tmp_path):
+    from compactlab.sim.baseline import read_idle
+
+    f = tmp_path / "settings.json"
+    assert read_idle(None, {})[:2] == (None, None)
+    f.write_text('{"idleCompaction": false, "env": {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "300_000"}}')
+    on, mn, desc = read_idle(f, {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "150000"})
+    assert (on, mn) == (False, 300_000) and "idleCompaction in settings.json" in desc  # the settings env block wins
+    f.write_text('{"idleCompaction": "yes"}')  # not a boolean: treated as unset
+    assert read_idle(f, {"CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "150000"})[:2] == (None, 150_000)
+    f.write_text("{not json")
+    assert read_idle(f, {})[:2] == (None, None)
+
+
+def test_keep_current_is_explained_everywhere(claude_root):
+    from compactlab.share import preview
+    from compactlab.term.views import keep_reason, status
+
+    ss = list(get_adapter("claude-code")(claude_root).sessions())
+    cur = {("claude-code", "claude-opus-5-5"): (600_000, "test")}
+    res = analyze(ss, PricingTable.load(offline=True), SimOptions(), current=cur)
+    g = next(g for g in res["groups"] if g["model"] == "claude-opus-5-5" and g["role"] == "main")
+    assert status(g, "balanced") == "cur"
+    assert "would not beat your 600k" in keep_reason(g, "balanced")
+    assert "你现在的 600k" in keep_reason(g, "balanced", "zh")
+    from compactlab.share import build, validate
+
+    rec = build(res)
+    assert not validate(rec) and "keep current" in preview(rec)  # the record's checker accepts the new action

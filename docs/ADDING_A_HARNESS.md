@@ -50,9 +50,18 @@ The scan cache keeps `dump()["session"]` apart from the rest of the state (seen 
 an unchanged file from `load({"path": ..., "session": ...}).finish()` without reading the rest, so `finish()` must
 not depend on anything but the session.
 
-Logs that are not plain append-only JSONL (compressed, one file per generation) override `find_files()` and
-`read_records()` and set `resumable = False`: the scan cache then reuses unchanged files and re-parses changed ones
-from the start instead of resuming at a byte offset. The dsh adapter is the example.
+Logs that are not plain append-only JSONL (compressed, one file per generation, a document rewritten in place)
+override `find_files()` and `read_records()` and set `resumable = False`: the scan cache then reuses unchanged files
+and re-parses changed ones from the start instead of resuming at a byte offset. The dsh and Gemini CLI adapters are
+the examples.
+
+A harness that keeps every session in one database overrides `load(path, cache, since)` instead: it returns all
+sessions in that file, filters by each session's own update time (the file's mtime says little), and opens the
+database read-only so a running harness is never disturbed. The OpenCode adapter is the example (SQLite with
+`mode=ro`). Extra `doctor` lines (a decoder, a storage version it cannot read) come from `doctor_checks()`.
+
+If the harness reads environment variables for its paths, add them to the `isolated_home` fixture in
+`tests/conftest.py` so tests never see real data.
 
 ## 2. Emit the normalized fields correctly
 
@@ -82,8 +91,16 @@ with `status` (`documented`, `public-tool`, `assumed`) and a source link.
 ## 5. Recommender (optional)
 
 Add `src/compactlab/recommend/<name>.py` with a `Recommender` subclass (`harness`, `formats` per scope, `generate()`),
-register it, and add every key it emits to `data/config_knobs.json` with `status`, `source` and `verified_on`. If the
-harness has no knob for a scope, return an `Omitted` with the reason instead of inventing one.
+register it (and import it in `recommenders()`), and add every key it emits to `data/config_knobs.json` with
+`status`, `source` and `verified_on`. If the harness has no knob for a scope, return an `Omitted` with the reason
+instead of inventing one.
+
+When the knob is not a token count, convert with `recommend/units.py` rather than by hand: `fraction_for()` for a
+fraction of the window (rounded so the trigger never lands above the pick, with a note when one step of the last
+decimal is coarse on that window), `free_share()` for a share kept free, and `shared_fraction()` when one global
+fraction has to serve models with different windows. Add the default rule to `data/harness_defaults.json` and to
+`default_threshold()` / `effective_max()` in `sim/baseline.py`, and a reader in `read_current()` if the setting can
+be read back from a config file.
 
 ## 6. Config target (optional)
 

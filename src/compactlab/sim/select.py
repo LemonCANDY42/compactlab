@@ -57,6 +57,7 @@ def recommend(
         "range": [grid[min(rng)], grid[max(rng)]],
         "floor_met": floor_ok,
         "recall_floor": floor,
+        "tolerance": tol,
         "min_combined_threshold": grid[min(ok, key=lambda i: combined[i])],
         "combined_at_best": combined[best],
         "recall_at_best": recall[best],
@@ -86,8 +87,9 @@ def score(g: dict[str, Any], vot: float) -> list[float]:
 
 def point(g: dict[str, Any], i: int, vot: float) -> dict[str, Any]:
     keys = ("cost", "penalty", "combined_cost", "time_s", "time_turns_s", "time_compact_s", "time_redisc_s",
-            "compactions", "recall")  # fmt: skip
-    p = {k: g[k][i] for k in keys}
+            "compactions", "idle_compactions", "idle_cost", "idle_tail_cost", "manual_compactions",
+            "recall")  # fmt: skip
+    p = {k: g[k][i] for k in keys if k in g}  # idle_* exist in results from this version on
     p["threshold"] = g["grid"][i]
     p["combined"] = p["combined_cost"] + p["time_s"] / 3600 * vot
     return p

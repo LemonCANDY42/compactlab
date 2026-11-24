@@ -422,7 +422,7 @@ const I={
  hTrade:['Trade-off','取舍'], hTime:['Time','时间'], hDeep:['Lite vs deep','lite 与 deep'], hHist:['Your history','你的历史'], hSess:['Sessions','会话'], hNotes:['Assumptions','假设'],
  cTier:['profile','方案'], cWin:['window','阈值'], cAct:['action','建议'], cDc:['Δcost','成本差'], cDt:['Δwall-clock (/day)','耗时差(/天)'], cWait:['wait / day','等待/天'], cComp:['compactions / day','压缩/天'], cRec:['recall','召回'], cCur:['vs current','对当前'], cFlags:['',''],
  rDefault:['default','默认'], rCurrent:['current','当前'], rSel:['slider','滑块'],
- aSet:['change','建议改'], aKeep:['keep default','保持默认'], aNo:['no change','无需调整'],
+ aSet:['change','建议改'], aKeep:['keep default','保持默认'], aCur:['keep current','保持当前'], aNo:['no change','无需调整'],
  cmpNote:[(n,c)=>'Default: '+n+(c?' Current: '+c+'.':''),(n,c)=>'默认依据:'+n+(c?' 当前:'+c+'。':'')],
  pTitle:['Pareto frontier','帕累托前沿'], pSub:['Each dot is a threshold; up and left is cheaper and safer (assumed recall). Profiles are ringed, the default is a square.','每个点是一个阈值;越靠左上越省钱、越安全(假设召回率)。圆圈是方案,方块是默认值。'],
  pFloor:['recall floor','召回下限'],
@@ -506,6 +506,8 @@ const I={
  kTotSub:[n=>'if the '+n+' “set” models are applied',n=>'应用 '+n+' 个“设置”模型时'], kKeep:['Keep default','保持默认'], mUnit:['models','个模型'],
  kwAbove:[(a,b)=>'keep default: '+a+' is not below the default '+b,(a,b)=>'保持默认:'+a+' 不低于默认值 '+b],
  kwScore:[(v,n)=>'keep default: no net gain at $'+v+'/h (net '+n+' per day)',(v,n)=>'保持默认:按 $'+v+'/小时 没有净收益(每天净 '+n+')'],
+ kwCur:[(p,c,tl,v,n)=>'keep current: '+p+' would not beat your '+c+' by more than '+tl+'% at $'+v+'/h (net '+n+' per day)',(p,c,tl,v,n)=>'保持当前:按 $'+v+'/小时,'+p+' 比你现在的 '+c+' 好不到 '+tl+'%(每天净 '+n+')'],
+ kwSmall:[(v,n,p)=>'keep default: net gain under '+p+'% at $'+v+'/h ('+n+' per day)',(v,n,p)=>'保持默认:按 $'+v+'/小时 净收益不到 '+p+'%(每天 '+n+')'],
  kwWorth:[(v,u,m,tv)=>'keep default: not worth it at $'+v+'/h · saves '+u+'/day but adds '+m+'/day of wall-clock (= '+tv+')',(v,u,m,tv)=>'保持默认:按 $'+v+'/小时 不划算 · 每天省 '+u+',但总耗时每天多 '+m+'(折合 '+tv+')'],
  hSessG:[x=>'Sessions · '+x,x=>'会话 · '+x], hSessAll:['All sessions','全部会话'],
  ovRange:[(a,b,n)=>a+' → '+b+' · '+n+' models',(a,b,n)=>a+' → '+b+' · '+n+' 个模型']
@@ -564,11 +566,18 @@ const setUsd=(g,k=S.op)=>isSet(g,k)?usdOf(g,k):0,setMin=(g,k=S.op)=>isSet(g,k)?m
 // the group with the largest per-day money impact, never one that needs no change; ties by turns
 function best(){const key=g=>[isSet(g)?1:0,Math.abs(usdOf(g)),g.n_turns];let b=-1,bk=null;
   D.groups.forEach((g,i)=>{if(g.no_action_needed)return;const k=key(g);if(!bk||k[0]>bk[0]||(k[0]===bk[0]&&(k[1]>bk[1]+1e-9||(Math.abs(k[1]-bk[1])<=1e-9&&k[2]>bk[2])))){b=i;bk=k}});return b}
-function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i);
-  return (thr>=d.threshold||p.combined_cost+p.time_s/3600*vot>=d.combined_cost+d.time_s/3600*vot)?'aKeep':'aSet'}
-// why a threshold keeps the default: the same two tests as action() and compactlab.sim.engine._comparison
-function keepWhy(g,thr,vot){const d=g.default;if(g.no_action_needed)return '';if(thr>=d.threshold)return t('kwAbove',fk(thr),fk(d.threshold));
+function tolOf(){return (D.options&&D.options.tolerance!=null)?D.options.tolerance:0.02}
+function action(g,thr,vot){if(g.no_action_needed)return 'aNo';const d=g.default,i=g.grid.indexOf(thr),p=pt(g,i),c=g.current;
+  if(c&&c.combined_cost+c.time_s/3600*vot<=(p.combined_cost+p.time_s/3600*vot)*(1+tolOf()))return 'aCur';
+  return (thr>=d.threshold||d.combined_cost+d.time_s/3600*vot<=(p.combined_cost+p.time_s/3600*vot)*(1+tolOf()))?'aKeep':'aSet'}
+// why a threshold keeps the default: the same tests as action() and compactlab.sim.engine._comparison
+function actOf(g,k=S.op){return action(g,g.profiles[k].threshold,g.profiles[k].value_of_time)}
+function keepWhy(g,thr,vot){const d=g.default;if(g.no_action_needed)return '';
+  if(action(g,thr,vot)==='aCur'){const im=impJS(pt(g,g.grid.indexOf(thr)),g.current,g),n=im.usd.per_day+im.minutes.per_day/60*vot;
+    return t('kwCur',fk(thr),fk(g.current.configured??g.current.threshold),+(tolOf()*100).toFixed(1),vot,fsv(n))}
+  if(thr>=d.threshold)return t('kwAbove',fk(thr),fk(d.threshold));
   const im=impJS(pt(g,g.grid.indexOf(thr)),d,g),u=im.usd.per_day,m=im.minutes.per_day,tv=m/60*vot;
+  if(u+tv<0)return t('kwSmall',vot,fsv(u+tv),+(tolOf()*100).toFixed(1));
   if(u<0&&m>0)return t('kwWorth',vot,'$'+(-u).toFixed(1),m.toFixed(1)+' min','$'+tv.toFixed(1));
   return t('kwScore',vot,fsv(u+tv))}
 function paretoIdx(sc,rc){return sc.map((_,i)=>i).filter(i=>!sc.some((_,j)=>sc[j]<=sc[i]&&rc[j]>=rc[i]&&(sc[j]<sc[i]||rc[j]>rc[i])))}
@@ -648,7 +657,7 @@ function tree(){const T=S.tree||(S.tree=buildTree()),q=$('#tq').value.trim().toL
   const open=(key,inside)=>q?true:key in S.fold?S.fold[key]:inside;
   const fold=(key,cls,head,inner,inside)=>{const o=open(key,inside);return `<div class="node ${cls}"><button type="button" class="fold" data-fold="${esc(key)}" aria-expanded="${o}">${ic('chev')}${head}</button><div class="kids"${o?'':' hidden'}>${inner}</div></div>`};
   const mrow=(m,why)=>{const cur=isSel(m),g0=D.groups[m.gs[0]];
-    const roles=m.gs.length>1?m.gs.map(i=>{const g=D.groups[i];return `<button type="button" class="rc" data-tab="${i}" aria-pressed="${cur&&i===S.gi}" aria-label="${esc(m.name+' · '+roleL(g.role))}" data-tip="${esc(roleL(g.role)+' · '+(g.no_action_needed?t('noChange'):fsv(usdOf(g))+t('uDay')+(isSet(g)?'':' · '+t('aKeep')))+' · '+g.n_sessions)}">${ic(roleIc(g.role))}${esc(roleS(g.role))}</button>`}).join('')
+    const roles=m.gs.length>1?m.gs.map(i=>{const g=D.groups[i];return `<button type="button" class="rc" data-tab="${i}" aria-pressed="${cur&&i===S.gi}" aria-label="${esc(m.name+' · '+roleL(g.role))}" data-tip="${esc(roleL(g.role)+' · '+(g.no_action_needed?t('noChange'):fsv(usdOf(g))+t('uDay')+(isSet(g)?'':' · '+t(actOf(g))))+' · '+g.n_sessions)}">${ic(roleIc(g.role))}${esc(roleS(g.role))}</button>`}).join('')
       :`<span class="rt">${ic(roleIc(g0.role))}${esc(roleS(g0.role))}</span>`;
     return `<div class="mrow${cur?' cur':''}"><button type="button" class="mn" data-tab="${m.gs[0]}" title="${esc(m.id)}" aria-label="${esc(m.name)}"${cur?' aria-current="page"':''}><span class="nm">${esc(m.name)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</button>${why?'':badge(m)}<span class="roles">${roles}</span></div>`};
   const all=T.hs.flatMap(h=>h.fams.flatMap(f=>f.models.flatMap(m=>m.gs)));
@@ -876,7 +885,7 @@ function impactPanel(){const g=G(),box=$('#fImpact');
         `</div><span class="cap">${esc(t('cSplit',fmv(w,B),fmv(tg,B)))}</span></div>`}).join('');
     return `<article class="pc ${k===S.gear?'sel':''}" data-pc="${k}"><header>${ic(PICON[k],t(k))}<span class="pn">${t(k)}${k===g.profile?'&nbsp;★':''}</span>${flagIcons(P)}<span class="act ${act==='aSet'?'set':''}">${t(act)}</span></header>
      <div class="tb"><span class="cap">${t('threshold')}</span><span class="pt" title="${esc(t('iFrac',Math.round(frac*100),fk(emax)))}">${fk(P.threshold)}</span></div>
-     ${act==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}${rows}</article>`}).join('');
+     ${(act==='aKeep'||act==='aCur')?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}${rows}</article>`}).join('');
   const cap=hasAct?t('iCap',fdays(Math.max(g.days,1)),fdays(g.active_days)):t('iCapNo',fdays(Math.max(g.days,1)));
   box.innerHTML=`<div class="ihead"><div class="seg sm" data-k="basis" role="group" aria-label="${t('bLabel')}">${bases.map(([k,l])=>`<button data-basis="${k}" aria-pressed="${B===k}">${t(l)}</button>`).join('')}</div><span class="cap">${esc(cap)}</span>${hasAct?'':ib(t('iNoActive'),'info')}<span class="est">${t('est')}</span></div>
    <div class="pcs">${cards}</div>`;
@@ -982,7 +991,7 @@ function hist(){const g=G(),box=$('#fHist'),h=g.hist;figHead(box,t('hTitle'),t('
   box.append(f.svg)}
 // replay at full resolution (growth has one entry per turn), then thin the line to the length of the actual curve
 function simulate(sess,g,T){const full=[];let c=g.base_tokens,k=0;const pp=g.penalty_params;
-  for(const x of sess.growth){c+=x;if(c>T){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.floor(pp.rho*d+pp.fixed_tokens)}full.push(c)}
+  const man=sess.manual||{};sess.growth.forEach((x,i)=>{c+=x;if(c>T||(man[i+1]!==undefined&&c>=0.7*man[i+1])){k++;const d=Math.max(c-g.base_tokens-g.summary_tokens,0);c=g.base_tokens+g.summary_tokens+Math.floor(pp.rho*d+pp.fixed_tokens)}full.push(c)});
   const n=sess.curve.length,st=full.length/n;return {out:full.length<=n?full:Array.from({length:n},(_,i)=>full[Math.floor(i*st)]),k}}
 function sessList(){const g=G();return D.sessions.filter(s=>s.model===g.model&&s.role===g.role&&(!s.harness||s.harness===g.harness)).sort((a,b)=>b.peak-a.peak).slice(0,30)}
 function sessPick(){const box=$('#fSess'),ss=sessList();
@@ -1048,7 +1057,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   // per model (harness + id): its groups, what applying the "set" ones would change, and its status
   const models=[];D.groups.forEach((g,i)=>{let m=models.find(x=>x.h===g.harness&&x.id===g.model);if(!m)models.push(m={h:g.harness,id:g.model,gs:[]});m.gs.push(i)});
   models.forEach(m=>{const G_=m.gs.map(i=>D.groups[i]);m.usd=G_.reduce((a,g)=>a+setUsd(g,k),0);m.min=G_.reduce((a,g)=>a+setMin(g,k),0);
-    m.keep=G_.filter(g=>!g.no_action_needed&&!isSet(g,k));m.st=G_.some(g=>isSet(g,k))?'set':m.keep.length?'keep':'noop';
+    m.keep=G_.filter(g=>!g.no_action_needed&&!isSet(g,k));m.st=G_.some(g=>isSet(g,k))?'set':m.keep.length?'keep':'noop';m.kl=m.keep.some(g=>actOf(g,k)==='aCur')?'aCur':'aKeep';
     m.den=G_.reduce((a,g)=>a+defUsd(g),0);m.mden=G_.reduce((a,g)=>a+defMin(g),0);
     m.w=Math.abs(m.usd)+1e-6*G_.reduce((a,g)=>a+Math.abs(usdOf(g,k)),0);m.gs.sort((a,b)=>(D.groups[a].role==='main'?0:1)-(D.groups[b].role==='main'?0:1))});
   const tu=models.reduce((a,m)=>a+m.usd,0),tm=models.reduce((a,m)=>a+m.min,0),cnt=st=>models.filter(m=>m.st===st).length;
@@ -1069,10 +1078,10 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   box.querySelectorAll('[data-ovb]').forEach(b=>b.onclick=()=>{S.ovBy=b.dataset.ovb;try{localStorage.setItem('compactlab.ovBy',S.ovBy)}catch(e){}keep(renderOverview)});
   // before / after per model: was = the default's summed per-day amount, now = was + the change of its "set" groups
   const rows=models.filter(m=>m.st!=='noop').map(m=>{const G_=m.gs.map(i=>D.groups[i]),sg=G_.filter(g=>isSet(g,k)),im=sg.map(g=>impOf(g,k,'vs_default')).filter(Boolean);
-    return {m,name:label(m.id),sub:m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + '),keep:m.st==='keep',gi:m.gs[0],
+    return {m,name:label(m.id),sub:m.h+' · '+m.gs.map(i=>roleS(D.groups[i].role)).join(' + '),keep:m.st==='keep',kl:m.kl,gi:m.gs[0],
       c:{was:m.den,now:m.den+m.usd},t:{was:m.mden,now:m.mden+m.min},
       wait:im.reduce((a,x)=>a+x.wait_minutes.per_day,0),turn:im.reduce((a,x)=>a-x.turn_gain_minutes.per_day,0),
-      roles:m.gs.map(i=>{const g=D.groups[i];return [roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+t('uDay')+(isSet(g,k)?'':' · '+t('aKeep'))]})}});
+      roles:m.gs.map(i=>{const g=D.groups[i];return [roleL(g.role),g.no_action_needed?t('noChange'):fsv(usdOf(g,k))+t('uDay')+(isSet(g,k)?'':' · '+t(actOf(g,k)))]})}});
   const sv=r=>r.keep?Infinity:S.ovBy==='pct'?(ratio(r.c.now-r.c.was,r.c.was)??0):r.c.now-r.c.was;
   rows.sort((a,b)=>(a.keep-b.keep)||sv(a)-sv(b)||b.c.was-a.c.was);
   const setR=rows.filter(r=>!r.keep),tot={name:t('totalSet'),sub:t('totalSub',setR.length),total:true,keep:false,gi:null,
@@ -1089,7 +1098,7 @@ function renderOverview(){overviewHeader();const box=$('#ovw'),k=S.op;
   const key={cModel:g=>label(g.model),cUsd:g=>S.unit==='pct'&&pcOf(g).c!=null?pcOf(g).c:usdOf(g,k),cMin:g=>S.unit==='pct'&&pcOf(g).t!=null?pcOf(g).t:minOf(g,k)};
   const so=S.ovSort,tr=D.groups.map((g,i)=>[g,i]).sort((a,b)=>so?(so.k==='cModel'?key.cModel(a[0]).localeCompare(key.cModel(b[0])):key[so.k](a[0])-key[so.k](b[0]))*(so.asc?1:-1):rk(a[0])-rk(b[0])||Math.abs(usdOf(b[0],k))-Math.abs(usdOf(a[0],k)));
   $('#ovT').innerHTML='<table><tr>'+['cModel','cRole','cTier','cDef','cAct','cUsd','cMin'].map(c=>key[c]?`<th><button type="button" class="srt" data-sort="${c}" aria-label="${t('sortBy')} ${t(c)}">${t(c==='cUsd'?(S.unit==='pct'?'cUsdP':'cUsd'):c==='cMin'?(S.unit==='pct'?'cMinP':'cMin'):c)}${so&&so.k===c?(so.asc?' ↑':' ↓'):''}</button></th>`:'<th>'+t(c)+'</th>').join('')+'</tr>'+tr.map(([g,i])=>{const P=g.profiles[k],a=action(g,P.threshold,P.value_of_time),u=usdOf(g,k),mn=minOf(g,k),mu=a==='aSet'?'':' mute',pr=pcOf(g);
-    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span>${a==='aKeep'?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}</td><td class="${tone(u)}${mu}" data-v="usd">${g.no_action_needed?'–':dual(pr.c,fsv(u),fsn(u))}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':dual(pr.t,fmv(mn),fmn(mn))}</td></tr>`}).join('')+'</table>';
+    return `<tr><td><button type="button" data-tab="${i}" title="${esc(g.model)}">${esc(label(g.model))}</button></td><td>${ic(roleIc(g.role))} ${esc(roleS(g.role))}</td><td>${g.no_action_needed?'–':ic(PICON[k])+' '+fk(P.threshold)}</td><td>${fk(g.default.threshold)}</td><td><span class="act ${a==='aSet'?'set':''}">${t(a)}</span>${(a==='aKeep'||a==='aCur')?`<div class="kw">${esc(keepWhy(g,P.threshold,P.value_of_time))}</div>`:''}</td><td class="${tone(u)}${mu}" data-v="usd">${g.no_action_needed?'–':dual(pr.c,fsv(u),fsn(u))}</td><td class="${tone(mn)}${mu}">${g.no_action_needed?'–':dual(pr.t,fmv(mn),fmn(mn))}</td></tr>`}).join('')+'</table>';
   $('#ovT').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>pick(+b.dataset.tab));
   $('#ovT').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{const c=b.dataset.sort;S.ovSort=S.ovSort&&S.ovSort.k===c?{k:c,asc:!S.ovSort.asc}:{k:c,asc:true};keep(renderOverview)});  // first click: A→Z, or the biggest saving first
   copyPanel();renderS()}
@@ -1133,13 +1142,13 @@ function beforeAfter(box,items,kind,style='bars'){box.innerHTML='';if(!items.len
     const lb=baLabel(o,kind),end=L+Math.max(ww,nw)+(style==='dots'?6:0);
     if(wide){const lx=L+pw+14;if(lx-end>10)gr.append(el('line',{x1:end+4,x2:lx-4,y1:by+11,y2:by+11,class:'lead'}));
       const tx=el('text',{x:lx,y:y+17,class:'dl b'});
-      if(r.keep)tx.append(el('tspan',{class:'mute'},t('aKeep')+' · '+fabs(o.was,kind)+t('uDay')));
+      if(r.keep)tx.append(el('tspan',{class:'mute'},t(r.kl||'aKeep')+' · '+fabs(o.was,kind)+t('uDay')));
       else tx.append(el('tspan',{class:'big '+lb.tone},lb.lead+' '),el('tspan',{class:lb.tone+' sc2'},lb.sec));
       gr.append(tx);if(!r.keep)gr.append(el('text',{x:lx,y:y+32,class:'ovsub'},lb.wn))}
     else{const tx=el('text',{x:W-8,y:y+14,'text-anchor':'end',class:'dl b'});
-      if(r.keep)tx.append(el('tspan',{class:'mute'},t('aKeep')));else tx.append(el('tspan',{class:'big '+lb.tone},lb.lead+' '),el('tspan',{class:lb.tone+' sc2'},lb.sec));
+      if(r.keep)tx.append(el('tspan',{class:'mute'},t(r.kl||'aKeep')));else tx.append(el('tspan',{class:'big '+lb.tone},lb.lead+' '),el('tspan',{class:lb.tone+' sc2'},lb.sec));
       gr.append(tx);gr.append(el('text',{x:8,y:y+58,class:'ovsub'},r.keep?fabs(o.was,kind)+t('uDay'):lb.wn))}
-    const tip=()=>'<b>'+esc(r.name)+'</b>'+tipRow(t('lgWas'),fabs(o.was,kind)+t('uDay'))+(r.keep?tipRow(t('aKeep'),''):tipRow(t('lgNow'),fabs(o.now,kind)+t('uDay'))+tipRow(o.now<=o.was?t('lgSaved'):t('lgAdded'),fpct(ratio(o.now-o.was,o.was))+' · '+(kind==='c'?fsn(o.now-o.was):fmn(o.now-o.was))+t('uDay')))+
+    const tip=()=>'<b>'+esc(r.name)+'</b>'+tipRow(t('lgWas'),fabs(o.was,kind)+t('uDay'))+(r.keep?tipRow(t(r.kl||'aKeep'),''):tipRow(t('lgNow'),fabs(o.now,kind)+t('uDay'))+tipRow(o.now<=o.was?t('lgSaved'):t('lgAdded'),fpct(ratio(o.now-o.was,o.was))+' · '+(kind==='c'?fsn(o.now-o.was):fmn(o.now-o.was))+t('uDay')))+
       (kind==='t'&&!r.keep?tipRow(t('tWait'),fmv(r.wait)+t('uDay'))+tipRow(t('tTurn'),fmv(r.turn)+t('uDay')):'')+r.roles.map(([a,b])=>tipRow(a,b)).join('');
     gr.addEventListener('pointermove',e=>showTip(tip(),e.clientX,e.clientY));gr.addEventListener('pointerleave',hideTip);
     if(r.gi!=null)gr.addEventListener('click',()=>pick(r.gi));svg.append(gr)});

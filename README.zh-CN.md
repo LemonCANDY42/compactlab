@@ -28,7 +28,7 @@ Claude Code 和 Codex 会在上下文达到某个 token 阈值时压缩对话。
 
 ## 与默认设置对比
 
-每个方案都会和 **harness 默认值**(什么都不改时的压缩点)对比,能读到配置时也和**你当前的设置**对比:成本差、耗时差(按小时和每天分钟数;更小上下文省下的时间减去压缩和找回增加的时间,用你自己的时间戳拟合)、每天压缩次数、召回率。默认设置在某组会话里从未触发压缩时显示"无需调整";方案不比默认更好时显示"保持默认"。
+每个方案都会和 **harness 默认值**(什么都不改时的压缩点)对比,能读到配置时也和**你当前的设置**对比:成本差、耗时差(按小时和每天分钟数;更小上下文省下的时间减去压缩和找回增加的时间,用你自己的时间戳拟合)、每天压缩次数、召回率。默认设置在某组会话里从未触发压缩时显示"无需调整";你当前的设置与方案选值的得分相差在同样的 2% 以内时显示"保持当前"(改了也只是来回折腾);方案不比默认好、或者好得不到 2%(选择用的容差)时显示"保持默认"。
 
 几点说明:成本是按公开标价的**估算**,不含折扣、套餐或额度;lite 模式的召回率是**代理值**,不是实测;某组可计时的压缩少于 20 次时,不用它自己的拟合,改用同工具全部会话的汇总拟合或偏保守的先验值,并会写明。命令行输出和 HTML 报告默认中英双语,`--lang zh|en` 可切换。
 
@@ -83,9 +83,13 @@ Per-day impact · claude-opus-5-5 · main · history 10.5 calendar days, 10.5 ac
 
 HTML 报告是一个离线文件(不加载任何字体、脚本或图片),中文或英文(跟随浏览器语言,一键切换),浅色或深色(跟随系统,也可手动切换)。界面以图标、增减标签(▼ 绿色节省,▲ 琥珀色增加)和小进度条为主,说明文字收在 ⓘ 提示里,警告是带提示的 ⚠ 图标。左侧栏按工具 / 模型 / 角色列出分组(手机上变成顶部栏);页头写明历史的日期范围、数据来源和模式;置顶的控制栏有方案切换和阈值滑块;下面依次是指标卡、各方案的每日影响、对比表、帕累托前沿、成本和耗时曲线(悬停或点按有提示,曲线直接标注)、token 分布和单个会话的回放。数据少、历史短或时间模型借用了汇总数据时,会用直白的话说明。
 
+在真实日志上是否成立?一个经过核对的案例,以及让回放可信的对照:[docs/RESULTS.md](docs/RESULTS.md)(英文)。
+
 ## 作为后台服务运行
 
-`compactlab serve --every 1d` 在本机(只绑定 127.0.0.1)提供实时报告和 JSON 接口,并按设定间隔用 lite 模式重新校准:只增量扫描,同一时间只跑一个,低优先级,不联网。`compactlab schedule print` 生成 launchd / systemd 定时文件,`install --yes` 只把文件写进你的 LaunchAgents 或 systemd 用户目录,加载由你自己执行。自动应用默认关闭:先用 `compactlab consent set` 指定允许修改的设置文件、模型和方案,再加 `--auto-apply`;它复用 `apply` 的备份和清单(`compactlab revert` 可撤销),每次最多移动 100k,至少间隔一周,收益不明显时不动,别人手动改过的值不覆盖。详见 [docs/SERVICE.md](docs/SERVICE.md)。
+`compactlab serve --every 1d` 在本机(只绑定 127.0.0.1)提供实时报告和 JSON 接口,并按设定间隔用 lite 模式重新校准:只增量扫描,低优先级,不联网;同一时间只跑一个,服务、命令行、定时任务和应用共用一把锁,碰上别的校准或写配置正在进行就跳过,不会重复跑。`compactlab schedule print` 生成 launchd / systemd 定时文件,`install --yes` 只把文件写进你的 LaunchAgents 或 systemd 用户目录,加载由你自己执行。自动应用默认关闭:先用 `compactlab consent set` 指定允许修改的设置文件、模型和方案,再加 `--auto-apply`;它复用 `apply` 的备份和清单(`compactlab revert` 可撤销),每次最多移动 100k,至少间隔一周,收益不明显时不动,别人手动改过的值不覆盖。详见 [docs/SERVICE.md](docs/SERVICE.md)。
+
+应用和脚本改用 `compactlab engine`:在 stdout 输出带版本号的 JSON,不开端口。`engine watch` 只读日志文件末尾,持续给出活跃会话的上下文、模型、生效阈值和提示缓存何时变冷;`engine calibrate` 和 `engine result` 运行和读取校准结果。详见 [docs/ENGINE_API.md](docs/ENGINE_API.md)。
 
 ## 终端界面
 
@@ -106,7 +110,11 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 
 ## 应用之后核对预测
 
-`compactlab verify` 以最近一次 `apply` 的时间为界拆分日志,按模型和角色比较改动前后每 1k 轮的日志成本与压缩次数,并与用*改动前*会话回放得到的预测对照(同时给出用*改动后*会话回放的结果,用来发现工作负载变了)。它还会检查压缩是否真的发生在新阈值附近,从而发现被项目配置、环境变量或命令行参数覆盖的情况。两侧各不足 3 个会话、2 个活跃日时只提示"太早"。成本是标价估算,不是账单;墙钟时间不做核对。
+`compactlab verify` 以最近一次 `apply` 的时间为界拆分日志,按模型和角色比较改动前后每 1k 轮的日志成本与压缩次数,并与用*改动前*会话回放得到的预测对照(同时给出用*改动后*会话回放的结果,用来发现工作负载变了)。它还会检查压缩是否真的发生在新阈值附近,从而发现被项目配置、环境变量或命令行参数覆盖的情况。两侧各不足 3 个会话、2 个活跃日时只提示"太早"。日志里不记压缩本身那次摘要请求,成本里会按估算补上;阈值压缩、空闲压缩和手动 `/compact` 分开计数;前后都没碰到阈值的角色不下结论。成本是标价估算,不是账单;墙钟时间不做核对。
+
+## 空闲压缩
+
+Claude Code 还会自己压缩:长对话在 1 小时缓存下闲置时(`idleCompaction`,默认开,20 万 token 起),它在缓存还热的时候(大约第 55 分钟)先做好摘要,等你回来再换上。compactlab 会在日志里把这类压缩单独认出来,回放时把它算进去(摘要读上下文和输出的费用、回来时更小的上下文、之后的找回成本,以及你再也没回来的会话白做的摘要),并对适用的分组再按"关掉"回放一遍。分组之后会给出保持开启还是关掉,附每天的成本、耗时和压缩次数变化;只有切换能比现状好 2% 以上时,`recommend` 才会给出 `idleCompaction` 的设置片段。
 
 ## 两种模式
 
@@ -121,16 +129,22 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 
 - 默认完全离线,不联网、不调用模型。
 - 报告和 `result.json` 只包含 token 数、模型名和会话 id,不包含对话内容和路径;`--redact` 可把 id 换成哈希。
-- `apply` 默认只出 dry-run diff;写入需要 `--write` 加预授权文件(或 `--i-authorize`),写入前自动备份,`revert` 只还原改过的键。
+- `apply` 默认只出 dry-run diff;写入需要 `--write` 加预授权文件(或 `--i-authorize`),写入前自动备份,`revert` 只还原改过的键。加上 `--expect-plan <hash>`(dry-run 打印的计划哈希)就只写你审过的那份计划,计划有任何变化都拒绝写入。
 - `compactlab share` 只生成一份匿名的预估节省记录(数字和模型名,不含 id、路径、时间戳),写到本地文件,由你自己决定是否贴到研究用的 Issue 表单;它不会发送任何东西。详见 [docs/SHARING.md](docs/SHARING.md)。
-- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分)。
+- Claude Code 写 `modelSettings.<model>.autoCompactWindow`(按模型);Codex 写顶层 `model_auto_compact_token_limit`(全局,不能按模型区分:按在用的各模型一起算出一个值,已被新版本取代的模型如 6.1-sol 不计入)。
 
 ## 局限
 
 - lite 模式的召回率是**假设曲线**,不是任何模型的实测数据;deep 模式测的是对 compactlab 摘录的抽样结果。
 - 回放成本是按公开标价的估算,用于比较不同阈值,不等于你的账单(不考虑订阅、折扣和额度)。
-- 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。
+- 内置价格是带日期的公开快照(models.dev),可用 `compactlab pricing refresh` 更新或用 `--pricing` 覆盖。`compactlab pricing auto on` 之后,`serve` 和定时任务会自动下载同样的公开数据:日志里出现没有价格的模型时(每天重试,新模型一小时后可再试,最多 5 次),以及每周一次(厂商会调价、改窗口)。不发送任何关于你的信息;变化会记下来,`simulate` 列出与你的模型相关的近期变化。
+- 模型优先按自己的价格行计费。平台 ID(Bedrock `us.anthropic.…`、Vertex `…@日期`、OpenRouter `anthropic/…`、Azure、Codex 的 `model_provider`)刷新后按该平台的价格,刷新前按厂商官方价。表里没有的新模型借用同族最接近的型号(如 `claude-fable-5-3` 借 `claude-fable-5-2`),再不行用兜底价;`simulate` 会列出这些模型,`pricing show --model <id> [--platform <p>]` 可查看匹配方式。
+- 随时间变化的情况按最新的算:历史按现价回放(比内置快照旧的刷新数据不再覆盖它;载入在调价前保存的结果会提示);Codex 的窗口按最近会话记录的值(干净切换时会提示);Claude Code 的上下文超过假设窗口说明窗口变大了;最近的阈值压缩点离假设的默认值超过 10% 时,`simulate` 会提示 harness 可能改了默认值,或有读不到的设置在生效。
+- Claude Code 按模型 ID 决定窗口:通过 `ANTHROPIC_BASE_URL` 接入的第三方模型(DeepSeek、Kimi、GLM 等)按 Claude Code 对未知 ID 假设的 200K 窗口回放,设置了 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 时按它。
 - DeepSeek Harness(dsh)为**实验性**支持:按 dsh 源码和它自带的快照日志实现,还没在真实历史上跑过。日志在 `~/.dsh/sessions`(`.jsonl.zstd` 需要 Python 3.14+ 或 `zstd` 命令);`recommend` 给出 compaction-basic 插件的 `modelPolicies`(`thresholdRatio`)片段,`apply` 不改 dsh 配置。
-- OpenCode、Gemini CLI、Hermes、Qwen Code、Kimi CLI、Goose 的适配器在计划中,顺序见 [路线图](docs/ROADMAP.md),欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
+- OpenCode 1.x:读 `~/.local/share/opencode/opencode.db`(SQLite,只读打开,不会干扰正在运行的 OpenCode;可用 `$XDG_DATA_HOME` 或 `--opencode-root` 改位置)。已在一份真实的 1.19.5 数据库上解析过,逐步 token 加总与 OpenCode 自己的会话合计一致;那份历史里没有压缩,压缩记录的解析依据的是源码。OpenCode 1.x 没有阈值键:默认在「窗口 − 模型输出预留(最多 32,000)」处压缩,只有 `limit` 设了 `input` 的模型才按 `limit.input − compaction.reserved` 算,所以单设 `compaction.reserved` 对大多数模型无效。`recommend` 给出按模型的 `provider.<id>.models.<model>.limit`(`input` = 阈值 + 20,000),并在说明里给出 2.x 的 `compaction.buffer` 比例。没写 `limit` 的自定义模型窗口未知,OpenCode 不会自动压缩它。2.x 预发布版的新存储暂不读取(`doctor` 会计数)。
+- Gemini CLI 为**实验性**支持:按 0.46/0.70 源码实现,还没在真实历史上跑过。日志在 `~/.gemini/tmp/<project>/chats/*.jsonl`(也读旧版 `session-*.json`)。`recommend` 给出 `model.compressionThreshold`(模型 token 上限的比例,默认 0.5,约 524k);这个键是全局的,一个比例管所有模型,片段会说明它落在其他模型的哪个位置。比例向下取整,保证触发点不超过推荐值,窗口太大导致一步太粗时会提示。
+- `apply` 暂不写 OpenCode 和 Gemini CLI 的配置,等配置位置与优先级在真实环境上核实后再说;`verify` 支持手动描述的改动(OpenCode 用 `--harness opencode --model provider/model`,Gemini CLI 也要 `--model`,`--new` 填该模型对应的 token 数,即比例 × 它的 token 上限)。
+- Hermes、Qwen Code、Kimi CLI、Goose 的适配器在计划中,顺序见 [路线图](docs/ROADMAP.md),欢迎贡献(见 `docs/ADDING_A_HARNESS.md`)。
 
 MIT 许可。英文完整说明见 [README.md](README.md)。

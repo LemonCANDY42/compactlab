@@ -30,6 +30,13 @@ class Parser(abc.ABC):
     """
 
     version: ClassVar[int] = 1
+    # records at the top of a file a reader of only the file's end must feed first (e.g. Codex's session_meta)
+    head_records: ClassVar[int] = 0
+    # the session's working directory as last logged; shown only by the live view, never stored or cached
+    cwd: str | None = None
+    # whether the harness appends copies of earlier messages (original times) that the full parse drops as seen, so
+    # a reader of only the file's end has to look further back when the newest record is well after the last request
+    rewrites_history: ClassVar[bool] = False
 
     @abc.abstractmethod
     def feed(self, record: dict[str, Any]) -> None: ...
@@ -92,17 +99,26 @@ class Adapter(abc.ABC):
             p.feed(rec)
         return p.finish()
 
+    def load(self, path: Path, cache: Any = None, since: float | None = None) -> list[Session]:
+        """Sessions in one file found by `find_files()`, skipping a file not modified since `since` (epoch s).
+        Most harnesses keep one session per file; a harness with one database for every session (OpenCode)
+        overrides this, filters by each session's own update time and returns many."""
+        if since and path.stat().st_mtime < since:
+            return []
+        return [cache.parse(self, path) if cache is not None else self.parse_file(path)]
+
+    def doctor_checks(self) -> list[dict[str, Any]]:
+        """Extra `doctor` lines for this harness: [{"ok": bool, "label": str, "text": str}]."""
+        return []
+
     def sessions(self, since_days: float | None = None, cache: Any = None) -> Iterator[Session]:
         cut = time.time() - since_days * 86400 if since_days else None
         for path in self.find_files():
             try:
-                if cut and path.stat().st_mtime < cut:
-                    continue
-                s = cache.parse(self, path) if cache is not None else self.parse_file(path)
+                found = self.load(path, cache, cut)
             except OSError:
                 continue
-            if s.turns:
-                yield s
+            yield from (s for s in found if s.turns)
 
 
 def register(cls: type[Adapter]) -> type[Adapter]:

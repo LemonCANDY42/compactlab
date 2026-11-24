@@ -1,0 +1,481 @@
+{
+ "auto_apply": null,
+ "calibration": {
+  "at": 1795429846.914912,
+  "every_s": 86400.0,
+  "reason": "app",
+  "took_s": 0.3
+ },
+ "data_through": 1789043204.961737,
+ "demo": false,
+ "engine_api": 1,
+ "global_keys": {
+  "codex": {
+   "models": [
+    "gpt-5-codex · main"
+   ],
+   "profiles": {
+    "balanced": {
+     "action": "keep default",
+     "d_min_per_day": -0.22851796459156815,
+     "d_usd_per_day": -0.0285679950751235,
+     "default_score": 117.48802789289347,
+     "per_model": {
+      "gpt-5-codex · main": 350000
+     },
+     "score": 116.50730171202017,
+     "threshold": 350000
+    },
+    "cost": {
+     "action": "set",
+     "d_min_per_day": 1.7347309332483538,
+     "d_usd_per_day": -2.1514450993220353,
+     "default_score": 13.206962102887168,
+     "per_model": {
+      "gpt-5-codex · main": 200000
+     },
+     "score": 11.344638825773192,
+     "threshold": 200000
+    },
+    "time": {
+     "action": "keep default",
+     "d_min_per_day": -0.22851796459156815,
+     "d_usd_per_day": -0.0285679950751235,
+     "default_score": 269.564582169986,
+     "per_model": {
+      "gpt-5-codex · main": 350000
+     },
+     "score": 267.2508345289952,
+     "threshold": 350000
+    }
+   },
+   "superseded": {}
+  }
+ },
+ "groups": [
+  {
+   "active_days": 4.294923625472519,
+   "current_note": null,
+   "current_threshold": null,
+   "days": 4.294923625472519,
+   "default_threshold": 967000,
+   "effective_max": 1000000,
+   "harness": "claude-code",
+   "max_window": 1000000,
+   "model": "claude-opus-5-5",
+   "n_sessions": 3,
+   "n_turns": 711,
+   "no_action_needed": false,
+   "platform": null,
+   "profiles": {
+    "balanced": {
+     "action": "set",
+     "flags": [
+      "guardrail_applied"
+     ],
+     "threshold": 625000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 1.6298310774338562,
+      "cost_pct": -0.22579001516401706,
+      "min_per_day": 0.12212791546956081,
+      "ref_compactions_per_day": 0.9313320442479179,
+      "time_pct": 0.0014106739167469551,
+      "turn_gain_min_per_day": 2.176260426253491,
+      "usd_per_active_day": -11.849765990753243,
+      "usd_per_day": -11.849765990753243,
+      "wait_min_per_day": 2.2983883417230584
+     }
+    },
+    "cost": {
+     "action": "set",
+     "flags": [
+      "below_quarter_window"
+     ],
+     "threshold": 175000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 8.61482140929324,
+      "cost_pct": -0.5812628333458814,
+      "min_per_day": 6.399857106645025,
+      "ref_compactions_per_day": 0.9313320442479179,
+      "time_pct": 0.07392340609876324,
+      "turn_gain_min_per_day": 11.381449802200805,
+      "usd_per_active_day": -30.50546123249728,
+      "usd_per_day": -30.50546123249728,
+      "wait_min_per_day": 17.781306908845842
+     }
+    },
+    "time": {
+     "action": "keep default",
+     "flags": [],
+     "threshold": 650000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 1.6298310774338562,
+      "cost_pct": -0.19886808113183332,
+      "min_per_day": 0.9652655780929292,
+      "ref_compactions_per_day": 0.9313320442479179,
+      "time_pct": 0.01114958008178524,
+      "turn_gain_min_per_day": 1.885816447771482,
+      "usd_per_active_day": -10.436866407624496,
+      "usd_per_day": -10.436866407624496,
+      "wait_min_per_day": 2.851082025864403
+     }
+    }
+   },
+   "role": "main",
+   "selected": "balanced",
+   "superseded_by": null,
+   "window_source": "pricing data"
+  },
+  {
+   "active_days": 2,
+   "current_note": null,
+   "current_threshold": null,
+   "days": 2.0216137291104705,
+   "default_threshold": 967000,
+   "effective_max": 1000000,
+   "harness": "claude-code",
+   "max_window": 1000000,
+   "model": "claude-opus-5-5",
+   "n_sessions": 2,
+   "n_turns": 68,
+   "no_action_needed": true,
+   "platform": null,
+   "profiles": {
+    "balanced": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    },
+    "cost": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    },
+    "time": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    }
+   },
+   "role": "subagent",
+   "selected": "balanced",
+   "superseded_by": null,
+   "window_source": "pricing data"
+  },
+  {
+   "active_days": 4.309471321839977,
+   "current_note": null,
+   "current_threshold": null,
+   "days": 4.309471321839977,
+   "default_threshold": 967000,
+   "effective_max": 1000000,
+   "harness": "claude-code",
+   "max_window": 1000000,
+   "model": "claude-sonnet-5-5",
+   "n_sessions": 3,
+   "n_turns": 650,
+   "no_action_needed": false,
+   "platform": null,
+   "profiles": {
+    "balanced": {
+     "action": "set",
+     "flags": [
+      "guardrail_applied"
+     ],
+     "threshold": 450000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 2.3204702510307893,
+      "cost_pct": -0.4046904006855865,
+      "min_per_day": -2.5896727844476986,
+      "ref_compactions_per_day": 0.9281881004123158,
+      "time_pct": -0.0351590866873516,
+      "turn_gain_min_per_day": 6.365972853697793,
+      "usd_per_active_day": -8.578268097436148,
+      "usd_per_day": -8.578268097436148,
+      "wait_min_per_day": 3.776300069250085
+     }
+    },
+    "cost": {
+     "action": "set",
+     "flags": [],
+     "threshold": 300000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 3.944799426752342,
+      "cost_pct": -0.5415474503281268,
+      "min_per_day": -5.107681002177017,
+      "ref_compactions_per_day": 0.9281881004123158,
+      "time_pct": -0.06934520847782709,
+      "turn_gain_min_per_day": 12.443323350660108,
+      "usd_per_active_day": -11.479242424647689,
+      "usd_per_day": -11.479242424647689,
+      "wait_min_per_day": 7.335642348483081
+     }
+    },
+    "time": {
+     "action": "set",
+     "flags": [
+      "guardrail_applied"
+     ],
+     "threshold": 575000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 1.8563762008246316,
+      "cost_pct": -0.3742772817339076,
+      "min_per_day": -1.6369620446144122,
+      "ref_compactions_per_day": 0.9281881004123158,
+      "time_pct": -0.022224464332383613,
+      "turn_gain_min_per_day": 4.743595650824988,
+      "usd_per_active_day": -7.933597782536808,
+      "usd_per_day": -7.933597782536808,
+      "wait_min_per_day": 3.1066336062105737
+     }
+    }
+   },
+   "role": "main",
+   "selected": "balanced",
+   "superseded_by": null,
+   "window_source": "pricing data"
+  },
+  {
+   "active_days": 2.0184421435633193,
+   "current_note": null,
+   "current_threshold": null,
+   "days": 2.0184421435633193,
+   "default_threshold": 967000,
+   "effective_max": 1000000,
+   "harness": "claude-code",
+   "max_window": 1000000,
+   "model": "claude-sonnet-5-5",
+   "n_sessions": 2,
+   "n_turns": 58,
+   "no_action_needed": true,
+   "platform": null,
+   "profiles": {
+    "balanced": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    },
+    "cost": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    },
+    "time": {
+     "action": "no action needed",
+     "flags": [],
+     "threshold": 1000000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 0.0,
+      "cost_pct": 0.0,
+      "min_per_day": 0.0,
+      "ref_compactions_per_day": 0.0,
+      "time_pct": 0.0,
+      "turn_gain_min_per_day": 0.0,
+      "usd_per_active_day": 0.0,
+      "usd_per_day": 0.0,
+      "wait_min_per_day": 0.0
+     }
+    }
+   },
+   "role": "subagent",
+   "selected": "balanced",
+   "superseded_by": null,
+   "window_source": "pricing data"
+  },
+  {
+   "active_days": 3.1137948171049357,
+   "current_note": null,
+   "current_threshold": null,
+   "days": 3.1137948171049357,
+   "default_threshold": 360000,
+   "effective_max": 360000,
+   "harness": "codex",
+   "max_window": 400000,
+   "model": "gpt-5-codex",
+   "n_sessions": 4,
+   "n_turns": 521,
+   "no_action_needed": false,
+   "platform": null,
+   "profiles": {
+    "balanced": {
+     "action": "keep default",
+     "flags": [],
+     "threshold": 350000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 3.532666937324823,
+      "cost_pct": -0.003223680929844095,
+      "min_per_day": -0.22851796459156815,
+      "ref_compactions_per_day": 3.532666937324823,
+      "time_pct": -0.008765463331636488,
+      "turn_gain_min_per_day": 0.09149930973435379,
+      "usd_per_active_day": -0.0285679950751235,
+      "usd_per_day": -0.0285679950751235,
+      "wait_min_per_day": -0.1370186548572168
+     }
+    },
+    "cost": {
+     "action": "set",
+     "flags": [
+      "global_key"
+     ],
+     "threshold": 200000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 7.386485414406447,
+      "cost_pct": -0.24277421359297116,
+      "min_per_day": 1.7347309332483536,
+      "ref_compactions_per_day": 3.532666937324823,
+      "time_pct": 0.06654059085823422,
+      "turn_gain_min_per_day": 1.7753529911519157,
+      "usd_per_active_day": -2.1514450993220353,
+      "usd_per_day": -2.1514450993220353,
+      "wait_min_per_day": 3.5100839244002673
+     }
+    },
+    "time": {
+     "action": "keep default",
+     "flags": [],
+     "threshold": 350000,
+     "vs_current": null,
+     "vs_default": {
+      "compactions_per_day": 3.532666937324823,
+      "cost_pct": -0.003223680929844095,
+      "min_per_day": -0.22851796459156815,
+      "ref_compactions_per_day": 3.532666937324823,
+      "time_pct": -0.008765463331636488,
+      "turn_gain_min_per_day": 0.09149930973435379,
+      "usd_per_active_day": -0.0285679950751235,
+      "usd_per_day": -0.0285679950751235,
+      "wait_min_per_day": -0.1370186548572168
+     }
+    }
+   },
+   "role": "main",
+   "selected": "balanced",
+   "superseded_by": null,
+   "window_source": "observed in logs (latest sessions)"
+  }
+ ],
+ "idle_compaction": null,
+ "kind": "result",
+ "mode": "lite",
+ "model_notes": {
+  "auto_refresh": false,
+  "defaults": [
+   {
+    "assumed": 967000,
+    "harness": "claude-code",
+    "model": "claude-opus-5-5",
+    "n": 10,
+    "observed": 452575,
+    "role": "main",
+    "since": 1788283127.519253
+   },
+   {
+    "assumed": 967000,
+    "harness": "claude-code",
+    "model": "claude-sonnet-5-5",
+    "n": 10,
+    "observed": 456319,
+    "role": "main",
+    "since": 1788364852.204874
+   },
+   {
+    "assumed": 360000,
+    "harness": "codex",
+    "model": "gpt-5-codex",
+    "n": 10,
+    "observed": 309551,
+    "role": "main",
+    "since": 1788353417.038721
+   }
+  ],
+  "fallback": {
+   "cache_read": 0.3,
+   "cache_write": 3.75,
+   "input": 3.0,
+   "max_window": 200000,
+   "output": 15.0
+  },
+  "price_changes": [],
+  "prices": [],
+  "superseded": [],
+  "unset": [],
+  "windows": []
+ },
+ "profile": "balanced",
+ "service": {
+  "failures": 0,
+  "last_attempt": 1795429846.659607,
+  "last_calibrated": 1795429846.914912,
+  "last_error": null
+ }
+}

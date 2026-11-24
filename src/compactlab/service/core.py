@@ -1,6 +1,6 @@
-"""The calibrator behind `compactlab serve` and `compactlab recalibrate`: one lite analysis at a time, on a schedule,
-with backoff after failures; the last result is kept in memory and on disk (the report, the API and the lens mod
-read it)."""
+"""The calibrator behind `compactlab serve`, `compactlab recalibrate` and `compactlab engine calibrate`: one lite
+analysis at a time (in this process and across processes, see lock.py), on a schedule, with backoff after failures;
+the last result is kept in memory and on disk (the report, the API and the lens mod read it)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from typing import Any
 
 from .. import apply as ap
 from ..lens import summarize
+from .lock import Busy, LockError, single_flight
 from .policy import Consent, Rules, load_applied, load_consent, run_auto_apply
 from .schedule import next_due
 
@@ -23,8 +24,10 @@ log = logging.getLogger("compactlab.service")
 class Calibrator:
     """Runs `analyze()` (a lite analysis over the incremental scan cache) at most once at a time.
 
-    `recalibrate()` returns at once with `{"status": "busy"}` while a run is in flight; the schedule loop never
-    overlaps runs either. State (last success, failures, next due) is persisted so a restart keeps the cadence.
+    `recalibrate()` returns at once with `{"status": "busy"}` while a run is in flight here or another process holds
+    the state dir's lock (a calibration or a config write); the schedule loop never overlaps runs either. State (last
+    success, failures, next due) is persisted so a restart keeps the cadence, and is re-read under the lock, so runs
+    by other processes (the app, the CLI, a scheduler) count too.
     """
 
     def __init__(self, analyze: Callable[[], dict[str, Any]], state_dir: Path, every: float | None,
@@ -40,13 +43,24 @@ class Calibrator:
         self.auto_apply = consent is not None or consent_path is not None
         self._lock = threading.Lock()
         self.result: dict[str, Any] | None = None
+        self.last_ok: float | None = None
+        self.last_attempt: float | None = None
+        self.failures = 0
+        self.last_error: str | None = None
+        self.last_apply: dict[str, Any] | None = None
+        self._load()
+
+    def _load(self) -> None:
+        """Read the persisted state; the result too when it is newer than the one in memory."""
         st = self._read("state.json") or {}
-        self.last_ok: float | None = st.get("last_ok")
-        self.last_attempt: float | None = st.get("last_attempt")
-        self.failures: int = int(st.get("failures", 0))
-        self.last_error: str | None = st.get("last_error")
-        self.last_apply: dict[str, Any] | None = st.get("last_apply")
-        self.result = self._read("result.json")
+        last_ok = st.get("last_ok")
+        if self.result is None or last_ok != self.last_ok:
+            self.result = self._read("result.json")
+        self.last_ok = last_ok
+        self.last_attempt = st.get("last_attempt")
+        self.failures = int(st.get("failures", 0))
+        self.last_error = st.get("last_error")
+        self.last_apply = st.get("last_apply")
 
     def _read(self, name: str) -> Any:
         p = self.dir / name
@@ -92,14 +106,45 @@ class Calibrator:
             "applied": {k.split("::", 1)[1]: v for k, v in load_applied(self.dir / "applied.json").items()},
         }
 
-    def recalibrate(self, reason: str = "manual") -> dict[str, Any]:
+    def recalibrate(self, reason: str = "manual", if_due: bool = False) -> dict[str, Any]:
+        """One run now. Busy (nothing runs, not a failure) while another run holds this calibrator or the state
+        dir's lock. With `if_due` (the schedule), a run that another process made since is enough: `skipped`."""
         if not self._lock.acquire(blocking=False):
             log.info("recalibrate (%s) skipped: a run is already in flight", reason)
             return {"status": "busy"}
         try:
-            return self._run(reason)
+            with single_flight(self.dir.parent, f"calibrate ({reason})"):
+                self._load()  # another process may have calibrated, or failed, since we last looked
+                due = self.next_due()
+                if if_due and due is not None and due > self.clock():
+                    log.info("recalibrate (%s) skipped: calibrated elsewhere; next calibration: %s", reason,
+                             self.next_text())  # fmt: skip
+                    return {"status": "skipped"}
+                result, last_ok = self.result, self.last_ok
+                try:
+                    return self._run(reason)
+                except OSError as e:  # a result, lens or state file cannot be written: a failed run
+                    self.result, self.last_ok = result, last_ok  # nothing new was recorded as calibrated
+                    return self._fail(f"{type(e).__name__}: {e}")  # saved while still holding the lock
+        except Busy as e:
+            log.info("recalibrate (%s) skipped: %s", reason, e)
+            return {"status": "busy", "message": str(e)}
+        except LockError as e:  # the lock cannot be taken: back off here; the shared state is not written without it
+            self.last_attempt = self.clock()
+            return self._fail(str(e), save=False)
         finally:
             self._lock.release()
+
+    def _fail(self, error: str, save: bool = True) -> dict[str, Any]:
+        self.failures += 1
+        self.last_error = error[:500]
+        log.error("recalibration failed (%d in a row): %s", self.failures, self.last_error)
+        if save:
+            try:
+                self._save_state()
+            except OSError as e:
+                log.error("cannot save the calibrator state: %s", e)
+        return {"status": "error", "error": self.last_error}
 
     def _run(self, reason: str) -> dict[str, Any]:
         start = self.clock()
@@ -108,11 +153,7 @@ class Calibrator:
         try:
             res = self.analyze()
         except Exception as e:
-            self.failures += 1
-            self.last_error = f"{type(e).__name__}: {e}"[:500]
-            log.error("recalibration failed (%d in a row): %s", self.failures, self.last_error)
-            self._save_state()
-            return {"status": "error", "error": self.last_error}
+            return self._fail(f"{type(e).__name__}: {e}")
         now = self.clock()
         scan = res.pop("scan", None) or {}
         res["calibration"] = {"at": now, "every_s": self.every, "reason": reason, "took_s": round(now - start, 1)}
@@ -168,10 +209,12 @@ class Calibrator:
         self._write("state.json", {k: getattr(self, k) for k in keys})
 
     def loop(self, stop: threading.Event, tick: float = 60.0) -> None:
-        """Runs due calibrations until `stop` is set; wakes at least every `tick` seconds."""
+        """Runs due calibrations until `stop` is set; wakes at least every `tick` seconds. While another run holds
+        the lock it tries again every `tick`."""
         while not stop.is_set():
             due = self.next_due()
             if due is not None and self.clock() >= due:
-                self.recalibrate("schedule")
+                if self.recalibrate("schedule", if_due=True)["status"] == "busy":
+                    stop.wait(tick)
                 continue
             stop.wait(tick if due is None else max(1.0, min(tick, due - self.clock())))

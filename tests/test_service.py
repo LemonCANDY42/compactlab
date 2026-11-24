@@ -491,3 +491,10 @@ def test_malformed_consented_config_backs_off_instead_of_killing_the_scheduler(t
     settings.write_text("{}\n")  # fixed: the next due run applies and clears the error
     clock[0] += 400
     assert cal.recalibrate()["status"] == "ok" and cal.failures == 0 and cal.last_error is None
+
+
+def test_keep_current_is_never_auto_applied(make_group):
+    g = _group(make_group)
+    g["comparison"]["balanced"]["action"] = "keep current"
+    d = decide(g, "balanced", 650_000, None, None, now=0, rules=Rules())
+    assert d.action == "skip" and d.reason.startswith("keep current")

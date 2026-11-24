@@ -14,7 +14,9 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +25,16 @@ from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
 from ..adapters.cache import ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
-from ..model import Session
+from ..model import Session, drop_inherited
 from ..pricing import DEFAULT_REFRESHED, PricingTable
-from ..pricing.refresh import SOURCES, refresh
+from ..pricing.refresh import SOURCES, recent_changes, refresh
 from ..report.html import render_html
-from ..sim.baseline import read_current
-from ..sim.engine import SimOptions, analyze, reselect
+from ..sim.baseline import MAX_CONTEXT_ENV, read_current, read_env_int, read_idle
+from ..sim.engine import SimOptions, analyze, price_drift, reselect
 from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES, PROFILES, WAIT_CAP_MIN_PER_DAY
 
 STATE = "~/.compactlab"
+EX_BUSY = 75  # sysexits EX_TEMPFAIL: another calibration or config write holds the state dir's lock; try again later
 EXAMPLES = """examples:
   compactlab demo                                   synthetic data -> report, opens it
   compactlab doctor                                 where are my logs and configs?
@@ -82,6 +85,16 @@ def _source(p: argparse.ArgumentParser) -> None:
         "--dsh-root",
         action="append",
         help="DeepSeek Harness sessions dir (default $DSH_HOME/sessions or ~/.dsh/sessions)",
+    )
+    g.add_argument(
+        "--opencode-root",
+        action="append",
+        help="OpenCode data dir or opencode.db (default $XDG_DATA_HOME/opencode or ~/.local/share/opencode)",
+    )
+    g.add_argument(
+        "--gemini-root",
+        action="append",
+        help="Gemini CLI tmp dir (default $GEMINI_CLI_HOME/.gemini/tmp or ~/.gemini/tmp)",
     )
     g.add_argument(
         "--since-days", type=float, default=30, help="only files modified in the last N days (0 = all; default 30)"
@@ -156,10 +169,18 @@ def _reselect(a: argparse.Namespace, res: dict[str, Any]) -> dict[str, Any]:
 def _config_args(g: Any) -> None:
     g.add_argument("--claude-settings", help="Claude Code settings.json (default: ~/.claude/settings.json)")
     g.add_argument("--codex-config", help="Codex config.toml (default: ~/.codex/config.toml)")
+    g.add_argument("--opencode-config", help="OpenCode opencode.json, read only (default: ~/.config/opencode/)")
+    g.add_argument("--gemini-settings", help="Gemini CLI settings.json, read only (default: ~/.gemini/settings.json)")
 
 
 def _roots(a: argparse.Namespace) -> dict[str, list[str] | None]:
-    return {"claude-code": a.claude_root, "codex": a.codex_root, "dsh": a.dsh_root}
+    return {
+        "claude-code": a.claude_root,
+        "codex": a.codex_root,
+        "dsh": a.dsh_root,
+        "opencode": a.opencode_root,
+        "gemini-cli": a.gemini_root,
+    }
 
 
 def _ttl_note(g: dict[str, Any], lang: str) -> str:
@@ -201,18 +222,18 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
             ad = get_adapter(h)(_roots(a).get(h))
             files = list(ad.find_files())
             total += len(files)
+            first = len(out)
             for i, path in enumerate(files, 1):
                 if i % 20 == 0 or i == len(files):
                     stats = "" if quiet or not cache else f" · cached {cache.stats['hit'] + cache.stats['resumed']}"
                     _progress(f"scanning {h} {i}/{len(files)} files{stats}")
                 try:
-                    if cut and path.stat().st_mtime < cut:
-                        continue
-                    s = cache.parse(ad, path) if cache else ad.parse_file(path)
+                    found = ad.load(path, cache, cut)
                 except OSError:
                     continue
-                if s.turns:
-                    out.append(s)
+                out += [s for s in found if s.turns]
+            if h == "claude-code":  # a resumed or forked log repeats its parent's history
+                out[first:] = drop_inherited(out[first:])
         if cache:
             cache.prune()  # rows of deleted logs
     finally:
@@ -253,17 +274,49 @@ def _pricing(a: argparse.Namespace) -> PricingTable:
     return PricingTable.load(getattr(a, "pricing", None), offline=getattr(a, "offline_pricing", False))
 
 
-def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
-    """Read the configured threshold per (harness, model) from config files, read-only."""
+def _claude_settings_path(a: argparse.Namespace) -> Path | None:
+    if getattr(a, "claude_settings", None):
+        return Path(a.claude_settings).expanduser()
+    return next((c for c in get_adapter("claude-code").config_paths() if c.exists()), None)
+
+
+def _idle_opts(a: argparse.Namespace, opts: SimOptions) -> SimOptions:
+    """Claude Code settings the replay needs, read-only: idle compaction (on with a 200k minimum when nothing says
+    otherwise) and CLAUDE_CODE_MAX_CONTEXT_TOKENS (the window for model IDs Claude Code does not recognize)."""
     if getattr(a, "no_current", False):
-        return {}
+        return opts
+    path = _claude_settings_path(a)
+    enabled, min_tokens, _ = read_idle(path)
+    if enabled is not None:
+        opts.idle_compaction = enabled
+    if min_tokens:
+        opts.idle_min_tokens = min_tokens
+    opts.claude_max_context = read_env_int(path, MAX_CONTEXT_ENV)
+    return opts
+
+
+def _config_paths(a: argparse.Namespace) -> dict[str, Path | None]:
+    """Each harness's config file: the one named on the command line, else the first default that exists."""
     paths: dict[str, Path | None] = {}
-    for h, arg in (("claude-code", a.claude_settings), ("codex", a.codex_config)):
+    for h, arg in (
+        ("claude-code", a.claude_settings),
+        ("codex", a.codex_config),
+        ("opencode", getattr(a, "opencode_config", None)),
+        ("gemini-cli", getattr(a, "gemini_settings", None)),
+    ):
         if arg:
             paths[h] = Path(arg).expanduser()
         else:
             cands = get_adapter(h).config_paths() if h in adapter_names() else []
             paths[h] = next((c for c in cands if c.exists()), None)
+    return paths
+
+
+def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
+    """Read the configured threshold per (harness, model) from config files, read-only."""
+    if getattr(a, "no_current", False):
+        return {}
+    paths = _config_paths(a)
     out = {}
     for h, m in {(x.harness, x.model) for x in sessions}:
         try:
@@ -282,6 +335,12 @@ def _load_result(path: str) -> dict[str, Any]:
         raise CLIError(f"{p} was made by an older compactlab (schema {res.get('schema')}); re-run compactlab simulate")
     if any("impact" not in c["vs_default"] for g in res["groups"] for c in g.get("comparison", {}).values()):
         reselect(res)  # results saved before per-day impact existed: recompute selection (no replay)
+    drift = price_drift(res, PricingTable.load())
+    if drift:
+        what = "; ".join(f"{d['model']} {d['field']} {d['old']:g} -> {d['new']:g}" for d in drift[:6])
+        more = f" (+{len(drift) - 6} more)" if len(drift) > 6 else ""
+        print(f"note: prices or windows changed since {p.name} was made: {what}{more}. Its picks use the old figures; "
+              "re-run `compactlab simulate` for today's.", file=sys.stderr)  # fmt: skip
     return res
 
 
@@ -297,12 +356,36 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
         )
     pricing = _pricing(a)
     quiet = getattr(a, "service", False)
+    if quiet and not getattr(a, "offline_pricing", False) and not getattr(a, "pricing", None):
+        from ..pricing.auto import maybe_refresh
+
+        seen = {(t.model, s.platform) for s in sessions for t in s.turns}
+        pricing, info = maybe_refresh(pricing, seen, time.time(), lambda: _pricing(a))
+        if info:
+            import logging
+
+            moved = "; ".join(f"{c['model']} {c['field']} {c['old']} -> {c['new']}" for c in info["changes"])
+            logging.getLogger("compactlab.service").info(
+                "price refresh (%s%s): %s", info["reason"],
+                f": {', '.join(info['missing'])}" if info["missing"] else "",
+                f"from {info['source']}; changed for your models: {moved or 'nothing'}; "
+                f"still unpriced: {', '.join(info['still_missing']) or 'none'}"
+                if info["refreshed"] else f"failed ({info['error']})")  # fmt: skip
 
     def step(i: int, n: int, name: str) -> None:
         _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
 
-    res = analyze(sessions, pricing, _opts(a), current=_current(a, sessions), progress=step)
+    res = analyze(sessions, pricing, _idle_opts(a, _opts(a)), current=_current(a, sessions), progress=step)
     _progress("")
+    from ..pricing.auto import load_state
+
+    res["model_notes"]["auto_refresh"] = bool(load_state().get("enabled"))
+    # price and window changes the refreshes brought in the last 30 days, for the rows your models use
+    used = {g["price_key"] for g in res["groups"]}
+    since = time.strftime("%Y-%m-%d", time.localtime(time.time() - 30 * 86400))
+    res["model_notes"]["price_changes"] = [
+        c for c in recent_changes(DEFAULT_REFRESHED, used, limit=50) if str(c.get("date", "")) >= since
+    ]
     if a.mode == "deep":
         return _deep(a, sessions, res, pricing)
     return res
@@ -416,7 +499,8 @@ T: dict[str, dict[str, Any]] = {
         "成本按公开标价估算;lite 模式下召回率是假设代理值。",
     },
 }
-ACTION_ZH = {"set": "设置", "keep default": "保持默认", "no action needed": "无需调整", "-": "-"}
+ACTION_ZH = {"set": "设置", "keep default": "保持默认", "keep current": "保持当前", "no action needed": "无需调整",
+             "-": "-"}  # fmt: skip
 
 
 def _dtime(c: dict[str, Any]) -> str:
@@ -521,6 +605,11 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                        "t": _k_(p["threshold"])}  # fmt: skip
                 for f in p["flags"]:
                     notes += [T[x]["flags"][f].format(p=T[x][n], **fmt) for x in langs if f in T[x]["flags"]]
+        sel_cmp = g["comparison"][g.get("profile") or "balanced"]
+        if sel_cmp.get("global") and sel_cmp["action"] != "set":
+            from ..term.views import keep_reason
+
+            notes += [keep_reason(g, g.get("profile") or "balanced", x) for x in langs]
         if g.get("cache_ttl"):
             notes += [_ttl_note(g, x) for x in langs]
         if "en" in langs:
@@ -531,6 +620,15 @@ def _summary(res: dict[str, Any], lang: str = "both") -> str:
                 + (f";当前:{g['current_note']}" if g.get("current_note") else "")
             )
         lines += [f"  · {n}" for n in notes]
+    from ..term.views import idle_lines, model_lines
+
+    for x in langs:
+        il = idle_lines(res, x)
+        if il:
+            lines += ["", *il]
+        ml = model_lines(res, x)
+        if ml:
+            lines += ["", *ml]
     lines.append("")
     lines += [T[x]["note"] for x in langs]
     return "\n".join(ln.rstrip() for ln in lines)
@@ -562,6 +660,7 @@ IMPACT: dict[str, dict[str, Any]] = {
         "legend": "Sign: -$ / -min = saves, + = adds. min/day = wait (compaction + re-discovery) - turns "
         "(faster turns from a smaller context). Month = 30 days. List-price estimates; recall is a lite-mode proxy.",
         "keep": "{p}: picks {t}, which is not better than the default: recommend keeps the default",
+        "keep_cur": "{p}: picks {t}, within the tolerance of your current {c}: recommend keeps your setting",
     },
     "zh": {
         "title": "每日影响 · {m} · {r} · 历史覆盖 {d:.1f} 个自然日,其中 {a} 个活跃日(至少一轮)",
@@ -583,6 +682,7 @@ IMPACT: dict[str, dict[str, Any]] = {
         "legend": "符号:-$ / -分钟 = 节省,+ = 增加。分钟/天 = 等待(压缩 + 重新查找)- 每轮提速(上下文更小)。"
         "一个月按 30 天。成本按公开标价估算;lite 模式下召回率是代理值。",
         "keep": "{p}:选出 {t},不比默认值好,recommend 会保持默认",
+        "keep_cur": "{p}:选出 {t},与你当前的 {c} 相差在容差内,recommend 会保持你的设置",
     },
 }
 IWIDTHS = ((14, "<"), (7, ">"), (10, ">"), (11, ">"), (11, ">"), (9, ">"), (8, ">"), (8, ">"), (13, ">"),
@@ -642,8 +742,15 @@ def impact_text(res: dict[str, Any], lang: str = "both") -> str:
                          f"{c['per_month']:.0f}")  # fmt: skip
                 lines.append("    " + "".join(_pad(v, w_, al) for v, (w_, al) in zip(cells, IWIDTHS, strict=True)))
         for n in PROFILE_NAMES:
-            if g["comparison"][n]["action"] == "keep default":
-                lines += ["  · " + IMPACT[x]["keep"].format(p=T[x][n], t=_k_(g["profiles"][n]["threshold"]))
+            act_n = g["comparison"][n]["action"]
+            if act_n in ("keep default", "keep current") and g["comparison"][n].get("global"):
+                from ..term.views import keep_reason
+
+                lines += [f"  · {T[x][n]}: {keep_reason(g, n, x)}" for x in langs]
+            elif act_n in ("keep default", "keep current"):
+                key = "keep" if act_n == "keep default" else "keep_cur"
+                lines += ["  · " + IMPACT[x][key].format(p=T[x][n], t=_k_(g["profiles"][n]["threshold"]),
+                                                         c=_k_((g.get("current") or {}).get("configured")))
                           for x in langs]  # fmt: skip
     if lines:
         lines.append("")
@@ -745,7 +852,12 @@ def _apply_opts(p: argparse.ArgumentParser) -> None:
     g.add_argument("--min", type=_k, default=100_000, help="lower bound with --i-authorize (default 100k)")
     g.add_argument("--max", type=_k, default=1_000_000, help="upper bound with --i-authorize (default 1m)")
     g.add_argument("--write", action="store_true", help="actually write; without it apply is a dry-run")
-    g.add_argument("--state-dir", default=STATE, help="backups and manifests (default ~/.compactlab)")
+    g.add_argument(
+        "--expect-plan",
+        metavar="HASH",
+        help="refuse (exit 2, write nothing) unless the plan is the one a dry-run printed with this hash",
+    )
+    g.add_argument("--state-dir", default=STATE, help="backups, manifests and the lock (default ~/.compactlab)")
 
 
 def _preauth(a: argparse.Namespace) -> ap.Preauth:
@@ -762,16 +874,54 @@ def _preauth(a: argparse.Namespace) -> ap.Preauth:
 
 
 def _recs(res: dict[str, Any]) -> list[dict[str, Any]]:
-    """The selected profile's threshold per main-session model; groups where the default is fine are left alone."""
+    """The selected profile's threshold per main-session model; groups where the default is fine are left alone. A
+    harness with one setting for every model (Codex) gets one entry: the value chosen across its models."""
     out = []
+    seen: set[str] = set()
     for g in res["groups"]:
-        if g["role"] != "main" or g["comparison"][g["profile"]]["action"] in ("no action needed", "keep default"):
+        if g["role"] != "main" or g["comparison"][g["profile"]]["action"] in (
+            "no action needed", "keep default", "keep current"):  # fmt: skip
             continue
-        out.append({"harness": g["harness"], "model": g["model"], "value": g["profiles"][g["profile"]]["threshold"]})
+        glob = (res.get("global_keys") or {}).get(g["harness"])
+        if glob:
+            if g["harness"] in seen:
+                continue
+            seen.add(g["harness"])
+            out.append({"harness": g["harness"], "model": g["model"],
+                        "value": glob["profiles"][g["profile"]]["threshold"]})  # fmt: skip
+            continue
+        out.append({"harness": g["harness"], "model": ap.model_key(g["harness"], g["model"]),
+                    "value": g["profiles"][g["profile"]]["threshold"]})  # fmt: skip
     return out
 
 
+def _apply_error(a: argparse.Namespace, code: str, text: str, plan: dict[str, Any] | None = None) -> None:
+    """A refusal: the reason on stderr and, with --json, an `error` object ({code, message}) on stdout, next to the
+    plan when there is one, so a caller never has to parse stderr. Codes: refused, plan_changed, busy."""
+    print(f"{'busy' if code == 'busy' else 'refused'}: {text}", file=sys.stderr)
+    if getattr(a, "json", False):
+        _out(a, {**(plan or {}), "error": {"code": code, "message": text}}, "")
+
+
+def _single_flight(a: argparse.Namespace, job: str, fn: Callable[[], int]) -> int:
+    """Run `fn` holding the state dir's lock (service/lock.py). While another calibration or config write holds it,
+    run nothing and exit EX_BUSY."""
+    from ..service.lock import Busy, LockError, single_flight
+
+    try:
+        with single_flight(Path(a.state_dir).expanduser(), job):
+            return fn()
+    except Busy as e:
+        _apply_error(a, "busy", str(e))
+        return EX_BUSY
+    except LockError as e:
+        _apply_error(a, "refused", str(e))
+        return 2
+
+
 def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) -> int:
+    """Plan, show and (with --write) write. A write runs under the state dir's lock (the caller holds it), so the
+    plan it checks against --expect-plan is the one it writes."""
     try:
         if a.write or retune:
             pre = _preauth(a)
@@ -785,8 +935,9 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
         changes, rejected = ap.plan_changes(_recs(res), pre)
         rendered = ap.render(changes)
     except ap.ApplyError as e:
-        print(f"refused: {e}", file=sys.stderr)
+        _apply_error(a, "refused", str(e))
         return 2
+    h = ap.plan_hash(changes)
     plan = {
         "profile": res["groups"][0]["profile"] if res["groups"] else (a.profile or DEFAULT_PROFILE),
         "dry_run": not a.write,
@@ -794,6 +945,7 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
             {"harness": c.harness, "file": str(c.file), "key": c.key, "old": c.old, "new": c.new} for c in changes
         ],
         "skipped": rejected,
+        "plan_hash": h,
     }
     text = [f"skip: {r}" for r in rejected]
     text += [f"{c.harness}: {c.key}: {c.old!r} -> {c.new}  ({c.file})" for c in changes]
@@ -802,6 +954,14 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
         text += [f"note: {n}" for n in ap.formatting_note(rendered, changes)]
     else:
         text.append("nothing to change")
+    text.append(f"plan {h}")
+    want = None if a.expect_plan is None else a.expect_plan.strip().lower()
+    if want is not None and want != h:  # an empty hash never matches
+        if not a.json:
+            print("\n".join(text))
+        why = f"the plan is not the reviewed one (expected {want or '(empty)'}, now {h})"
+        _apply_error(a, "plan_changed", f"{why}; nothing written: review this plan, then pass its hash", plan)
+        return 2
     if changes and not a.write:
         text.append("dry-run: nothing written (add --write with authorization to apply)")
     if changes and a.write:
@@ -813,15 +973,22 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
 
 
 def cmd_apply(a: argparse.Namespace) -> int:
-    return _do_apply(a, _reselect(a, _load_result(a.result)))
+    res = _reselect(a, _load_result(a.result))
+    if not a.write:
+        return _do_apply(a, res)  # a dry-run only reads: no lock
+    return _single_flight(a, "apply --write", lambda: _do_apply(a, res))
 
 
 def cmd_retune(a: argparse.Namespace) -> int:
     if not a.preauth:
-        print('refused: retune needs --preauth (with "allow_retune": true)', file=sys.stderr)
+        _apply_error(a, "refused", 'retune needs --preauth (with "allow_retune": true)')
         return 2
-    res = run_analysis(a)
-    return 2 if res is None else _do_apply(a, res, retune=True)
+
+    def run() -> int:  # a calibration, then maybe a write: one job under the lock
+        res = run_analysis(a)
+        return 2 if res is None else _do_apply(a, res, retune=True)
+
+    return _single_flight(a, "retune", run)
 
 
 def _forget_applied(state: Path, manifest_id: str) -> None:
@@ -839,15 +1006,19 @@ def _forget_applied(state: Path, manifest_id: str) -> None:
 
 def cmd_revert(a: argparse.Namespace) -> int:
     sd = Path(a.state_dir).expanduser()
-    try:
-        m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
-        for line in ap.revert(m, a.force):
-            print(line)
-        _forget_applied(sd, m.stem)
-    except (ap.ApplyError, FileNotFoundError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
-    return 0
+
+    def run() -> int:
+        try:
+            m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
+            for line in ap.revert(m, a.force):
+                print(line)
+            _forget_applied(sd, m.stem)
+        except (ap.ApplyError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        return 0
+
+    return _single_flight(a, "revert", run)
 
 
 def _version(binary: str) -> str | None:
@@ -870,7 +1041,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "pricing": {},
         "cache": {},
     }
-    bins = {"claude-code": "claude", "codex": "codex", "dsh": "dsh"}
+    bins = {"claude-code": "claude", "codex": "codex", "dsh": "dsh", "opencode": "opencode", "gemini-cli": "gemini"}
     for name in adapter_names():
         ad = get_adapter(name)
         roots = ad.default_roots()
@@ -887,6 +1058,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
                     for r in roots
                 ],
                 "config": [{"path": str(c), "exists": c.exists()} for c in ad.config_paths()],
+                "checks": ad().doctor_checks(),
             }
         )
         if name == "dsh":
@@ -913,6 +1085,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         if h["name"] == "dsh":
             zs = "decoder available" if h["zstd"] else "no decoder: Python 3.14+ or the zstd command"
             lines.append(f"  zstd   {'ok ' if h['zstd'] else '-- '} {zs}")
+        lines += [f"  {c['label']:6} {'ok ' if c['ok'] else '-- '} {c['text']}" for c in h["checks"]]
     lines.append(
         f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
@@ -929,6 +1102,29 @@ def cmd_doctor(a: argparse.Namespace) -> int:
 
 
 def cmd_pricing(a: argparse.Namespace) -> int:
+    if a.action == "auto":
+        from ..pricing.auto import AUTO_FILE, load_state, set_enabled
+
+        st = set_enabled(a.state == "on") if a.state in ("on", "off") else load_state()
+
+        def when(k: str) -> str:
+            return time.strftime("%Y-%m-%d %H:%M", time.localtime(st[k])) if st.get(k) else "never"
+
+        text = [
+            f"automatic price refresh: {'on' if st.get('enabled') else 'off'} ({AUTO_FILE})",
+            "  when on, `serve` and scheduled runs download models.dev (then LiteLLM) when the logs show a model "
+            "with no price row of its own; at most once a day; nothing about you is sent",
+            f"  last attempt: {when('last_attempt')}; last success: {when('last_ok')}"
+            + (f" from {st['last_source']}" if st.get("last_source") else ""),
+        ]
+        if st.get("still_missing"):
+            text.append("  still not in the public data: " + ", ".join(st["still_missing"]))
+        for c in recent_changes(DEFAULT_REFRESHED, limit=10):
+            text.append(f"  changed {c['date']}: {c['model']} {c['field']} {c['old']} -> {c['new']}")
+        if st.get("last_error"):
+            text.append(f"  last error: {st['last_error']}")
+        _out(a, st, "\n".join(text))
+        return 0
     if a.action == "refresh":
         try:
             n = refresh(a.source, DEFAULT_REFRESHED, a.url)
@@ -938,14 +1134,16 @@ def cmd_pricing(a: argparse.Namespace) -> int:
         print(f"stored {n} model rows from {a.source} in {DEFAULT_REFRESHED}")
         return 0
     t = PricingTable.load(a.pricing, offline=a.offline_pricing)
-    keys = a.model or sorted(t.data["models"])
+    keys = a.model or sorted(k for k in t.data["models"] if ":" not in k)  # platform rows: ask with --platform
     rows = []
     for k in keys:
-        p = t.lookup(k)
+        p = t.lookup(k, a.platform)
         rows.append(
             {
                 "model": k,
                 "row": p.key,
+                "match": p.kind,
+                "platform": p.platform,
                 "input": p.input,
                 "output": p.output,
                 "cache_write": p.cache_write,
@@ -955,13 +1153,17 @@ def cmd_pricing(a: argparse.Namespace) -> int:
                 "source": p.source,
             }
         )
-    text = [f"{'model':24} {'row':20} {'in':>6} {'out':>6} {'cw':>6} {'cr':>6} {'window':>8}  source"]
+    text = [f"{'model':24} {'row':24} {'match':8} {'in':>6} {'out':>6} {'cw':>6} {'cr':>6} {'window':>8}  source"]
     text += [
-        f"{r['model'][:24]:24} {r['row'][:20]:20} {r['input']:>6g} {r['output']:>6g} {r['cache_write']:>6g} "
-        f"{r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}"
+        f"{r['model'][:24]:24} {r['row'][:24]:24} {r['match']:8} {r['input']:>6g} {r['output']:>6g} "
+        f"{r['cache_write']:>6g} {r['cache_read']:>6g} {r['window'] // 1000:>7}k  {r['source']}"
         for r in rows
     ]
-    _out(a, rows, "\n".join(text) + "\nUSD per million tokens.")
+    legend = (
+        "USD per million tokens. match: exact = the model's own row; vendor = the vendor's list price for a platform "
+        "with no row of its own; family = borrowed from the closest model of the same family; fallback = unknown."
+    )
+    _out(a, rows, "\n".join(text) + "\n" + legend)
     return 0
 
 
@@ -1106,13 +1308,18 @@ def _service_logging(state: Path) -> None:
         """Clears the in-place progress line before a log line, so the two never share a row."""
 
         def emit(self, record: logging.LogRecord) -> None:
+            self.stream = sys.stderr  # stderr as it is now, not when logging was set up
             if self.stream.isatty():
                 self.stream.write("\r\033[K")
             super().emit(record)
 
+    for old in [h for h in lg.handlers if h.get_name() == "compactlab"]:  # set up once per process
+        lg.removeHandler(old)
+        old.close()
     for h in (RotatingFileHandler(state / "service" / "service.log", maxBytes=1_000_000, backupCount=3),
               Console(sys.stderr)):  # fmt: skip
         h.setFormatter(fmt)
+        h.set_name("compactlab")
         lg.addHandler(h)
 
 
@@ -1164,7 +1371,10 @@ def cmd_recalibrate(a: argparse.Namespace) -> int:
     cal = _calibrator(a)
     _service_logging(Path(a.state_dir).expanduser())
     out = cal.recalibrate("cli")
-    text = [f"recalibration: {out['status']}" + (f" ({out.get('error')})" if out.get("error") else "")]
+    if out["status"] == "busy":
+        text = [f"recalibration: busy: {out.get('message') or 'a run is already in flight'}"]
+    else:
+        text = [f"recalibration: {out['status']}" + (f" ({out.get('error')})" if out.get("error") else "")]
     for d in (out.get("auto_apply") or {}).get("decisions", []):
         text.append(f"  {d['model']}: {d['action']}: {d['reason']}")
     aa = out.get("auto_apply") or {}
@@ -1175,7 +1385,139 @@ def cmd_recalibrate(a: argparse.Namespace) -> int:
     elif aa.get("dry_run") and aa.get("diff"):
         text.append("dry-run: nothing written")
     _out(a, out, "\n".join(text))
-    return 0 if out["status"] == "ok" else 1
+    return 0 if out["status"] == "ok" else EX_BUSY if out["status"] == "busy" else 1
+
+
+# ---------- engine: the JSON interface the app talks to (docs/ENGINE_API.md) ----------
+
+
+def _engine(fn: Any) -> Any:
+    """Every engine command prints one JSON object; failures are an `error` object on stdout too, so a caller never
+    has to parse stderr (which keeps the log and tracebacks)."""
+
+    def run(a: argparse.Namespace) -> int:
+        from .. import engine as en
+
+        try:
+            msg, rc = fn(a)
+        except Exception as e:
+            msg, rc = _engine_failure(e)
+        print(en.dumps(msg), flush=True)
+        return rc
+
+    return run
+
+
+def _engine_failure(e: Exception) -> tuple[dict[str, Any], int]:
+    from .. import engine as en
+
+    if isinstance(e, EngineError):
+        return en.error(e.code, str(e)), 1
+    if isinstance(e, CLIError):  # a bad option
+        return en.error("bad_args", str(e)), 2
+    import traceback
+
+    traceback.print_exc(file=sys.stderr)
+    return en.error("internal", f"{type(e).__name__}: {e}"[:500]), 1
+
+
+class EngineError(CLIError):
+    def __init__(self, code: str, text: str) -> None:
+        super().__init__(text)
+        self.code = code
+
+
+def _engine_hello(a: argparse.Namespace) -> dict[str, Any]:
+    from ..engine import LIVE_HARNESSES, hello
+
+    roots, cfg = _roots(a), _config_paths(a)
+    harnesses = []
+    for name in adapter_names():
+        ad = get_adapter(name)(roots.get(name))
+        c = cfg.get(name) or next(iter(ad.config_paths()), None)
+        harnesses.append({
+            "name": name,
+            "live": name in LIVE_HARNESSES,
+            "roots": [{"path": str(r), "exists": r.exists()} for r in ad.roots],
+            "config": {"path": str(c), "exists": c.exists()} if c else None,
+        })  # fmt: skip
+    return hello(harnesses, Path(a.state_dir).expanduser())
+
+
+def _live(a: argparse.Namespace) -> Any:
+    from ..engine import LIVE_HARNESSES
+    from ..engine.live import LiveSessions
+
+    # a config file that does not exist yet is still watched: `apply` may create it while this runs
+    cfg = {h: p or next(iter(get_adapter(h).config_paths()), None) for h, p in _config_paths(a).items()}
+    return LiveSessions(
+        _roots(a),
+        cfg,
+        _pricing(a),
+        time.time,
+        active_s=a.active_hours * 3600,
+        project_names=not a.no_project_names,
+        harnesses=tuple(h for h in LIVE_HARNESSES if not a.harness or h in a.harness),
+    )
+
+
+@_engine
+def cmd_engine_hello(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return _engine_hello(a), 0
+
+
+@_engine
+def cmd_engine_sessions(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return _live(a).snapshot(), 0
+
+
+def cmd_engine_watch(a: argparse.Namespace) -> int:
+    from ..engine import dumps
+    from ..engine.watch import run
+
+    try:
+        live, hello = _live(a), _engine_hello(a)
+    except Exception as e:  # e.g. an unreadable --pricing file: say so in JSON like the one-shot commands
+        msg, rc = _engine_failure(e)
+        print(dumps(msg), flush=True)
+        return rc
+    try:
+        return run(live.snapshot, hello, sys.stdin, sys.stdout, a.min_interval, a.interval)
+    except BrokenPipeError:  # the app went away; keep the interpreter's final flush from failing too
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
+
+
+@_engine
+def cmd_engine_result(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine import result_message, result_path
+
+    state = Path(a.state_dir).expanduser()
+    path = Path(a.result).expanduser() if a.result else result_path(state)
+    if not path.exists():
+        raise EngineError("no_result", f"no calibration yet ({path}); run: compactlab engine calibrate")
+    try:
+        res = _load_result(str(path))
+    except (CLIError, ValueError, KeyError) as e:
+        raise EngineError("bad_result", str(e)) from e
+    if a.profile:
+        reselect(res, a.profile)
+    return result_message(res, state), 0
+
+
+@_engine
+def cmd_engine_calibrate(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine import result_message
+
+    cal = _calibrator(a)
+    state = Path(a.state_dir).expanduser()
+    _service_logging(state)
+    out = cal.recalibrate(a.reason)
+    if out["status"] == "busy":
+        raise EngineError("busy", str(out.get("message") or "a calibration is already running"))
+    if out["status"] != "ok" or cal.result is None:
+        raise EngineError("calibration_failed", str(out.get("error") or "no result"))
+    return result_message(cal.result, state, out.get("auto_apply")), 0
 
 
 def cmd_schedule(a: argparse.Namespace) -> int:
@@ -1285,7 +1627,7 @@ def cmd_share(a: argparse.Namespace) -> int:
             manifest = json.loads(m.read_text())
         except (ap.ApplyError, OSError, ValueError) as e:
             raise CLIError(f"--verify needs a change made with compactlab apply: {e}") from e
-        verification = vf.verify(sessions, manifest, _pricing(a))
+        verification = vf.verify(sessions, manifest, _pricing(a), opts=_idle_opts(a, SimOptions()))
         if not any(g["verdict"] != "no_data" for g in verification["groups"]):
             raise CLIError("--verify: no sessions on both sides of the change yet; share without --verify")
     try:
@@ -1323,8 +1665,11 @@ def cmd_verify(a: argparse.Namespace) -> int:
                 "--applied-at describes a change made by hand: give --new (and --model for Claude Code), not --id"
             )
         harness = a.harness[0] if a.harness and len(a.harness) == 1 else "claude-code"
-        if harness == "claude-code" and not a.model:
-            raise CLIError("--model is needed for a Claude Code change (the key is per model)")
+        if harness in ("claude-code", "opencode", "gemini-cli") and not a.model:
+            raise CLIError(
+                "--model is needed for a Claude Code, OpenCode or Gemini CLI change (the threshold is per model; "
+                "OpenCode models are named provider/model, as `compactlab scan` lists them)"
+            )
         try:
             manifest = vf.manual_manifest(vf.parse_when(a.applied_at), harness, a.model or "", a.new, a.old)
         except ValueError as e:
@@ -1352,7 +1697,8 @@ def cmd_verify(a: argparse.Namespace) -> int:
     sessions = load_sessions(a)
     if not sessions:
         raise CLIError("no sessions found; check `compactlab doctor`, or widen --since-days (0 = all)")
-    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days)
+    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days,
+                    opts=_idle_opts(a, SimOptions()))  # fmt: skip
     res["manifest"] = m.stem
     if note:
         res["note"] = note
@@ -1423,6 +1769,7 @@ def _demo_result(out: Path, lang: str = "both") -> dict[str, Any]:
     )
     ns = build_parser().parse_args(
         ["simulate", "--claude-root", str(out / "claude" / "projects"), "--codex-root", str(out / "codex" / "sessions"),
+         "--harness", "claude-code", "--harness", "codex",  # the other harnesses' default roots are real logs
          "--since-days", "0", "--no-cache", "--offline-pricing", "--claude-settings", str(demo_settings),
          "--codex-config", str(out / "codex" / "config.toml"), "--lang", lang]
     )  # fmt: skip
@@ -1559,7 +1906,11 @@ def _commands(sub: Any, fmt: Any) -> None:
     h.add_argument(
         "--applied-at", metavar="WHEN", help="when it took effect: 2026-10-29 or 2026-10-29T21:05 (local time)"
     )
-    h.add_argument("--model", help="Claude Code: the model whose modelSettings key you set")
+    h.add_argument(
+        "--model",
+        help="the model the change is checked for (Claude Code: its modelSettings key; OpenCode: provider/model; "
+        "Gemini CLI: --new is that model's token threshold)",
+    )
     h.add_argument("--new", type=_k, help="the threshold you set, e.g. 625k")
     h.add_argument("--old", type=_k, help="the threshold before (default: the harness default)")
     s.add_argument("--pricing", help="pricing override JSON")
@@ -1596,6 +1947,40 @@ def _commands(sub: Any, fmt: Any) -> None:
     _service_args(s)
     s.set_defaults(f=cmd_recalibrate)
 
+    s = sub.add_parser("engine", help="JSON interface for the compactlab app and other tools (docs/ENGINE_API.md)")
+    es = s.add_subparsers(dest="engine_cmd", required=True, metavar="engine-command")
+    e = es.add_parser("hello", help="engine and contract version, harness log and config locations")
+    _source(e)
+    _config_args(e)
+    e.add_argument("--state-dir", default=STATE)
+    e.set_defaults(f=cmd_engine_hello)
+    for name, text in (
+        ("sessions", "the active sessions now: context, model, threshold in force, cache expiry"),
+        ("watch", "active sessions as JSON Lines on stdout while running; commands on stdin"),
+    ):
+        e = es.add_parser(name, help=text)
+        _source(e)
+        _config_args(e)
+        e.add_argument("--state-dir", default=STATE)
+        e.add_argument("--active-hours", type=float, default=6.0, help="sessions written in the last N hours (6)")
+        e.add_argument("--no-project-names", action="store_true", help="leave out the working directory's name")
+        e.add_argument("--pricing", help="pricing override JSON (windows of models the logs do not size)")
+        e.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices and windows")
+    e.set_defaults(f=cmd_engine_watch)
+    e.add_argument("--min-interval", type=float, default=5.0, help="seconds between scans at most (default 5)")
+    e.add_argument("--interval", type=float, default=60.0, help="scan anyway after N quiet seconds (0 = never)")
+    es.choices["sessions"].set_defaults(f=cmd_engine_sessions)
+    e = es.add_parser("result", help="the last calibration, summarized for the threshold table")
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--result", help="a result.json (default: the calibrator's, <state-dir>/service/result.json)")
+    e.add_argument("--profile", choices=PROFILE_NAMES, help="select this profile (no replay)")
+    e.set_defaults(f=cmd_engine_result)
+    e = es.add_parser("calibrate", help="one lite calibration (like recalibrate), then its summary")
+    _sim(e)
+    _service_args(e)
+    e.add_argument("--reason", default="engine", help="recorded with the calibration (e.g. app, schedule)")
+    e.set_defaults(f=cmd_engine_calibrate)
+
     s = sub.add_parser("schedule", help="print / install a launchd or systemd user schedule (never auto-loaded)")
     s.add_argument("action", choices=["print", "install", "status", "uninstall"])
     s.add_argument("--platform", choices=["auto", "launchd", "systemd"], default="auto")
@@ -1623,9 +2008,16 @@ def _commands(sub: Any, fmt: Any) -> None:
     s.add_argument("--force", action="store_true", help="also revert keys edited after apply")
     s.set_defaults(f=cmd_revert)
 
-    s = sub.add_parser("pricing", help="show effective prices, or refresh from a public dataset")
-    s.add_argument("action", choices=["show", "refresh"])
+    s = sub.add_parser(
+        "pricing",
+        help="show effective prices, refresh from a public dataset, or turn on automatic refresh for new models",
+    )
+    s.add_argument("action", choices=["show", "refresh", "auto"])
+    s.add_argument("state", nargs="?", choices=["on", "off", "status"], help="for `auto`: on, off or status (default)")
     s.add_argument("--model", action="append")
+    s.add_argument(
+        "--platform", help="price on this platform: amazon-bedrock, google-vertex-anthropic, azure, openrouter"
+    )
     s.add_argument("--source", choices=sorted(SOURCES), default="models.dev")
     s.add_argument("--url", help="override the dataset URL (https only)")
     s.add_argument("--pricing")

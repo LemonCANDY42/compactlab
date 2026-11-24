@@ -10,6 +10,8 @@ from ..model import Session
 
 WINDOW = 20  # turns inspected before/after a compaction
 MIN_OBSERVED = 5
+PRIOR_STEP_TOKENS = 2000  # tokens one re-discovery call brings back, paired with the prior penalty
+MIN_STEP_SAMPLES = 20
 
 CORRECTION_RE = re.compile(
     r"(\bi (already )?(told|said|mentioned)\b|\byou forgot\b|\bas i said\b|\bnot what i\b|"
@@ -18,7 +20,18 @@ CORRECTION_RE = re.compile(
     re.I,
 )
 
-REDISCOVERY_TOOLS = ("Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "read_file", "shell", "exec_command")
+REDISCOVERY_TOOLS = (
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "WebFetch",
+    "WebSearch",
+    "read_file",
+    "shell",
+    "exec_command",
+    "exec",
+)
 
 
 @dataclass
@@ -80,3 +93,24 @@ def calibrate(sessions: list[Session], base_tokens: int, summary_tokens: int) ->
     return PenaltyParams(
         rho=rho, fixed_tokens=0, correction_turns=statistics.fmean(excess_corr), source="observed", n_observed=n
     )
+
+
+def rediscovery_step(sessions: list[Session], pen: PenaltyParams) -> int:
+    """Tokens one re-discovery call brings back: re-read tokens / this = re-discovery calls (turns of wall-clock).
+
+    It must be in the same units as the re-read tokens. An observed penalty measured them as the summed results of
+    repeated re-discovery calls, so the matching size is the mean of those calls' results (a median of many tiny
+    results would turn a few hundred tokens into thousands of turns). A prior penalty pairs with the prior step.
+    """
+    if pen.source != "observed":
+        return PRIOR_STEP_TOKENS
+    sizes = [
+        t.tool_result_tokens[i]
+        for s in sessions
+        for t in s.turns
+        for i, k in enumerate(t.tool_keys)
+        if i < len(t.tool_result_tokens) and _is_rediscovery(k)
+    ]
+    if len(sizes) < MIN_STEP_SAMPLES:
+        return PRIOR_STEP_TOKENS
+    return max(int(statistics.fmean(sizes)), 1)

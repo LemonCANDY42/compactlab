@@ -5,7 +5,8 @@ from 2026-10-29 and change quickly.
 
 ## Where things stand
 
-- Harnesses: Claude Code and Codex (parse, replay, recommend, apply, revert).
+- Harnesses: Claude Code and Codex (parse, replay, recommend, apply, revert); OpenCode 1.x (parse, replay,
+  recommend); dsh and Gemini CLI experimental (parse, replay, recommend; not yet run on real history).
 - Lite mode is offline and default; deep mode exists but has not been run against real history at scale.
 - Recall in lite mode is an assumed proxy, and the savings are counterfactual estimates at list prices.
 - Installs from GitHub only; no PyPI package, no tagged release.
@@ -61,17 +62,38 @@ no new dependency.
   `time` (snapshots strip it; the adapter falls back to stream chunk times), and where a user's plugin config lives
   (until then `apply` does not write it). Marked experimental until someone runs it on real history.
 
-## v0.4 — ratio-knob harnesses
+## v0.4 — ratio-knob harnesses — OpenCode and Gemini CLI landed
 
-Most other harnesses set the threshold as a fraction of the window, not a token count. One shared step turns the
-recommended token threshold into the harness's unit (and says when a model's window makes the fraction coarse).
+Most other harnesses set the threshold as a fraction of the window, not a token count. One shared step
+(`recommend/units.py`) turns the recommended token threshold into the harness's unit, rounds so the trigger never
+lands above the pick, and says when a model's window makes the fraction coarse or when one global fraction lands at
+different points for models with different windows. dsh's `thresholdRatio` uses it too.
 
 | Harness | Stars | Knob (default) | Logs | Order |
 | --- | --- | --- | --- | --- |
-| OpenCode | ~223k | `compaction.reserved` tokens in `opencode.json` (10,000) | `~/.local/share/opencode` (format to confirm) | 1 |
-| Gemini CLI | ~109k | `model.compressionThreshold` (0.5) | `~/.gemini/tmp/<hash>/chats/` | 2 |
+| OpenCode | ~223k | 1.x: per-model `limit` (window − 32k); 2.x: `compaction.buffer` ("15%") | `~/.local/share/opencode/opencode.db` | 1, done |
+| Gemini CLI | ~109k | `model.compressionThreshold` (0.5) | `~/.gemini/tmp/<project>/chats/*.jsonl` | 2, done (experimental) |
 | Hermes Agent | ~258k | `compression.threshold` (0.5), per-model `model_thresholds` | to confirm | 3 |
-| Qwen Code | ~29k | `context.autoCompactThreshold` (0.85) | `~/.qwen` (to confirm) | 4 |
+| Qwen Code | ~29k | `context.autoCompactThreshold` (0.85, a ceiling) | `~/.qwen/projects/<cwd>/chats/<id>.jsonl` (from source) | 4 |
+
+- **OpenCode — done for 1.x.** Reads the SQLite store read-only (`mode=ro`, WAL-safe; `immutable=1` only when a
+  read-only connection cannot open). One turn per `step-finish` part (disjoint input / cache read / cache write;
+  reasoning added to output); compactions are a `compaction` part plus a `summary: true` reply, whose own call is not
+  a turn. Checked on a real 1.19.5 database: no unknown events, and the parsed token sums equal OpenCode's own
+  session totals. The roadmap's `compaction.reserved` (10,000) turned out wrong for 1.19: reserved defaults to
+  min(20,000, max output) and applies only to models whose `limit` sets `input`; every other model compacts at
+  window − min(max output, 32,000), and a custom model without `limit` never compacts. `recommend` therefore sets a
+  per-model `limit`. Open: compaction records and `compaction.auto` on real history (the checked database had
+  none), the 2.x storage (`session_v2` / `session_message`, counted by `doctor`, not parsed), where 2.x users keep
+  `compaction.buffer`, and model windows OpenCode reads from its catalog (compactlab uses the pricing table).
+- **Gemini CLI — experimental.** JSONL since at least 0.46 (one `.json` document before): messages are re-written
+  by id when tokens or tool calls arrive, `tokens.input` includes `cached`, tool results are `user` messages, and a
+  compression leaves only a `<state_snapshot>` summary (0.70: appended plus a `$patch`; 0.46: a `$set.messages`
+  checkpoint). Manual `/compress` and its summary call's usage are not distinguishable in the log. Open: a run on
+  real history, and context-management mode, which compacts by another path.
+- **Qwen Code** (from its source, v0.28.4): tree-shaped JSONL like Claude Code's (`uuid`/`parentUuid`, raw Gemini
+  `usageMetadata`) with an explicit `system` / `chat_compression` record, so it needs its own parser rather than the
+  Gemini one.
 | Kimi CLI | ~11k | `loop_control.compaction_trigger_ratio` (0.85) and `reserved_context_size` | `~/.kimi/sessions` (to confirm) | 5 |
 | Goose | ~56k | `GOOSE_AUTO_COMPACT_THRESHOLD` (0.8) / `GOOSE_AUTO_COMPACT_TOKEN_LIMIT` | sqlite (to confirm) | 6 |
 

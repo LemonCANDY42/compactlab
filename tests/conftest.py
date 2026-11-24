@@ -3,13 +3,28 @@ import pytest
 from compactlab import synth
 
 
+def _isolate(mp: pytest.MonkeyPatch, home) -> None:
+    mp.setenv("HOME", str(home))
+    for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "GEMINI_CLI_HOME",
+              "CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS"):  # fmt: skip
+        mp.delenv(v, raising=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_home(tmp_path_factory):
+    """The home of fixtures wider than one test (a module's `simulate` run): pytest sets those up before any
+    function-scoped fixture, so without this they would read real settings and write the real ~/.compactlab."""
+    with pytest.MonkeyPatch.context() as mp:
+        home = tmp_path_factory.mktemp("session-home")
+        _isolate(mp, home)
+        yield home
+
+
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path_factory, monkeypatch):
-    """Tests never see the real home directory (no real transcripts, settings or caches)."""
+    """Tests never see the real home directory (no real transcripts, settings or caches); each gets a fresh one."""
     home = tmp_path_factory.mktemp("home")
-    monkeypatch.setenv("HOME", str(home))
-    for v in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME"):
-        monkeypatch.delenv(v, raising=False)
+    _isolate(monkeypatch, home)
     return home
 
 
