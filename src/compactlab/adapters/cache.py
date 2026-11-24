@@ -131,12 +131,13 @@ class ScanCache:
         if not rows:
             return None
         try:
-            state = {"path": str(path), "session": json.loads(rows[0][0])}
-            if resume:
-                state.update(json.loads(rows[0][1]))
+            session = json.loads(rows[0][0])
+            rest = json.loads(rows[0][1]) if resume else {}
         except ValueError:
             return None  # unreadable row: parse the file again, which replaces it
-        return state
+        if not isinstance(session, dict) or not isinstance(rest, dict):
+            return None  # valid JSON of the wrong shape (e.g. `null`): the same
+        return {"path": str(path), "session": session, **rest}
 
     def _store(
         self, adapter: Adapter, path: Path, head: str, st: os.stat_result, offset: int, parser: Parser

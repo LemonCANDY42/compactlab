@@ -308,6 +308,13 @@ def test_cache_reparses_a_row_of_the_wrong_shape(tmp_path, claude_root):
     cache._db.execute("UPDATE entries SET resume = ? WHERE path = ?", ('{"seen": 7, "pending_user": [1]}', str(g)))
     assert _norm(cache.parse(ad, g)) == _norm(ad.parse_file(g))
     assert cache.stats["resumed"] == 0 and cache.stats["parsed"] == 7
+    for bad in ("null", "7", "[1, 2]", '"text"'):  # resume state that is valid JSON but not a mapping
+        g.write_text("".join(lines[: len(lines) // 2]))
+        cache.parse(ad, g)
+        g.write_text("".join(lines))
+        cache._db.execute("UPDATE entries SET resume = ? WHERE path = ?", (bad, str(g)))
+        assert _norm(cache.parse(ad, g)) == _norm(ad.parse_file(g))
+    assert cache.stats["resumed"] == 0 and cache.stats["parsed"] == 7 + 2 * 4
 
 
 def test_cache_shared_by_two_runs_and_never_blocks_a_scan(tmp_path, claude_root, monkeypatch):
