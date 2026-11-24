@@ -3,12 +3,12 @@ import json
 from compactlab.adapters import cache as cache_mod
 from compactlab.adapters import get_adapter
 from compactlab.adapters.cache import CACHE_VERSION, Pruned, ScanCache
-from compactlab.model import session_to_dict
+from compactlab.model import lean, session_to_dict
 
 
 def _norm(s):
-    d = session_to_dict(s)
-    return d
+    """A session as the scan cache keeps it (lean: no transcript text), comparable with a full parse."""
+    return session_to_dict(lean(s))
 
 
 def _mode(p):

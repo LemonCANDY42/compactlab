@@ -155,7 +155,8 @@ class GeminiParser(Parser):
             self.pending_user = ""
         else:  # the same call written again: keep where it started, take the newer counts and tools
             old = s.turns[idx]
-            turn.user_text, turn.start_ts, turn.ts = old.user_text, old.start_ts, old.ts or ts
+            turn.user_text, turn.correction = old.user_text, old.correction
+            turn.start_ts, turn.ts = old.start_ts, old.ts or ts
             s.turns[idx] = turn
 
     def _replace(self, idx: int, tool_calls: Any) -> None:

@@ -48,7 +48,10 @@ Import the module in `adapters/__init__.py`.
 
 The scan cache keeps `dump()["session"]` apart from the rest of the state (seen ids, pending calls) and rebuilds
 an unchanged file from `load({"path": ..., "session": ...}).finish()` without reading the rest, so `finish()` must
-not depend on anything but the session.
+not depend on anything but the session. It stores the session lean (`model.lean`: no prompt text, tool arguments,
+snippets or summaries), so a resumed parser must not read the text of turns or compactions it made before: append
+to earlier turns as you like, and replace a compaction's summary with `Compaction.set_summary()` and test for one
+with `summary_len`, not `summary_text`.
 
 Logs that are not plain append-only JSONL (compressed, one file per generation, a document rewritten in place)
 override `find_files()` and `read_records()` and set `resumable = False`: the scan cache then reuses unchanged files

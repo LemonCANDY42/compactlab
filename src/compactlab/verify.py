@@ -152,7 +152,7 @@ def _compaction_calls(s: Session, pricing: PricingTable) -> float:
         if not c.pre_tokens:
             continue
         _, ro, _, rr = pricing.lookup(model, s.platform).rates(c.pre_tokens)
-        summ = len(c.summary_text) // 4 if c.summary_text else SUMMARY_TOKENS
+        summ = c.summary_len // 4 if c.summary_len else SUMMARY_TOKENS
         total += c.pre_tokens * rr + summ * ro
     return total
 

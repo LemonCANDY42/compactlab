@@ -50,9 +50,21 @@ shared (it contains no transcript text) and applied later.
 
 ## Scan cache
 
-`~/.compactlab/cache/scan-v4.sqlite3` (stdlib `sqlite3`, WAL), one row per log file: size, mtime_ns, SHA-1 of the
+`~/.compactlab/cache/scan-v5.sqlite3` (stdlib `sqlite3`, WAL), one row per log file: size, mtime_ns, SHA-1 of the
 first 4 KiB, offset of the last complete line, parser version, and the parser state in two parts, the session and
-the rest that only resuming needs (seen ids, pending tool calls).
+the rest that only resuming needs (seen ids, pending tool calls; empty for a harness that cannot resume).
+
+The session is stored lean (`model.lean`). The lite analysis reads text in three places only: whether a user message
+corrects the agent (`CORRECTION_RE`, for the re-discovery penalty), which tool calls repeat (identity and tool name)
+and how long a compaction summary is. A lean session keeps those as `Turn.correction`, a tool key reduced to its tool
+name and a 96-bit hash of the whole key (`tool_id`: equal keys stay equal, `split(":")[0]` is unchanged) and
+`Compaction.summary_chars`, and drops prompts, tool arguments, output snippets and summaries. `load_sessions` leans
+every session it returns, cached or not, so the lite analysis gives the same result as on full sessions and holds a
+fraction of the memory (on one 30-day history, 182,160 turns: 109 MB instead of 475 MB). Whether a message
+corrects the agent is checked with `model.corrects`, which runs the regex only on short windows around the words
+any match must contain: the same answer, about 5x faster on long pasted messages. A parser resumed from a lean row
+keeps working: after a resume it only appends to earlier turns and sets the last compaction's summary through
+`Compaction.set_summary`. Deep mode reads text, so it parses the logs itself instead of using the cache.
 
 - Unchanged → rebuild the session from the row, without reading the resume part.
 - Appended with the same head → resume from the offset. A torn last line is never consumed.

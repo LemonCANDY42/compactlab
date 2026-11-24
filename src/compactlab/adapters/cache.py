@@ -12,10 +12,12 @@ The same database keeps the last few lite analysis results, each under a key of 
 every other input (see `cli/main.py`), so a run whose files and inputs are unchanged reuses one without decoding a
 session.
 
-The cache holds parsed excerpts of your transcripts (your prompts' text, tool commands, 400-char output snippets),
-so it is kept in a 0700 directory (`~/.compactlab/cache`) with 0600 files. Rows of files that no longer exist are
-pruned after each scan, the first scan with a new cache version deletes the files of older versions (never newer
-ones), `--no-cache` bypasses it and `compactlab cache clear` removes every version.
+Sessions are stored lean (`model.lean`): token counts and timings, a flag for user messages that correct the agent,
+hashed tool keys and summary lengths, but no prompt text, tool arguments, output snippets or summaries. The resume
+part may still hold the text of a log's last user message while its turn is unfinished. The cache is kept in a 0700
+directory (`~/.compactlab/cache`) with 0600 files. Rows of files that no longer exist are pruned after each scan, the
+first scan with a new cache version deletes the files of older versions (never newer ones), `--no-cache` bypasses it
+and `compactlab cache clear` removes every version.
 """
 
 from __future__ import annotations
@@ -30,13 +32,14 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, NamedTuple
 
+from ..model import lean, lean_dict
 from .base import parse_lines
 
 if TYPE_CHECKING:
     from ..model import Session
     from .base import Adapter, Parser
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5  # 5: lean rows, no transcript text (the first scan deletes version 4's, which had it)
 HEAD = 4096
 BUSY_TIMEOUT_S = 10.0  # wait this long for another run's write; then go on without caching that file
 ERASE_TIMEOUT_S = 1.0  # wait this long for other runs' reads to end before erasing pruned rows from the files
@@ -104,7 +107,7 @@ class ScanCache:
                     session = _rebuild(adapter, state) if state is not None else None
                     if session is not None:
                         self.stats["hit"] += 1
-                        return session
+                        return lean(session)
                 elif adapter.resumable and st.st_size > offset and size <= st.st_size:
                     state = self._state(adapter, path, row, resume=True)
                     resumed = _resume(adapter, state, f, offset) if state is not None else None
@@ -142,11 +145,16 @@ class ScanCache:
     def _store(
         self, adapter: Adapter, path: Path, head: str, st: os.stat_result, offset: int, parser: Parser
     ) -> Session:
+        # lean first: the finished session shares its turns with the parser's, so the dump below is lean already and
+        # each user message is checked for a correction once
+        finished = lean(parser.finish())
         db = self._open(create=True)
         if db is not None:
             state = parser.dump()
-            session = state.pop("session")
+            session = lean_dict(state.pop("session"))  # no transcript text on disk (compactions; anything not shared)
             state.pop("path", None)
+            if not adapter.resumable:
+                state = {}  # only resuming reads it
             self._exec(
                 "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -161,7 +169,7 @@ class ScanCache:
                     _JSON.encode(state),
                 ),
             )
-        return parser.finish()
+        return finished
 
     def prune(self) -> Pruned:
         """Delete the rows of files that no longer exist, in one transaction, and erase them from the cache files.

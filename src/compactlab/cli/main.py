@@ -25,7 +25,7 @@ from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
 from ..adapters.cache import ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
-from ..model import Session, drop_inherited
+from ..model import Session, drop_inherited, lean
 from ..pricing import DEFAULT_REFRESHED, PricingTable
 from ..pricing.refresh import SOURCES, recent_changes, refresh
 from ..report.html import render_html
@@ -225,8 +225,10 @@ def _warn(a: argparse.Namespace, msg: str) -> None:
         print(f"warning: {msg}", file=sys.stderr)
 
 
-def load_sessions(a: argparse.Namespace, cut: float | None = None) -> list[Session]:
-    cache = None if a.no_cache else ScanCache(a.cache_dir)
+def load_sessions(a: argparse.Namespace, cut: float | None = None, text: bool = False) -> list[Session]:
+    """Sessions of the logs in the window, lean (`model.lean`: no transcript text, a fraction of the memory) unless
+    `text` (deep mode), which reads every log itself: the scan cache keeps no text."""
+    cache = None if a.no_cache or text else ScanCache(a.cache_dir)
     out: list[Session] = []
     cut = _cut(a) if cut is None else cut
     quiet, total, errors = getattr(a, "service", False), 0, 0
@@ -245,7 +247,7 @@ def load_sessions(a: argparse.Namespace, cut: float | None = None) -> list[Sessi
                 except OSError:
                     errors += 1
                     continue
-                out += [s for s in found if s.turns]
+                out += [s if text else lean(s) for s in found if s.turns]
             if h == "claude-code":  # a resumed or forked log repeats its parent's history
                 out[first:] = drop_inherited(out[first:])
         if cache:
@@ -468,7 +470,7 @@ def _run_analysis(a: argparse.Namespace, cut: float | None, keep: ScanCache | No
         if reused is not None:
             a.scan_stats = {"files": nfiles, "cached": 0, "parsed": 0, "reused": True}  # no log was read
             return reused
-    sessions = load_sessions(a, cut)
+    sessions = load_sessions(a, cut, text=a.mode == "deep")
     if not sessions:
         roots = [str(r) for h in (a.harness or adapter_names()) for r in get_adapter(h)(_roots(a).get(h)).roots]
         raise CLIError(
