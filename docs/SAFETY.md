@@ -61,6 +61,35 @@ Codex has one global key, so list the single model you want it to follow.
 4. Writes a backup and a manifest under `~/.compactlab/` (`--state-dir`), then writes atomically. Backups hold your
    whole config, which can contain secrets, so the backup directories are mode 0700 and the files 0600.
 
+## Writing exactly the reviewed plan
+
+Every plan has a hash, printed as `plan <hash>` (`plan_hash` with `--json`). It covers, per change, the harness, the
+file, the key, the value the key has now and the value it gets; not the time, the order of the changes or the other
+keys in the file. `apply --write --expect-plan <hash>` makes the plan again and refuses unless it has the same hash:
+the key was edited since, the result, profile or pre-authorization gives another value or another set of keys. A
+refusal exits 2 and writes nothing, no backup or manifest either. With `--json` it prints the new plan with
+`"error": {"code": "plan_changed", "message": ...}`, so the new plan can be shown and approved again; other refusals
+print `{"error": {"code": "refused" | "busy", "message": ...}}`. A dry-run with `--expect-plan` only checks. An empty
+`--expect-plan` never matches.
+
+```bash
+compactlab apply --result result.json --claude-settings ~/.claude/settings.json --models claude-opus-5-5 --json
+# review it, then write that plan and nothing else:
+compactlab apply ... --write --i-authorize --expect-plan 3f1c0a9b5d2e7c48
+```
+
+## One job at a time
+
+`apply --write`, `retune` and `revert`, and every calibration that keeps the calibrator's state (`recalibrate`,
+`engine calibrate`, the runs of `serve`), take an exclusive lock on `<state-dir>/service/lock` without waiting.
+While one of them holds it, another does nothing, names the job that holds it (pid, since when) and exits 75
+(`EX_TEMPFAIL`; `engine calibrate` prints the `busy` error instead); try again when it finishes. `apply` makes and
+checks the plan while it holds the lock, so no other compactlab process can change the file between the check and
+the write. `retune` holds it for the whole run, analysis included. A dry-run `apply` only reads and does not take it.
+The operating system releases the lock when its holder exits, also on a crash or `kill -9`, so there is no stale lock
+to clear; leave the file in place. Each `--state-dir` has its own lock. A lock that cannot be taken at all (no
+permission, a file system without `flock`) is refused with exit 2.
+
 ## Revert
 
 `compactlab revert` (latest manifest, or `--id`):

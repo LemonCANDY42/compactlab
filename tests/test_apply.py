@@ -234,3 +234,23 @@ def test_dated_and_platform_ids_use_the_canonical_settings_key(tmp_path):
     assert not ap.model_allowed("claude-code", "claude-sonnet-5-5", ["claude-opus-5-5"])
     ch, rej = ap.plan_changes([{"harness": "claude-code", "model": key, "value": 300000}], pre_)
     assert not rej and ch[0].key == "modelSettings.claude-opus-5-5.autoCompactWindow"
+
+
+def test_plan_hash_is_stable_and_covers_what_a_write_changes(tmp_path):
+    f = tmp_path / "settings.json"
+    g = tmp_path / "config.toml"
+    a = ap.Change("claude-code", f, "modelSettings.claude-opus-5-5.autoCompactWindow", "claude-opus-5-5", None, 550000)
+    b = ap.Change("codex", g, ap.CODEX_KEY, "gpt-6.1-sol", 272000, 300000)
+    h = ap.plan_hash([a, b])
+    assert len(h) == 16 and int(h, 16) >= 0
+    assert ap.plan_hash([b, a]) == h  # order does not matter
+    f.write_text(SETTINGS)  # nor the rest of the file, or when the plan was made
+    assert ap.plan_hash([a, b]) == h
+    for other in (
+        ap.Change(a.harness, a.file, a.key, a.model, 600000, a.new),  # the key was edited since
+        ap.Change(a.harness, a.file, a.key, a.model, a.old, 575000),  # another pick
+        ap.Change(a.harness, tmp_path / "other.json", a.key, a.model, a.old, a.new),
+        ap.Change(a.harness, a.file, "modelSettings.claude-sonnet-5-5.autoCompactWindow", a.model, a.old, a.new),
+    ):
+        assert ap.plan_hash([other, b]) != h
+    assert ap.plan_hash([a]) != h and ap.plan_hash([]) != ap.plan_hash([a])

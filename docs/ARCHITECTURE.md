@@ -12,6 +12,8 @@ src/compactlab/
   recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
+  service/    core.py (calibrator) · lock.py (one calibration or config write at a time per state dir, across
+              processes) · policy.py (auto-apply) · schedule.py · http.py (`serve`)
   engine/     the JSON contract for apps (`compactlab engine`) · live.py (active sessions from log tails) ·
               watch.py (JSON Lines loop)
   term/       style.py (colour depth, palette, display width) · widgets.py (gauge, was/now, sparkline, braille,

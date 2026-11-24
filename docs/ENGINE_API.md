@@ -94,7 +94,11 @@ Measured on a heavy history (3,200 log files, 83 active sessions): peak memory f
 
 `result` reads the calibrator's `<state-dir>/service/result.json` (or `--result`); `--profile` re-selects without a
 replay. `calibrate` runs one lite calibration with the same options and auto-apply rules as `recalibrate`, writes
-the same files, and prints the same object. Fields:
+the same files, and prints the same object. It first takes the state dir's lock (`<state-dir>/service/lock`), which
+every calibration and config write shares: the CLI, `serve`, a launchd/systemd schedule and the app. While another
+process holds it, `calibrate` runs nothing and prints `busy` at once (exit 1); the message names the job, its pid and
+when it started. Retry later; a busy run is not a failure in `service`. The lock is released when its holder exits,
+crashes included. Fields:
 
 - `calibration`: `at`, `took_s`, `reason`, `every_s`; `mode`, `data_through`, `demo`, `profile` (the selected one).
 - `groups`, one per harness, model and role: `selected`, `default_threshold`, `current_threshold` (configured or
@@ -121,10 +125,18 @@ The result never contains transcript text, paths or project names.
 | `no_result` | `result` before any calibration |
 | `bad_result` | the result file is unreadable or from an older compactlab |
 | `calibration_failed` | `calibrate` failed (no sessions, a malformed config, …); the message says why |
-| `busy` | another calibration is running (reserved: a one-shot `calibrate` does not hit it yet) |
+| `busy` | `calibrate`: another process holds the state dir's lock (a calibration, `apply --write`, `retune` or `revert`); nothing ran |
 | `bad_args` | an invalid option value |
 | `bad_command`, `scan_failed` | `watch` only; it keeps running |
 | `internal` | an unexpected exception (traceback on stderr); `watch` prints it too when it cannot start |
+
+## Writing settings
+
+Not an engine command yet (Phase 2 adds `plan` / `apply` / `revert`). Until then: `compactlab apply --json` prints
+the plan with `plan_hash`, and `compactlab apply --write --expect-plan <plan_hash> --json` writes only if the plan is
+still that one, holding the same lock. A refusal is `{"error": {"code": "plan_changed" | "busy" | "refused", ...}}`
+on stdout (`plan_changed` with the new plan beside it); exit 2, or 75 for `busy`. See
+[SAFETY.md](SAFETY.md#writing-exactly-the-reviewed-plan).
 
 ## Privacy
 
