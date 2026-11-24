@@ -22,7 +22,12 @@ _REGISTRY: dict[str, type[Adapter]] = {}
 
 
 class Parser(abc.ABC):
-    """Stateful, resumable line parser. `dump()` must return JSON-serializable state."""
+    """Stateful, resumable line parser.
+
+    `dump()` must return JSON-serializable state with the session under "session" (as `session_to_dict`). The scan
+    cache stores that session apart from the rest of the state and rebuilds an unchanged file with
+    `load({"path": ..., "session": ...}).finish()`, so `finish()` must depend only on the session.
+    """
 
     version: ClassVar[int] = 1
 

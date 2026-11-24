@@ -6,8 +6,10 @@ file paths and tool output) and harness configuration files it may modify.
 ## What compactlab does to protect it
 
 - Lite mode (default) makes no network calls and no model calls.
-- The scan cache (`~/.compactlab/cache`, mode 0600) stores parsed excerpts: tool commands and 400-character output
-  snippets. Disable it with `--no-cache`; wipe it with `compactlab cache clear`.
+- The scan cache (`~/.compactlab/cache`, 0600 files in a 0700 directory) stores parsed excerpts: the text of your
+  prompts, tool commands and 400-character output snippets. Rows of deleted logs are dropped (and zeroed in the file)
+  after each scan, and older cache versions are deleted on upgrade. Disable it with `--no-cache`; wipe every version with
+  `compactlab cache clear`.
 - Reports and `result.json` contain token counts, model names and session ids, never transcript text or paths.
   `report --redact` hashes session ids.
 - `share` writes a local file of rounded aggregates (no ids, paths, timestamps or text) that you post yourself; the tool

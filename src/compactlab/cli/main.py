@@ -213,11 +213,11 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
                     continue
                 if s.turns:
                     out.append(s)
-                if cache and i % 500 == 0:
-                    cache.save()  # keep progress if the scan is interrupted
+        if cache:
+            cache.prune()  # rows of deleted logs
     finally:
         if cache:
-            cache.save()
+            cache.close()
         _progress("")
     st = cache.stats if cache else {"hit": 0, "resumed": 0, "parsed": total}
     a.scan_stats = {"files": total, "cached": st["hit"] + st["resumed"], "parsed": st["parsed"]}
@@ -899,8 +899,9 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "refreshed_file": str(rp),
         "refreshed": rp.exists(),
     }
-    cf = Path(f"{STATE}/cache/scan-v1.json").expanduser()
-    report["cache"] = {"path": str(cf), "exists": cf.exists(), "bytes": cf.stat().st_size if cf.exists() else 0}
+    sc = ScanCache(f"{STATE}/cache")
+    report["cache"] = sc.info()
+    sc.close()
     lines = [f"compactlab {__version__} · Python {report['python']} · {platform.system()}"]
     for h in report["harnesses"]:
         lines.append(f"\n{h['name']}: CLI {h['cli'] or 'not found'}")
@@ -916,7 +917,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
     )
-    lines.append(f"scan cache: {cf} ({'present' if cf.exists() else 'none'})")
+    lines.append(f"scan cache {_cache_line(report['cache'])}")
     t = _term(a)
     if t and not a.json:
         from ..term.views import doctor_view
@@ -964,13 +965,23 @@ def cmd_pricing(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cache_line(info: dict[str, Any]) -> str:
+    text = f"{info['path']}: " + (f"{info['files']} files, {info['bytes'] / 1e6:.1f} MB" if info["exists"] else "none")
+    if info["old_bytes"]:
+        text += f"; older cache versions {info['old_bytes'] / 1e6:.1f} MB (deleted by the next scan)"
+    return text
+
+
 def cmd_cache(a: argparse.Namespace) -> int:
     c = ScanCache(a.cache_dir)
     if a.action == "clear":
-        c.clear()
-        print(f"cleared {c.file}")
+        gone = c.clear()
+        text = f"removed {len(gone)} cache files from {c.dir}" if gone else f"no cache files in {c.dir}"
+        _out(a, {"removed": [str(p) for p in gone]}, text)
     else:
-        _out(a, {"path": str(c.file), "files": len(c.entries)}, f"{c.file}: {len(c.entries)} files cached")
+        info = c.info()
+        c.close()
+        _out(a, info, f"scan cache {_cache_line(info)}")
     return 0
 
 

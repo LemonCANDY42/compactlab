@@ -6,6 +6,29 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Scan cache is SQLite, one row per log** (`~/.compactlab/cache/scan-v4.sqlite3`), so a background recalibration
+  no longer loads and rewrites one big JSON file. A scan reads and writes only the rows of the files it scans, one
+  row per transaction (two runs can share the cache; a write that cannot get the lock in 10 s is skipped), streams
+  each log line by line, and rebuilds an unchanged file from its session without reading the resume-only state. Same
+  rules as before: size, mtime_ns, SHA-1 of the first 4 KiB, resume offset, parser version, a torn last line is
+  never consumed, 0600 files in a 0700 directory. New: rows of deleted logs are pruned after each scan and zeroed in
+  the file (`secure_delete`); a corrupt database is rebuilt; the first scan deletes older cache versions
+  (`scan-v1.json` to `scan-v3.json`); `cache clear` deletes every version; `cache info` shows rows, size and older
+  versions; `doctor` reports the cache actually in use (it looked for `scan-v1.json`). For adapter authors: a
+  parser's `finish()` must now depend only on its session (see docs/ADDING_A_HARNESS.md).
+  Measured on one machine's 30 days of logs (2,686 files: 1,878 Claude Code, 808 Codex; `simulate --since-days 30`,
+  `/usr/bin/time -l`, macOS peak memory footprint):
+
+  | run | before (JSON) | after (SQLite) |
+  | --- | --- | --- |
+  | cold (empty cache) | 83 s, 2.39 GB | 60 s, 0.88 GB |
+  | parser version bump | 79 s, 3.11 GB | 60 s, 0.85 GB |
+  | warm (nothing changed) | 9.5 s, 1.44 GB | 8.5 s, 0.86 GB |
+  | incremental (5 logs appended, 10 MB) | 22 s, 1.45 GB | 9.1 s, 0.86 GB |
+
+  The scan step of an incremental run went from 15 s to 2.6 s. The rest of the 8.5 s is the analysis (~6 s), and
+  most of the remaining memory is the sessions themselves (600 MB, of which 373 MB is the text of user messages), so
+  the menu bar targets (under 5 s with nothing changed, under 300 MB incremental) need changes outside the cache.
 - **Clearer terminal and report wording** (from a review while making the promo video):
   - one verdict line first in `demo` / `simulate` (terminal and plain output) and `top`:
     `→ Opus 5.5 main: set 625k  ▼ −22% cost  ▲ +3.0 min/day wall-clock`;
