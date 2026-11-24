@@ -61,8 +61,37 @@ the rest that only resuming needs (seen ids, pending tool calls).
 A scan touches only the rows of the files it scans and streams each log line by line, so a run that finds a few
 appended logs rewrites a few rows instead of the whole cache. Each row is its own transaction: two runs can share
 the cache, and a write that cannot get the lock within 10 s is skipped (the file is parsed again next time), never
-fatal. A corrupt database is deleted and rebuilt. After each scan, rows of files that no longer exist are deleted;
-deleted and replaced rows are overwritten with zeros (`secure_delete`), so their excerpts do not linger in free pages.
-The first scan with a new cache version deletes the files of older versions (`scan-v1.json` to `scan-v3.json`), and
-`compactlab cache clear` deletes every version. The directory is 0700 and the files 0600; `--no-cache` neither
-reads nor writes it.
+fatal. A corrupt database is deleted and rebuilt, and a row that does not fit its parser (damaged, or written by
+other code) is a miss: the file is parsed again and the row replaced.
+
+After each scan, rows of files that no longer exist are deleted in one transaction, and deleted and replaced rows
+are overwritten with zeros (`secure_delete`). Those zeroed pages reach the database file through a checkpoint, which
+the prune runs at once; while another run is reading a snapshot that still holds the rows, SQLite must keep them, so
+they are erased when the last run using the cache closes it. A prune that could not delete (the database busy or
+unwritable) or not yet erase says so on stderr (in the service log for a background run), and `cache info` counts
+rows of deleted logs. The first scan with a new cache version deletes the files of older versions (`scan-v1.json` to
+`scan-v3.json`) and never a newer version's (a newer compactlab may share the directory); `compactlab cache clear`
+deletes every version. The directory is 0700 and the files 0600; `--no-cache` neither reads nor writes it.
+
+### Reusing an analysis result
+
+The same database keeps the last four lite analysis results (`results` table). Before reading any log, a lite run
+with the cache computes two keys:
+
+- **files**: every log `load_sessions` would read, in scan order, as `Adapter.fingerprint()` describes it: path,
+  parser version, size, mtime_ns and SHA-1 of the first 4 KiB (OpenCode: the database and its write-ahead log as
+  files, and the ids and update times of the sessions inside the window). A log that is appended, added, deleted or
+  ages out of `--since-days` changes it. It is taken before the scan, so a log that grows during the run only makes
+  the saved key stale.
+- **inputs**: the effective price table (after an automatic refresh), the options as `analyze` gets them (with what
+  was read from the harness settings), the configured thresholds, a hash of compactlab's own files (code and bundled
+  data) and the local time rules (TZ, the zone file).
+
+The inputs key needs the models and harness/model pairs of the sessions; they are saved with the result (no prompt
+text), so a run whose files key matches rebuilds the inputs key and, when it matches too, returns the saved result
+without decoding a session. "No file parsed" is not enough on its own: another command may have brought the scan
+cache up to date after the result was saved, and only the files key says whether these are the logs it was made from.
+A run that could not read a log saves nothing. Notes that depend on today (price changes in the last 30 days, the
+auto-refresh flag) are added after, to a saved and a new result alike, and a full run's result goes through the same
+JSON round trip, so a reused run's output is byte for byte a full run's. The calibrator still stamps its own time,
+reason and duration and runs auto-apply as usual. Deep mode and `--no-cache` never reuse.

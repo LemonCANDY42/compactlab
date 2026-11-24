@@ -181,9 +181,10 @@ class Calibrator:
             self.last_apply = {"at": now, **applied}
             out["auto_apply"] = applied
         self._save_state()
-        log.info("recalibrated in %.1fs: %s files, %s cached, %s parsed, %d groups; next calibration: %s",
+        log.info("recalibrated in %.1fs: %s files, %s cached, %s parsed, %d groups%s; next calibration: %s",
                  res["calibration"]["took_s"], scan.get("files", "?"), scan.get("cached", "?"), scan.get("parsed", "?"),
-                 len(res.get("groups", [])), self.next_text())  # fmt: skip
+                 len(res.get("groups", [])), "; analysis reused (nothing changed)" if scan.get("reused") else "",
+                 self.next_text())  # fmt: skip
         return out
 
     def _auto_apply(self, res: dict[str, Any], now: float) -> dict[str, Any]:

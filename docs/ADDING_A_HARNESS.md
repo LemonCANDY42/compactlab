@@ -58,7 +58,9 @@ the examples.
 A harness that keeps every session in one database overrides `load(path, cache, since)` instead: it returns all
 sessions in that file, filters by each session's own update time (the file's mtime says little), and opens the
 database read-only so a running harness is never disturbed. The OpenCode adapter is the example (SQLite with
-`mode=ro`). Extra `doctor` lines (a decoder, a storage version it cannot read) come from `doctor_checks()`.
+`mode=ro`). It overrides `fingerprint(path, since)` too: a saved analysis result is reused only while every file's
+fingerprint is unchanged, so it must change whenever `load` could return something different (the default, a
+file's size, mtime and first 4 KiB, cannot see a session aging out of `since` inside one database). Extra `doctor` lines (a decoder, a storage version it cannot read) come from `doctor_checks()`.
 
 If the harness reads environment variables for its paths, add them to the `isolated_home` fixture in
 `tests/conftest.py` so tests never see real data.

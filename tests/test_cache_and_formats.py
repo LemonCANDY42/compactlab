@@ -2,7 +2,7 @@ import json
 
 from compactlab.adapters import cache as cache_mod
 from compactlab.adapters import get_adapter
-from compactlab.adapters.cache import CACHE_VERSION, ScanCache
+from compactlab.adapters.cache import CACHE_VERSION, Pruned, ScanCache
 from compactlab.model import session_to_dict
 
 
@@ -113,32 +113,90 @@ def test_cache_prunes_rows_of_deleted_files(tmp_path, claude_root):
     cache = ScanCache(tmp_path / "c")
     for p in (keep, gone):
         cache.parse(ad, p)
-    assert cache.prune() == 0
+    assert cache.prune() == Pruned(0, True, True)
     gone.unlink()
-    assert cache.prune() == 1
-    assert cache.info()["files"] == 1
+    assert cache.info()["stale"] == 1
+    assert cache.prune() == Pruned(1, True, True)
+    assert cache.info()["files"] == 1 and cache.info()["stale"] == 0
     cache.parse(ad, keep)
     assert cache.stats["hit"] == 1
 
 
-def test_pruned_rows_leave_no_trace_in_the_cache_files(tmp_path, claude_root):
+def _prompted_log(tmp_path, claude_root, name="gone.jsonl"):
     ad = get_adapter("claude-code")(claude_root)
     marker = "PRUNE-ME-" + "x" * 9000  # long enough to spill into overflow pages
     rec = json.loads(next(ad.find_files()).read_text().splitlines()[0])
-    gone = tmp_path / "logs" / "gone.jsonl"
-    gone.parent.mkdir()
-    gone.write_text("".join(json.dumps({**rec, "message": {"role": "user", "content": marker + str(i)}}) + "\n"
-                            for i in range(3)))  # fmt: skip
+    log = tmp_path / "logs" / name
+    log.parent.mkdir(exist_ok=True)
+    log.write_text("".join(json.dumps({**rec, "message": {"role": "user", "content": marker + str(i)}}) + "\n"
+                           for i in range(3)))  # fmt: skip
+    return ad, log
+
+
+def _cached_bytes(d):
+    return b"".join(p.read_bytes() for p in d.iterdir())
+
+
+def test_pruned_rows_leave_no_trace_in_the_cache_files(tmp_path, claude_root):
+    ad, gone = _prompted_log(tmp_path, claude_root)
     cache = ScanCache(tmp_path / "c")
     cache.parse(ad, gone)
     cache.close()
-    blob = b"".join(p.read_bytes() for p in (tmp_path / "c").iterdir())
-    assert b"PRUNE-ME-" in blob  # the user text is cached
+    assert b"PRUNE-ME-" in _cached_bytes(tmp_path / "c")  # the user text is cached
     gone.unlink()
     cache = ScanCache(tmp_path / "c")
-    assert cache.prune() == 1
+    assert cache.prune() == Pruned(1, True, True)
+    assert b"PRUNE-ME-" not in _cached_bytes(tmp_path / "c")  # erased at once, not only when the cache is closed
     cache.close()
-    assert b"PRUNE-ME-" not in b"".join(p.read_bytes() for p in (tmp_path / "c").iterdir())
+    assert b"PRUNE-ME-" not in _cached_bytes(tmp_path / "c")
+
+
+def test_pruned_rows_another_run_still_reads_are_erased_when_it_ends(tmp_path, claude_root, monkeypatch):
+    """SQLite keeps the pages of a snapshot another connection is reading: rows deleted under it cannot be erased
+    from the files until that read ends. prune() says so, and the rows are erased once the reader is done."""
+    import sqlite3
+
+    monkeypatch.setattr(cache_mod, "ERASE_TIMEOUT_S", 0.05)
+    ad, gone = _prompted_log(tmp_path, claude_root)
+    cache = ScanCache(tmp_path / "c")
+    cache.parse(ad, gone)
+    gone.unlink()
+    reader = sqlite3.connect(cache.file, isolation_level=None)  # another run, in the middle of a read
+    reader.execute("BEGIN")
+    assert len(reader.execute("SELECT session FROM entries").fetchall()) == 1
+    assert cache.prune() == Pruned(1, True, False)  # deleted, not yet erased
+    assert cache.info()["files"] == 0
+    assert len(reader.execute("SELECT session FROM entries").fetchall()) == 1  # its snapshot still holds the row
+    reader.execute("COMMIT")
+    reader.close()
+    cache.close()  # the last connection to close checkpoints the log into the database
+    assert b"PRUNE-ME-" not in _cached_bytes(tmp_path / "c")
+
+
+def test_a_prune_that_cannot_delete_says_so(tmp_path, claude_root, monkeypatch, capsys):
+    from compactlab.cli.main import main
+
+    monkeypatch.setattr(cache_mod, "BUSY_TIMEOUT_S", 0.05)
+    ad, gone = _prompted_log(tmp_path, claude_root)
+    keep = tmp_path / "logs" / "keep.jsonl"
+    keep.write_text(next(ad.find_files()).read_text())
+    cache = ScanCache(tmp_path / "c")
+    cache.parse(ad, gone)
+    cache.parse(ad, keep)
+    gone.unlink()
+    cache._db.execute("BEGIN IMMEDIATE")  # another run holds the write lock throughout
+    other = ScanCache(tmp_path / "c")
+    assert other.prune() == Pruned(1, False, False)
+    other.close()
+    capsys.readouterr()
+    args = ["simulate", "--claude-root", str(tmp_path / "logs"), "--harness", "claude-code", "--since-days", "0",
+            "--offline-pricing", "--no-current", "--lens-out", "", "--out", str(tmp_path / "r.json"),
+            "--cache-dir", str(tmp_path / "c")]  # fmt: skip
+    assert main(args) == 0
+    assert "still holds 1 row(s) of deleted logs" in capsys.readouterr().err
+    cache._db.execute("ROLLBACK")
+    assert main(args) == 0  # the next scan drops them
+    assert ScanCache(tmp_path / "c").info()["stale"] == 0 and "deleted logs" not in capsys.readouterr().err
 
 
 def test_cache_deletes_older_versions_and_clear_removes_all(tmp_path, claude_root):
@@ -162,7 +220,26 @@ def test_cache_deletes_older_versions_and_clear_removes_all(tmp_path, claude_roo
     removed = cache.clear()
     assert cache.file in removed and d / "scan-v2.json" in removed
     assert sorted(p.name for p in d.iterdir()) == sorted(p.name for p in unrelated)
-    assert ScanCache(d).info() == {"path": str(cache.file), "exists": False, "files": 0, "bytes": 0, "old_bytes": 0}
+    assert ScanCache(d).info() == {"path": str(cache.file), "exists": False, "files": 0, "stale": 0, "results": 0,
+                                   "bytes": 0, "old_bytes": 0, "newer_bytes": 0}  # fmt: skip
+
+
+def test_cache_leaves_a_newer_version_alone(tmp_path, claude_root):
+    """A newer compactlab may share the directory: an older one deletes only older versions' files."""
+    d = tmp_path / "c"
+    d.mkdir()
+    newer = [d / f"scan-v{CACHE_VERSION + 1}.sqlite3", d / f"scan-v{CACHE_VERSION + 1}.sqlite3-wal",
+             d / f"scan-v{CACHE_VERSION + 7}.json", d / ".scan.k2x_9abq"]  # fmt: skip
+    for p in newer:
+        p.write_text("{}")
+    older = d / "scan-v1.json"
+    older.write_text("{}")
+    cache = ScanCache(d)
+    assert cache.info()["newer_bytes"] == 2 * (len(newer) - 1) and cache.info()["old_bytes"] == 2 * 2
+    ad = get_adapter("claude-code")(claude_root)
+    cache.parse(ad, next(ad.find_files()))
+    assert all(p.exists() for p in newer) and not older.exists()
+    assert cache.clear() and not any(p.exists() for p in newer)  # `cache clear` still removes every version
 
 
 def test_cache_recovers_from_a_corrupt_database(tmp_path, claude_root):
@@ -208,6 +285,29 @@ def test_cache_reparses_an_unreadable_row(tmp_path, claude_root):
     assert cache.stats["parsed"] == 2
     cache.parse(ad, f)
     assert cache.stats["hit"] == 1
+
+
+def test_cache_reparses_a_row_of_the_wrong_shape(tmp_path, claude_root):
+    """Valid JSON that does not fit the parser (a damaged or foreign row) is a miss, not a failed calibration."""
+    ad = get_adapter("claude-code")(claude_root)
+    f = next(ad.find_files())
+    full = _norm(ad.parse_file(f))
+    cache = ScanCache(tmp_path / "c")
+    cache.parse(ad, f)
+    for bad in ('{"turns": 5}', "[1, 2]", '{"turns": [{"no_such_field": 1}]}', '"text"'):
+        cache._db.execute("UPDATE entries SET session = ?", (bad,))
+        assert _norm(cache.parse(ad, f)) == full
+    assert cache.stats == {"hit": 0, "resumed": 0, "parsed": 5}
+    # a resume state of the wrong shape: the appended file is parsed again from the start
+    g = tmp_path / "logs" / "s.jsonl"
+    g.parent.mkdir()
+    lines = f.read_text().splitlines(True)
+    g.write_text("".join(lines[: len(lines) // 2]))
+    cache.parse(ad, g)
+    g.write_text("".join(lines))
+    cache._db.execute("UPDATE entries SET resume = ? WHERE path = ?", ('{"seen": 7, "pending_user": [1]}', str(g)))
+    assert _norm(cache.parse(ad, g)) == _norm(ad.parse_file(g))
+    assert cache.stats["resumed"] == 0 and cache.stats["parsed"] == 7
 
 
 def test_cache_shared_by_two_runs_and_never_blocks_a_scan(tmp_path, claude_root, monkeypatch):
