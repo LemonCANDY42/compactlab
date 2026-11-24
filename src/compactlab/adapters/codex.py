@@ -57,6 +57,14 @@ def _dur(start: float | None, end: float | None) -> float | None:
     return d if 0 < d <= 900 else None
 
 
+def _spawn_parent(src: Any) -> str | None:
+    """A subagent's parent when only its spawn record names it (`source.subagent.thread_spawn.parent_thread_id`)."""
+    sub = src.get("subagent") if isinstance(src, dict) else None
+    spawn = sub.get("thread_spawn") if isinstance(sub, dict) else None
+    pid = spawn.get("parent_thread_id") if isinstance(spawn, dict) else None
+    return str(pid) if pid else None
+
+
 def _is_subagent(src: Any) -> bool:
     if isinstance(src, str):
         return src.strip().lower() == "subagent"
@@ -67,6 +75,7 @@ def _is_subagent(src: Any) -> bool:
 
 class CodexParser(Parser):
     version = 6  # 5: custom_tool_call(_output), list outputs, response timing; 6: model_provider
+    head_records = 1  # session_meta: which session this file is (a fork's copied history names other ones)
 
     def __init__(self, path: str):
         self.session = Session(id=Path(path).stem, harness="codex", role="main", path=path)
@@ -100,13 +109,15 @@ class CodexParser(Parser):
                 self.leaf_id = sid or s.id
                 s.id = self.leaf_id
                 s.role = "subagent" if _is_subagent(p.get("source")) else s.role
-                s.parent_id = next((str(p[k]) for k in PARENT_KEYS if p.get(k)), None)
+                s.parent_id = next((str(p[k]) for k in PARENT_KEYS if p.get(k)), None) or _spawn_parent(p.get("source"))
                 s.platform = str(p["model_provider"]) if p.get("model_provider") else None
+                self.cwd = str(p["cwd"]) if p.get("cwd") else None
             elif sid and sid != self.leaf_id:
                 self.replaying = True  # embedded ancestor metadata: what follows is copied history
         elif typ == "turn_context":
             self.model = str(p.get("model") or self.model)
             self.replaying = False
+            self.cwd = str(p["cwd"]) if p.get("cwd") else self.cwd
         elif typ == "compacted" or (typ == "event_msg" and p.get("type") == "context_compacted"):
             if self.replaying:
                 return
@@ -244,7 +255,7 @@ class CodexParser(Parser):
     def dump(self) -> dict[str, Any]:
         from ..model import session_to_dict
 
-        st = {k: v for k, v in self.__dict__.items() if k != "session"}
+        st = {k: v for k, v in self.__dict__.items() if k not in ("session", "cwd")}  # paths stay out of the cache
         return {"path": self.session.path, "session": session_to_dict(self.session), **st}
 
     @classmethod

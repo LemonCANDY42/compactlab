@@ -1,0 +1,8 @@
+{
+ "engine_api": 1,
+ "error": {
+  "code": "no_result",
+  "message": "no calibration yet (~/.compactlab/service/result.json); run: compactlab engine calibrate"
+ },
+ "kind": "error"
+}

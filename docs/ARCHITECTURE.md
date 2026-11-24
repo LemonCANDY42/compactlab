@@ -12,6 +12,8 @@ src/compactlab/
   recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
+  engine/     the JSON contract for apps (`compactlab engine`) · live.py (active sessions from log tails) ·
+              watch.py (JSON Lines loop)
   term/       style.py (colour depth, palette, display width) · widgets.py (gauge, was/now, sparkline, braille,
               panel, header) · views.py (demo / simulate / recommend / doctor / serve) · top.py (`compactlab top`)
   data/       pricing.json, harness_formats.json (each with source + date)

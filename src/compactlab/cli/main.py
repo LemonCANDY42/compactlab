@@ -293,10 +293,8 @@ def _idle_opts(a: argparse.Namespace, opts: SimOptions) -> SimOptions:
     return opts
 
 
-def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
-    """Read the configured threshold per (harness, model) from config files, read-only."""
-    if getattr(a, "no_current", False):
-        return {}
+def _config_paths(a: argparse.Namespace) -> dict[str, Path | None]:
+    """Each harness's config file: the one named on the command line, else the first default that exists."""
     paths: dict[str, Path | None] = {}
     for h, arg in (
         ("claude-code", a.claude_settings),
@@ -309,6 +307,14 @@ def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, 
         else:
             cands = get_adapter(h).config_paths() if h in adapter_names() else []
             paths[h] = next((c for c in cands if c.exists()), None)
+    return paths
+
+
+def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
+    """Read the configured threshold per (harness, model) from config files, read-only."""
+    if getattr(a, "no_current", False):
+        return {}
+    paths = _config_paths(a)
     out = {}
     for h, m in {(x.harness, x.model) for x in sessions}:
         try:
@@ -1237,13 +1243,18 @@ def _service_logging(state: Path) -> None:
         """Clears the in-place progress line before a log line, so the two never share a row."""
 
         def emit(self, record: logging.LogRecord) -> None:
+            self.stream = sys.stderr  # stderr as it is now, not when logging was set up
             if self.stream.isatty():
                 self.stream.write("\r\033[K")
             super().emit(record)
 
+    for old in [h for h in lg.handlers if h.get_name() == "compactlab"]:  # set up once per process
+        lg.removeHandler(old)
+        old.close()
     for h in (RotatingFileHandler(state / "service" / "service.log", maxBytes=1_000_000, backupCount=3),
               Console(sys.stderr)):  # fmt: skip
         h.setFormatter(fmt)
+        h.set_name("compactlab")
         lg.addHandler(h)
 
 
@@ -1307,6 +1318,138 @@ def cmd_recalibrate(a: argparse.Namespace) -> int:
         text.append("dry-run: nothing written")
     _out(a, out, "\n".join(text))
     return 0 if out["status"] == "ok" else 1
+
+
+# ---------- engine: the JSON interface the app talks to (docs/ENGINE_API.md) ----------
+
+
+def _engine(fn: Any) -> Any:
+    """Every engine command prints one JSON object; failures are an `error` object on stdout too, so a caller never
+    has to parse stderr (which keeps the log and tracebacks)."""
+
+    def run(a: argparse.Namespace) -> int:
+        from .. import engine as en
+
+        try:
+            msg, rc = fn(a)
+        except Exception as e:
+            msg, rc = _engine_failure(e)
+        print(en.dumps(msg), flush=True)
+        return rc
+
+    return run
+
+
+def _engine_failure(e: Exception) -> tuple[dict[str, Any], int]:
+    from .. import engine as en
+
+    if isinstance(e, EngineError):
+        return en.error(e.code, str(e)), 1
+    if isinstance(e, CLIError):  # a bad option
+        return en.error("bad_args", str(e)), 2
+    import traceback
+
+    traceback.print_exc(file=sys.stderr)
+    return en.error("internal", f"{type(e).__name__}: {e}"[:500]), 1
+
+
+class EngineError(CLIError):
+    def __init__(self, code: str, text: str) -> None:
+        super().__init__(text)
+        self.code = code
+
+
+def _engine_hello(a: argparse.Namespace) -> dict[str, Any]:
+    from ..engine import LIVE_HARNESSES, hello
+
+    roots, cfg = _roots(a), _config_paths(a)
+    harnesses = []
+    for name in adapter_names():
+        ad = get_adapter(name)(roots.get(name))
+        c = cfg.get(name) or next(iter(ad.config_paths()), None)
+        harnesses.append({
+            "name": name,
+            "live": name in LIVE_HARNESSES,
+            "roots": [{"path": str(r), "exists": r.exists()} for r in ad.roots],
+            "config": {"path": str(c), "exists": c.exists()} if c else None,
+        })  # fmt: skip
+    return hello(harnesses, Path(a.state_dir).expanduser())
+
+
+def _live(a: argparse.Namespace) -> Any:
+    from ..engine import LIVE_HARNESSES
+    from ..engine.live import LiveSessions
+
+    # a config file that does not exist yet is still watched: `apply` may create it while this runs
+    cfg = {h: p or next(iter(get_adapter(h).config_paths()), None) for h, p in _config_paths(a).items()}
+    return LiveSessions(
+        _roots(a),
+        cfg,
+        _pricing(a),
+        time.time,
+        active_s=a.active_hours * 3600,
+        project_names=not a.no_project_names,
+        harnesses=tuple(h for h in LIVE_HARNESSES if not a.harness or h in a.harness),
+    )
+
+
+@_engine
+def cmd_engine_hello(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return _engine_hello(a), 0
+
+
+@_engine
+def cmd_engine_sessions(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return _live(a).snapshot(), 0
+
+
+def cmd_engine_watch(a: argparse.Namespace) -> int:
+    from ..engine import dumps
+    from ..engine.watch import run
+
+    try:
+        live, hello = _live(a), _engine_hello(a)
+    except Exception as e:  # e.g. an unreadable --pricing file: say so in JSON like the one-shot commands
+        msg, rc = _engine_failure(e)
+        print(dumps(msg), flush=True)
+        return rc
+    try:
+        return run(live.snapshot, hello, sys.stdin, sys.stdout, a.min_interval, a.interval)
+    except BrokenPipeError:  # the app went away; keep the interpreter's final flush from failing too
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
+
+
+@_engine
+def cmd_engine_result(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine import result_message, result_path
+
+    state = Path(a.state_dir).expanduser()
+    path = Path(a.result).expanduser() if a.result else result_path(state)
+    if not path.exists():
+        raise EngineError("no_result", f"no calibration yet ({path}); run: compactlab engine calibrate")
+    try:
+        res = _load_result(str(path))
+    except (CLIError, ValueError, KeyError) as e:
+        raise EngineError("bad_result", str(e)) from e
+    if a.profile:
+        reselect(res, a.profile)
+    return result_message(res, state), 0
+
+
+@_engine
+def cmd_engine_calibrate(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine import result_message
+
+    cal = _calibrator(a)
+    state = Path(a.state_dir).expanduser()
+    _service_logging(state)
+    out = cal.recalibrate(a.reason)
+    if out["status"] == "busy":
+        raise EngineError("busy", "a calibration is already running")
+    if out["status"] != "ok" or cal.result is None:
+        raise EngineError("calibration_failed", str(out.get("error") or "no result"))
+    return result_message(cal.result, state, out.get("auto_apply")), 0
 
 
 def cmd_schedule(a: argparse.Namespace) -> int:
@@ -1558,6 +1701,7 @@ def _demo_result(out: Path, lang: str = "both") -> dict[str, Any]:
     )
     ns = build_parser().parse_args(
         ["simulate", "--claude-root", str(out / "claude" / "projects"), "--codex-root", str(out / "codex" / "sessions"),
+         "--harness", "claude-code", "--harness", "codex",  # the other harnesses' default roots are real logs
          "--since-days", "0", "--no-cache", "--offline-pricing", "--claude-settings", str(demo_settings),
          "--codex-config", str(out / "codex" / "config.toml"), "--lang", lang]
     )  # fmt: skip
@@ -1734,6 +1878,40 @@ def _commands(sub: Any, fmt: Any) -> None:
     _sim(s)
     _service_args(s)
     s.set_defaults(f=cmd_recalibrate)
+
+    s = sub.add_parser("engine", help="JSON interface for the compactlab app and other tools (docs/ENGINE_API.md)")
+    es = s.add_subparsers(dest="engine_cmd", required=True, metavar="engine-command")
+    e = es.add_parser("hello", help="engine and contract version, harness log and config locations")
+    _source(e)
+    _config_args(e)
+    e.add_argument("--state-dir", default=STATE)
+    e.set_defaults(f=cmd_engine_hello)
+    for name, text in (
+        ("sessions", "the active sessions now: context, model, threshold in force, cache expiry"),
+        ("watch", "active sessions as JSON Lines on stdout while running; commands on stdin"),
+    ):
+        e = es.add_parser(name, help=text)
+        _source(e)
+        _config_args(e)
+        e.add_argument("--state-dir", default=STATE)
+        e.add_argument("--active-hours", type=float, default=6.0, help="sessions written in the last N hours (6)")
+        e.add_argument("--no-project-names", action="store_true", help="leave out the working directory's name")
+        e.add_argument("--pricing", help="pricing override JSON (windows of models the logs do not size)")
+        e.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices and windows")
+    e.set_defaults(f=cmd_engine_watch)
+    e.add_argument("--min-interval", type=float, default=5.0, help="seconds between scans at most (default 5)")
+    e.add_argument("--interval", type=float, default=60.0, help="scan anyway after N quiet seconds (0 = never)")
+    es.choices["sessions"].set_defaults(f=cmd_engine_sessions)
+    e = es.add_parser("result", help="the last calibration, summarized for the threshold table")
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--result", help="a result.json (default: the calibrator's, <state-dir>/service/result.json)")
+    e.add_argument("--profile", choices=PROFILE_NAMES, help="select this profile (no replay)")
+    e.set_defaults(f=cmd_engine_result)
+    e = es.add_parser("calibrate", help="one lite calibration (like recalibrate), then its summary")
+    _sim(e)
+    _service_args(e)
+    e.add_argument("--reason", default="engine", help="recorded with the calibration (e.g. app, schedule)")
+    e.set_defaults(f=cmd_engine_calibrate)
 
     s = sub.add_parser("schedule", help="print / install a launchd or systemd user schedule (never auto-loaded)")
     s.add_argument("action", choices=["print", "install", "status", "uninstall"])

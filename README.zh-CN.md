@@ -89,6 +89,8 @@ HTML 报告是一个离线文件(不加载任何字体、脚本或图片),中文
 
 `compactlab serve --every 1d` 在本机(只绑定 127.0.0.1)提供实时报告和 JSON 接口,并按设定间隔用 lite 模式重新校准:只增量扫描,同一时间只跑一个,低优先级,不联网。`compactlab schedule print` 生成 launchd / systemd 定时文件,`install --yes` 只把文件写进你的 LaunchAgents 或 systemd 用户目录,加载由你自己执行。自动应用默认关闭:先用 `compactlab consent set` 指定允许修改的设置文件、模型和方案,再加 `--auto-apply`;它复用 `apply` 的备份和清单(`compactlab revert` 可撤销),每次最多移动 100k,至少间隔一周,收益不明显时不动,别人手动改过的值不覆盖。详见 [docs/SERVICE.md](docs/SERVICE.md)。
 
+应用和脚本改用 `compactlab engine`:在 stdout 输出带版本号的 JSON,不开端口。`engine watch` 只读日志文件末尾,持续给出活跃会话的上下文、模型、生效阈值和提示缓存何时变冷;`engine calibrate` 和 `engine result` 运行和读取校准结果。详见 [docs/ENGINE_API.md](docs/ENGINE_API.md)。
+
 ## 终端界面
 
 在终端里,`demo`、`simulate`、`recommend`、`doctor` 和 `serve` 会画出紧凑视图(颜色、边框、阈值刻度、前后对比条);
