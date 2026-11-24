@@ -14,7 +14,7 @@ from typing import Any
 
 from .. import apply as ap
 from ..lens import summarize
-from .lock import Busy, single_flight
+from .lock import Busy, LockError, single_flight
 from .policy import Consent, Rules, load_applied, load_consent, run_auto_apply
 from .schedule import next_due
 
@@ -120,24 +120,30 @@ class Calibrator:
                     log.info("recalibrate (%s) skipped: calibrated elsewhere; next calibration: %s", reason,
                              self.next_text())  # fmt: skip
                     return {"status": "skipped"}
-                return self._run(reason)
+                result, last_ok = self.result, self.last_ok
+                try:
+                    return self._run(reason)
+                except OSError as e:  # a result, lens or state file cannot be written: a failed run
+                    self.result, self.last_ok = result, last_ok  # nothing new was recorded as calibrated
+                    return self._fail(f"{type(e).__name__}: {e}")  # saved while still holding the lock
         except Busy as e:
             log.info("recalibrate (%s) skipped: %s", reason, e)
             return {"status": "busy", "message": str(e)}
-        except OSError as e:  # the lock or a state file cannot be written: back off like a failed analysis
+        except LockError as e:  # the lock cannot be taken: back off here; the shared state is not written without it
             self.last_attempt = self.clock()
-            return self._fail(f"{type(e).__name__}: {e}")
+            return self._fail(str(e), save=False)
         finally:
             self._lock.release()
 
-    def _fail(self, error: str) -> dict[str, Any]:
+    def _fail(self, error: str, save: bool = True) -> dict[str, Any]:
         self.failures += 1
         self.last_error = error[:500]
         log.error("recalibration failed (%d in a row): %s", self.failures, self.last_error)
-        try:
-            self._save_state()
-        except OSError as e:
-            log.error("cannot save the calibrator state: %s", e)
+        if save:
+            try:
+                self._save_state()
+            except OSError as e:
+                log.error("cannot save the calibrator state: %s", e)
         return {"status": "error", "error": self.last_error}
 
     def _run(self, reason: str) -> dict[str, Any]:

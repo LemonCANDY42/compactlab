@@ -269,6 +269,7 @@ def test_a_lock_that_cannot_be_taken_is_a_failure_not_busy_and_not_a_dead_schedu
     cal = Calibrator(lambda: ran.append(1) or _result(), state, 3600.0)
     out = cal.recalibrate("schedule", if_due=True)
     assert out["status"] == "error" and "cannot lock" in out["error"] and cal.failures == 1 and not ran
+    assert not (state / "service" / "state.json").exists()  # shared state is only written under the lock
     due = cal.next_due()
     assert due is not None and due > time.time() + 200  # backs off like a failed analysis
     stop = threading.Event()
@@ -278,3 +279,32 @@ def test_a_lock_that_cannot_be_taken_is_a_failure_not_busy_and_not_a_dead_schedu
     assert th.is_alive() and cal.failures == 1  # waiting out the backoff, not dead and not spinning
     stop.set()
     th.join(5)
+
+
+def test_a_run_that_cannot_write_its_result_saves_the_failure_before_releasing_the_lock(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    cal = Calibrator(_result, state, 3600.0)
+    write, save = cal._write, cal._save_state
+    held = []
+
+    def failing_write(name, obj):
+        if name == "result.json":
+            raise OSError(errno.ENOSPC, "No space left on device")
+        write(name, obj)
+
+    def probing_save():
+        try:
+            with single_flight(state, "probe"):
+                held.append(False)
+        except Busy:
+            held.append(True)
+        save()
+
+    monkeypatch.setattr(cal, "_write", failing_write)
+    monkeypatch.setattr(cal, "_save_state", probing_save)
+    out = cal.recalibrate("manual")
+    assert out["status"] == "error" and "No space left" in out["error"]
+    assert held == [True]  # another process could not have run between the failure and its record
+    st = json.loads((state / "service" / "state.json").read_text())
+    assert st["failures"] == 1 and st["last_ok"] is None  # not recorded as calibrated
+    assert cal.last_ok is None and cal.result is None
