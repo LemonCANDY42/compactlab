@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from ..sim.engine import SimOptions, analyze, price_drift, reselect
 from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES, PROFILES, WAIT_CAP_MIN_PER_DAY
 
 STATE = "~/.compactlab"
+EX_BUSY = 75  # sysexits EX_TEMPFAIL: another calibration or config write holds the state dir's lock; try again later
 EXAMPLES = """examples:
   compactlab demo                                   synthetic data -> report, opens it
   compactlab doctor                                 where are my logs and configs?
@@ -850,7 +852,12 @@ def _apply_opts(p: argparse.ArgumentParser) -> None:
     g.add_argument("--min", type=_k, default=100_000, help="lower bound with --i-authorize (default 100k)")
     g.add_argument("--max", type=_k, default=1_000_000, help="upper bound with --i-authorize (default 1m)")
     g.add_argument("--write", action="store_true", help="actually write; without it apply is a dry-run")
-    g.add_argument("--state-dir", default=STATE, help="backups and manifests (default ~/.compactlab)")
+    g.add_argument(
+        "--expect-plan",
+        metavar="HASH",
+        help="refuse (exit 2, write nothing) unless the plan is the one a dry-run printed with this hash",
+    )
+    g.add_argument("--state-dir", default=STATE, help="backups, manifests and the lock (default ~/.compactlab)")
 
 
 def _preauth(a: argparse.Namespace) -> ap.Preauth:
@@ -888,7 +895,33 @@ def _recs(res: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _apply_error(a: argparse.Namespace, code: str, text: str, plan: dict[str, Any] | None = None) -> None:
+    """A refusal: the reason on stderr and, with --json, an `error` object ({code, message}) on stdout, next to the
+    plan when there is one, so a caller never has to parse stderr. Codes: refused, plan_changed, busy."""
+    print(f"{'busy' if code == 'busy' else 'refused'}: {text}", file=sys.stderr)
+    if getattr(a, "json", False):
+        _out(a, {**(plan or {}), "error": {"code": code, "message": text}}, "")
+
+
+def _single_flight(a: argparse.Namespace, job: str, fn: Callable[[], int]) -> int:
+    """Run `fn` holding the state dir's lock (service/lock.py). While another calibration or config write holds it,
+    run nothing and exit EX_BUSY."""
+    from ..service.lock import Busy, LockError, single_flight
+
+    try:
+        with single_flight(Path(a.state_dir).expanduser(), job):
+            return fn()
+    except Busy as e:
+        _apply_error(a, "busy", str(e))
+        return EX_BUSY
+    except LockError as e:
+        _apply_error(a, "refused", str(e))
+        return 2
+
+
 def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) -> int:
+    """Plan, show and (with --write) write. A write runs under the state dir's lock (the caller holds it), so the
+    plan it checks against --expect-plan is the one it writes."""
     try:
         if a.write or retune:
             pre = _preauth(a)
@@ -902,8 +935,9 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
         changes, rejected = ap.plan_changes(_recs(res), pre)
         rendered = ap.render(changes)
     except ap.ApplyError as e:
-        print(f"refused: {e}", file=sys.stderr)
+        _apply_error(a, "refused", str(e))
         return 2
+    h = ap.plan_hash(changes)
     plan = {
         "profile": res["groups"][0]["profile"] if res["groups"] else (a.profile or DEFAULT_PROFILE),
         "dry_run": not a.write,
@@ -911,6 +945,7 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
             {"harness": c.harness, "file": str(c.file), "key": c.key, "old": c.old, "new": c.new} for c in changes
         ],
         "skipped": rejected,
+        "plan_hash": h,
     }
     text = [f"skip: {r}" for r in rejected]
     text += [f"{c.harness}: {c.key}: {c.old!r} -> {c.new}  ({c.file})" for c in changes]
@@ -919,6 +954,14 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
         text += [f"note: {n}" for n in ap.formatting_note(rendered, changes)]
     else:
         text.append("nothing to change")
+    text.append(f"plan {h}")
+    want = None if a.expect_plan is None else a.expect_plan.strip().lower()
+    if want is not None and want != h:  # an empty hash never matches
+        if not a.json:
+            print("\n".join(text))
+        why = f"the plan is not the reviewed one (expected {want or '(empty)'}, now {h})"
+        _apply_error(a, "plan_changed", f"{why}; nothing written: review this plan, then pass its hash", plan)
+        return 2
     if changes and not a.write:
         text.append("dry-run: nothing written (add --write with authorization to apply)")
     if changes and a.write:
@@ -930,15 +973,22 @@ def _do_apply(a: argparse.Namespace, res: dict[str, Any], retune: bool = False) 
 
 
 def cmd_apply(a: argparse.Namespace) -> int:
-    return _do_apply(a, _reselect(a, _load_result(a.result)))
+    res = _reselect(a, _load_result(a.result))
+    if not a.write:
+        return _do_apply(a, res)  # a dry-run only reads: no lock
+    return _single_flight(a, "apply --write", lambda: _do_apply(a, res))
 
 
 def cmd_retune(a: argparse.Namespace) -> int:
     if not a.preauth:
-        print('refused: retune needs --preauth (with "allow_retune": true)', file=sys.stderr)
+        _apply_error(a, "refused", 'retune needs --preauth (with "allow_retune": true)')
         return 2
-    res = run_analysis(a)
-    return 2 if res is None else _do_apply(a, res, retune=True)
+
+    def run() -> int:  # a calibration, then maybe a write: one job under the lock
+        res = run_analysis(a)
+        return 2 if res is None else _do_apply(a, res, retune=True)
+
+    return _single_flight(a, "retune", run)
 
 
 def _forget_applied(state: Path, manifest_id: str) -> None:
@@ -956,15 +1006,19 @@ def _forget_applied(state: Path, manifest_id: str) -> None:
 
 def cmd_revert(a: argparse.Namespace) -> int:
     sd = Path(a.state_dir).expanduser()
-    try:
-        m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
-        for line in ap.revert(m, a.force):
-            print(line)
-        _forget_applied(sd, m.stem)
-    except (ap.ApplyError, FileNotFoundError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
-    return 0
+
+    def run() -> int:
+        try:
+            m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
+            for line in ap.revert(m, a.force):
+                print(line)
+            _forget_applied(sd, m.stem)
+        except (ap.ApplyError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        return 0
+
+    return _single_flight(a, "revert", run)
 
 
 def _version(binary: str) -> str | None:
@@ -1306,7 +1360,10 @@ def cmd_recalibrate(a: argparse.Namespace) -> int:
     cal = _calibrator(a)
     _service_logging(Path(a.state_dir).expanduser())
     out = cal.recalibrate("cli")
-    text = [f"recalibration: {out['status']}" + (f" ({out.get('error')})" if out.get("error") else "")]
+    if out["status"] == "busy":
+        text = [f"recalibration: busy: {out.get('message') or 'a run is already in flight'}"]
+    else:
+        text = [f"recalibration: {out['status']}" + (f" ({out.get('error')})" if out.get("error") else "")]
     for d in (out.get("auto_apply") or {}).get("decisions", []):
         text.append(f"  {d['model']}: {d['action']}: {d['reason']}")
     aa = out.get("auto_apply") or {}
@@ -1317,7 +1374,7 @@ def cmd_recalibrate(a: argparse.Namespace) -> int:
     elif aa.get("dry_run") and aa.get("diff"):
         text.append("dry-run: nothing written")
     _out(a, out, "\n".join(text))
-    return 0 if out["status"] == "ok" else 1
+    return 0 if out["status"] == "ok" else EX_BUSY if out["status"] == "busy" else 1
 
 
 # ---------- engine: the JSON interface the app talks to (docs/ENGINE_API.md) ----------
@@ -1446,7 +1503,7 @@ def cmd_engine_calibrate(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
     _service_logging(state)
     out = cal.recalibrate(a.reason)
     if out["status"] == "busy":
-        raise EngineError("busy", "a calibration is already running")
+        raise EngineError("busy", str(out.get("message") or "a calibration is already running"))
     if out["status"] != "ok" or cal.result is None:
         raise EngineError("calibration_failed", str(out.get("error") or "no result"))
     return result_message(cal.result, state, out.get("auto_apply")), 0

@@ -26,7 +26,7 @@ the interval: the report and the compactlab-lens mod show its age with a clock i
 | `GET /api/health` | status: running, last / next calibration, failures, last auto-apply, what was applied |
 | `GET /api/result` | the last result (the same JSON as `simulate --out`) |
 | `GET /api/profile/<cost\|balanced\|time>` | the groups re-selected for one profile |
-| `POST /api/recalibrate` | start a run now (`Authorization: Bearer <token>`); 202 started, 409 already running |
+| `POST /api/recalibrate` | start a run now (`Authorization: Bearer <token>`); 202 started, 409 already running here (a run another process holds the lock for is skipped and logged) |
 
 ## Auto-apply (opt-in)
 
@@ -76,7 +76,7 @@ like a failed analysis, the error shows in `/api/health`, and the scheduler keep
 - **Reads:** your session logs (the same as `simulate`), the bundled and refreshed price tables, your current
   auto-compact settings (read only, for comparison), and the consent file.
 - **Writes:** only under `~/.compactlab/`:
-  - `service/` holds the result, state, token, log (rotating, 1 MB × 3), journal and applied values;
+  - `service/` holds the result, state, token, log (rotating, 1 MB × 3), journal, applied values and the lock;
   - `lens.json` and the scan cache;
   - backups and manifests, written only when auto-apply changes something.
 
@@ -84,5 +84,12 @@ like a failed analysis, the error shows in `/api/health`, and the scheduler keep
 - **Never:** network access, telemetry, deep mode (which calls models and stays a manual, budgeted command), or
   running `launchctl` / `systemctl`. `schedule install` writes the unit files and prints the command to load them;
   you run it. It refuses to overwrite a unit file it did not generate.
-- **Footprint:** one analysis at a time (single-flight). It runs at lower priority (`--nice 10`; the generated units
+- **Footprint:** one analysis at a time (single-flight), also across processes: the service, `recalibrate`, `engine
+  calibrate` (the app), `apply --write`, `retune` and `revert` share `<state-dir>/service/lock` ([one job at a
+  time](SAFETY.md#one-job-at-a-time)). A scheduled run that finds it held is skipped, logged and tried again a minute
+  later; it does not count as a failure. State is re-read under the lock, so a calibration another process made since
+  counts as the scheduled one, and its failures back off this one too. A lock that cannot be taken at all (a state dir
+that is not yours, a file system without `flock`) is a failed run with the usual backoff. A scheduled one-shot
+`recalibrate` (the default `schedule` mode) that finds the lock held exits 75 and waits for its next interval; the
+holder is usually a calibration that has just made a fresh result. It runs at lower priority (`--nice 10`; the generated units
   also set background / idle I/O). It keeps only the last result in memory.

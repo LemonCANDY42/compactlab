@@ -6,6 +6,19 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **One calibration or config write at a time, across processes.** `recalibrate`, `engine calibrate`, the runs of
+  `serve`, `apply --write`, `retune` and `revert` take `<state-dir>/service/lock` (`flock`, without waiting), so the
+  menu bar app, the CLI and a launchd/systemd schedule can start jobs whenever they like. Whoever gets the lock runs;
+  the others do nothing and say which job holds it (pid, start time): `engine calibrate` prints the `busy` error (no
+  longer reserved), the CLI exits 75 (`EX_TEMPFAIL`), and a scheduled run of `serve` is logged and retried a minute
+  later without counting as a failure. The operating system drops the lock when its holder exits or crashes, so there
+  is no stale lock. The calibrator re-reads its state under the lock: a calibration another process just made counts
+  as the scheduled one, and failures elsewhere back off here too. A dry-run `apply` does not take the lock.
+- **`apply --expect-plan <hash>`.** Every plan prints a hash (`plan <hash>`, `plan_hash` with `--json`) over each
+  change's harness, file, key, current value and new value, without timestamps. With `--expect-plan`, `apply` makes
+  the plan again under the lock and refuses to write (exit 2, no backup or manifest) unless it is the reviewed one.
+  With `--json`, refusals are now JSON on stdout too: `{"error": {"code": "plan_changed" | "busy" | "refused",
+  "message": ...}}`, next to the new plan for `plan_changed`.
 - **`compactlab engine`, the JSON interface for the menu bar app** ([docs/ENGINE_API.md](docs/ENGINE_API.md)).
   `hello`, `sessions`, `watch`, `result` and `calibrate` print versioned JSON (`engine_api: 1`) on stdout, errors
   included; examples of every message in `tests/contract/` are checked against the real output. `watch` is a resident

@@ -158,6 +158,17 @@ def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str
     return changes, rejected
 
 
+def plan_hash(changes: list[Change]) -> str:
+    """A short, stable fingerprint of what a write would do: per change the harness, the file, the key, the value the
+    key has now (None when absent) and the value it gets. Order, timestamps and the rest of the file do not count, so
+    the same plan hashes the same in any process at any time; a key edited since, a different pick or another file
+    gives another hash. `apply --expect-plan` compares it to refuse writing anything but the reviewed plan."""
+    rows = sorted(
+        json.dumps([c.harness, str(c.file), c.key, c.old, c.new], separators=(",", ":"), default=str) for c in changes
+    )
+    return hashlib.sha256(("plan-v1\n" + "\n".join(rows)).encode()).hexdigest()[:16]
+
+
 def recs_from_result(result: dict, harness_of: dict[str, str] | None = None) -> list[dict]:
     """One recommendation per (harness, model) from the main-role group. Codex has a single global key."""
     recs = []

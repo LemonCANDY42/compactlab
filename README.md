@@ -210,7 +210,8 @@ compactlab consent set --file ~/.claude/settings.json --models claude-opus-5-5  
 compactlab recalibrate --auto-apply --dry-run
 ```
 
-Rescans are incremental, one run at a time, at low priority, with no network. Auto-apply is opt-in and goes through
+Rescans are incremental, at low priority, with no network, and one at a time: the service, the CLI, a schedule and
+the app share one lock, so a run that finds another calibration or config write going is skipped, not doubled. Auto-apply is opt-in and goes through
 `apply`'s backups and manifests (`compactlab revert` undoes it). It moves a setting at most 100k per run, at most
 weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
 [docs/SERVICE.md](docs/SERVICE.md).
@@ -323,7 +324,8 @@ step coarse. `apply` writes neither until their config locations and precedence 
   session ids, never transcript text or file paths. `report --redact` hashes the ids.
 - **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
   [pre-authorization file](docs/SAFETY.md) (allowed files, keys, models, value bounds, expiry) or `--i-authorize`.
-  Every write is backed up, and `revert` restores only the keys it changed.
+  Every write is backed up, and `revert` restores only the keys it changed. `--expect-plan <hash>` (the hash a
+  dry-run prints) writes only the plan you reviewed and refuses if anything in it changed since.
 - **Sharing is a file you post yourself.** `compactlab share` writes an anonymous record of the estimated savings
   (numbers and model names, no ids, paths or timestamps) for the research issue form; it sends nothing. See
   [docs/SHARING.md](docs/SHARING.md).
