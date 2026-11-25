@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # The default branch only: nothing from the issue is ever run, it is parsed as data.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate the record
         id: check
         run: |
