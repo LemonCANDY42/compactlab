@@ -5,6 +5,13 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **The scan cache kept the text of a turn still in progress.** When a log ended with a user message, a tool call or
+  its output that no turn had yet, the row's resume state stored them verbatim (Claude Code and Codex). It now keeps
+  only what the analysis uses: whether the message corrects the agent, the tool's name and a hash of its key, and the
+  output's token count. Resuming gives the same session as a full parse. The cache version is now 6: the first scan
+  deletes version 5's files, which could hold such text.
+
 ### Added
 - **One calibration or config write at a time, across processes.** `recalibrate`, `engine calibrate`, the runs of
   `serve`, `apply --write`, `retune` and `revert` take `<state-dir>/service/lock` (`flock`, without waiting), so the

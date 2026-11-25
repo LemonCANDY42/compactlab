@@ -128,8 +128,8 @@ def _prompted_log(tmp_path, claude_root, name="gone.jsonl"):
     rec = json.loads(next(ad.find_files()).read_text().splitlines()[0])
     log = tmp_path / "logs" / name
     log.parent.mkdir(exist_ok=True)
-    log.write_text("".join(json.dumps({**rec, "message": {"role": "user", "content": marker + str(i)}}) + "\n"
-                           for i in range(3)))  # fmt: skip
+    # the cache keeps no transcript text, but it counts event types it does not know, by name
+    log.write_text("".join(json.dumps({**rec, "type": marker + str(i)}) + "\n" for i in range(3)))
     return ad, log
 
 
@@ -142,7 +142,7 @@ def test_pruned_rows_leave_no_trace_in_the_cache_files(tmp_path, claude_root):
     cache = ScanCache(tmp_path / "c")
     cache.parse(ad, gone)
     cache.close()
-    assert b"PRUNE-ME-" in _cached_bytes(tmp_path / "c")  # the user text is cached
+    assert b"PRUNE-ME-" in _cached_bytes(tmp_path / "c")  # the unknown event types are cached
     gone.unlink()
     cache = ScanCache(tmp_path / "c")
     assert cache.prune() == Pruned(1, True, True)
