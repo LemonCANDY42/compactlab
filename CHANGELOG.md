@@ -5,6 +5,16 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **A read-only macOS menu bar app** in `app/` (Phase 1 of `docs/MENUBAR_APP.zh-CN.md`): how close each active
+  Claude Code and Codex session is to auto-compaction and whether its cache is still warm, the last calibration's
+  threshold per model and role (Codex's one key, Claude Code's idle compaction), a daily background calibration
+  on the service's schedule and backoff (put off on low power), the HTML report, open at login. A thin client of
+  `compactlab engine`: one resident `engine watch` driven by FSEvents, one-shot `result`, `calibrate` and `report`
+  processes; it parses no logs, writes no settings and uses no network. macOS 14+, built with SwiftPM
+  (`app/scripts/package_app.sh`); the `App` workflow tests it, smoke-tests the packaged app and, given a Developer
+  ID certificate and a notary key as secrets, signs and notarizes it.
+
 ## [0.1.0] - 2026-11-25
 
 First release. Install with `brew install LemonCANDY42/tap/compactlab` or from GitHub with `uv tool install`.

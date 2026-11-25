@@ -1,0 +1,87 @@
+name: App
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "src/**", "tests/contract/**", "pyproject.toml", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["app/**", "src/**", "tests/contract/**", "pyproject.toml", ".github/workflows/app.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the build number is the commit count
+      - uses: astral-sh/setup-uv@v7
+      - run: swift --version
+      - name: Unit tests (contract fixtures, fake engines)
+        working-directory: app
+        run: swift test
+      - name: Install the engine from this commit
+        run: uv tool install .
+      - name: Import the Developer ID certificate
+        id: cert
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          if [ -z "$CERT_P12" ]; then echo "no certificate: the app is signed ad hoc"; exit 0; fi
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          pw="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          identity="$(security find-identity -v -p codesigning "$kc" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      - name: Package (universal)
+        env:
+          CODESIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
+        run: app/scripts/package_app.sh --universal
+      - name: Smoke test (empty home, real engine)
+        run: |
+          engine="$(uv tool dir --bin)/compactlab"
+          home="$(mktemp -d)"
+          HOME="$home" COMPACTLAB_ENGINE="$engine" \
+            app/build/compactlab.app/Contents/MacOS/compactlab --render-panel "$RUNNER_TEMP/panel-empty.png" --wait 30
+      - name: Smoke test (demo logs and result)
+        run: |
+          engine="$(uv tool dir --bin)/compactlab"
+          home="$(mktemp -d)"
+          "$engine" demo --out "$RUNNER_TEMP/demo" --no-open >/dev/null
+          cp -R "$RUNNER_TEMP/demo/claude" "$home/.claude"
+          cp -R "$RUNNER_TEMP/demo/codex" "$home/.codex"
+          mkdir -p "$home/.compactlab/service"
+          cp "$RUNNER_TEMP/demo/result.json" "$home/.compactlab/service/result.json"
+          HOME="$home" COMPACTLAB_ENGINE="$engine" \
+            app/build/compactlab.app/Contents/MacOS/compactlab --render-panel "$RUNNER_TEMP/panel-demo.png" --wait 30 \
+            | tee "$RUNNER_TEMP/diag.txt"
+          grep -q "result: loaded" "$RUNNER_TEMP/diag.txt"
+      - name: Notarize
+        if: ${{ steps.cert.outputs.identity != '' }}
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          NOTARY_KEY="$RUNNER_TEMP/notary.p8" app/scripts/notarize.sh app/build/compactlab.app
+          rm "$RUNNER_TEMP/notary.p8"
+      - name: Zip (ad hoc)
+        if: ${{ steps.cert.outputs.identity == '' }}
+        run: ditto -c -k --keepParent app/build/compactlab.app app/build/compactlab-app-adhoc.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compactlab-app
+          path: |
+            app/build/*.zip
+            ${{ runner.temp }}/panel-*.png
+          if-no-files-found: error

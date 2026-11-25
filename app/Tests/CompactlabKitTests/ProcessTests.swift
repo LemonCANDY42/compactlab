@@ -1,0 +1,270 @@
+import Foundation
+import Testing
+
+@testable import CompactlabKit
+
+struct ProcessRunnerTests {
+    @Test func outputAndStatus() async throws {
+        let out = try await ProcessRunner.run(
+            URL(fileURLWithPath: "/bin/sh"), ["-c", "echo hi; echo oops >&2; exit 3"], timeout: .seconds(10))
+        #expect(out.status == 3)
+        #expect(String(decoding: out.stdout, as: UTF8.self) == "hi\n")
+        #expect(out.stderrTail == "oops")
+        #expect(!out.timedOut && !out.cancelled)
+    }
+
+    @Test func largeOutputDoesNotStall() async throws {
+        // Far more than a pipe buffer on both streams at once.
+        let out = try await ProcessRunner.run(
+            URL(fileURLWithPath: "/bin/sh"),
+            ["-c", "head -c 1000000 /dev/zero | tr '\\0' a; head -c 300000 /dev/zero | tr '\\0' b >&2"],
+            timeout: .seconds(20))
+        #expect(out.stdout.count == 1_000_000)
+        #expect(out.stderr.count == 300_000)
+    }
+
+    @Test func timeout() async throws {
+        let start = ContinuousClock.now
+        let out = try await ProcessRunner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], timeout: .milliseconds(300))
+        #expect(out.timedOut)
+        #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
+    @Test func cancellation() async throws {
+        let task = Task {
+            try await ProcessRunner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], timeout: .seconds(60))
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        task.cancel()
+        let out = try await task.value
+        #expect(out.cancelled)
+    }
+
+    @Test func missingExecutableThrows() async {
+        await #expect(throws: (any Error).self) {
+            try await ProcessRunner.run(URL(fileURLWithPath: "/nonexistent/compactlab"), [], timeout: .seconds(5))
+        }
+    }
+}
+
+struct WatchProcessTests {
+    @Test func linesInOrderThenExit() async throws {
+        let tmp = try TempDir()
+        let script = try tmp.script(
+            "w",
+            """
+            echo '{"a":1}'
+            while read cmd; do
+              case "$cmd" in
+                ping) printf '{"pong":1}\\n{"b":'; printf '2}\\n' ;;
+                quit) printf 'tail-without-newline'; exit 4 ;;
+              esac
+            done
+            """)
+        let w = WatchProcess(executable: script, arguments: [])
+        try w.start()
+        var it = w.events.makeAsyncIterator()
+        var e: WatchProcess.Event?
+        e = await it.next()
+        #expect(e == .line(Data(#"{"a":1}"#.utf8)))
+        w.send("ping")
+        e = await it.next()
+        #expect(e == .line(Data(#"{"pong":1}"#.utf8)))
+        e = await it.next()
+        #expect(e == .line(Data(#"{"b":2}"#.utf8)))
+        w.send("quit")
+        e = await it.next()
+        #expect(e == .line(Data("tail-without-newline".utf8)))
+        e = await it.next()
+        #expect(e == .exited(status: 4))
+        e = await it.next()
+        #expect(e == nil)
+    }
+
+    @Test func closingStdinEndsTheEngine() async throws {
+        let tmp = try TempDir()
+        let script = try tmp.script("w", "while read cmd; do :; done; exit 0")
+        let w = WatchProcess(executable: script, arguments: [])
+        try w.start()
+        w.stop()
+        var last: WatchProcess.Event?
+        for await e in w.events { last = e }
+        #expect(last == .exited(status: 0))
+        w.send("refresh")  // gone: a no-op, not a crash (SIGPIPE)
+    }
+
+    @Test func stderrIsKept() async throws {
+        let tmp = try TempDir()
+        let script = try tmp.script("w", "echo 'Traceback: boom' >&2; exit 1")
+        let w = WatchProcess(executable: script, arguments: [])
+        try w.start()
+        for await _ in w.events {}
+        #expect(w.lastStderr.contains("boom"))
+    }
+
+    @Test func restartPolicy() {
+        let t = Date(timeIntervalSince1970: 0)
+        var p = RestartPolicy(window: 60, maxExits: 3)
+        let burst = [0.0, 10, 20].map { p.shouldRestart(at: t.addingTimeInterval($0)) }
+        #expect(burst == [true, true, false])
+        var q = RestartPolicy(window: 60, maxExits: 3)
+        let spread = [0.0, 30, 100].map { q.shouldRestart(at: t.addingTimeInterval($0)) }
+        #expect(spread == [true, true, true])  // the first exit has left the window by the third
+    }
+}
+
+/// The model against a fake engine that answers with the contract fixtures.
+@MainActor
+struct AppModelTests {
+    final class FakeEngine {
+        let tmp: TempDir
+        let exe: URL
+        var calls: [String] {
+            (try? String(contentsOf: tmp.url.appendingPathComponent("calls"), encoding: .utf8))?
+                .split(separator: "\n").map(String.init) ?? []
+        }
+
+        func set(_ flag: String, _ on: Bool) throws {
+            let f = tmp.url.appendingPathComponent(flag)
+            if on { try Data().write(to: f) } else { try? FileManager.default.removeItem(at: f) }
+        }
+
+        init() throws {
+            tmp = try TempDir()
+            for name in ["hello", "sessions", "result", "error"] {
+                _ = try tmp.write("\(name).json", try Fixture.line(name) + "\n")
+            }
+            _ = try tmp.write(
+                "busy.json", #"{"engine_api": 1, "kind": "error", "error": {"code": "busy", "message": "held by pid 1"}}"# + "\n")
+            let d = tmp.url.path
+            exe = try tmp.script(
+                "compactlab",
+                """
+                D='\(d)'
+                echo "$*" >> "$D/calls"
+                case "$2" in
+                  hello) cat "$D/hello.json" ;;
+                  result) if [ -e "$D/no-result" ]; then cat "$D/error.json"; exit 1; else cat "$D/result.json"; fi ;;
+                  calibrate) sleep 0.2; if [ -e "$D/busy" ]; then cat "$D/busy.json"; exit 1; fi; rm -f "$D/no-result"; cat "$D/result.json" ;;
+                  watch)
+                    if [ -e "$D/crash" ]; then echo 'Traceback: watch broke' >&2; exit 1; fi
+                    cat "$D/hello.json"; cat "$D/sessions.json"
+                    while read cmd; do
+                      case "$cmd" in
+                        quit) exit 0 ;;
+                        refresh|snapshot) cat "$D/sessions.json" ;;
+                        *) echo 'not json' ;;
+                      esac
+                    done ;;
+                esac
+                """)
+        }
+    }
+
+    func model(_ engine: FakeEngine) -> AppModel {
+        let m = AppModel(
+            defaults: UserDefaults(suiteName: "compactlab-tests-\(UUID().uuidString)")!,
+            environment: ["COMPACTLAB_ENGINE": engine.exe.path, "PATH": "/usr/bin:/bin"])
+        m.scheduling = false
+        return m
+    }
+
+    @Test func startsAndShowsSessionsAndThresholds() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        await m.start()
+        defer { m.shutdown() }
+        #expect(m.status == .ready(version: "0.1.0"))
+        #expect(m.result?.groups.count == 5)
+        #expect(await eventually { m.sessions != nil })
+        #expect(m.sessionRows.count == 3)
+        #expect(m.watchStatus == .running)
+        #expect(!m.thresholdRows.isEmpty)
+    }
+
+    @Test func missingEngine() async throws {
+        let m = AppModel(
+            defaults: UserDefaults(suiteName: "compactlab-tests-\(UUID().uuidString)")!,
+            environment: ["PATH": "/nonexistent"])
+        m.scheduling = false
+        // Only the default install places are left; this machine may have one, so point HOME-based search elsewhere.
+        m.enginePath = ""
+        await m.start()
+        if m.executable == nil {
+            #expect(m.status == .missing)
+            #expect(m.icon == .engineProblem)
+        }
+        m.shutdown()
+    }
+
+    @Test func calibrateWhenDue() async throws {
+        let engine = try FakeEngine()
+        try engine.set("no-result", true)
+        let m = model(engine)
+        m.scheduling = true
+        m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
+        await m.start()  // the fixture's service has never calibrated: due now
+        defer { m.shutdown() }
+        #expect(await eventually { engine.calls.contains { $0.hasPrefix("engine calibrate --reason app-schedule") } })
+        #expect(await eventually { m.result != nil && !m.isCalibrating })
+        #expect(m.calibration == .idle)
+    }
+
+    @Test func lowPowerPutsOffTheSchedule() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        m.scheduling = true
+        m.powerState = { PowerState(lowPowerMode: true, onBattery: true, batteryPercent: 50) }
+        await m.start()
+        defer { m.shutdown() }
+        #expect(!engine.calls.contains { $0.hasPrefix("engine calibrate") })
+    }
+
+    @Test func busyIsNotAFailure() async throws {
+        let engine = try FakeEngine()
+        try engine.set("busy", true)
+        let m = model(engine)
+        await m.start()
+        defer { m.shutdown() }
+        m.recalibrate()
+        #expect(await eventually { !m.isCalibrating })
+        #expect(m.calibration == .busy("held by pid 1"))
+    }
+
+    @Test func watchCrashesRestartThenStop() async throws {
+        let engine = try FakeEngine()
+        try engine.set("crash", true)
+        let m = model(engine)
+        await m.start()
+        defer { m.shutdown() }
+        #expect(await eventually(timeout: .seconds(15)) { m.isWatchStopped })
+        #expect(engine.calls.filter { $0 == "engine watch" }.count == 3)
+        guard case .stopped(let why) = m.watchStatus else { return }
+        #expect(why.contains("watch broke"))
+        #expect(m.icon == .engineProblem)
+        // The user restarts it once the engine is fixed.
+        try engine.set("crash", false)
+        m.restartWatch()
+        #expect(await eventually { m.watchStatus == .running && m.sessions != nil })
+    }
+
+    @Test func hidingProjectNamesRestartsWatchWithTheFlag() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        await m.start()
+        defer { m.shutdown() }
+        #expect(await eventually { m.sessions != nil })
+        m.showProjects = false
+        #expect(await eventually { engine.calls.contains("engine watch --no-project-names") })
+        #expect(await eventually { m.watchStatus == .running })
+    }
+
+    @Test func profileReloadsTheResult() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        await m.start()
+        defer { m.shutdown() }
+        m.displayProfile = "cost"
+        #expect(await eventually { engine.calls.contains("engine result --profile cost") })
+    }
+}

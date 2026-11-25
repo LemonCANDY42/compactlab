@@ -1,6 +1,6 @@
 # compactlab 评估与 menu bar 应用设计（草案）
 
-状态：草案，2026-11-23。应用还没写代码；§6 的前三项（Codex 解析与时间模型、空闲压缩建模、`verify` 误判）已在引擎里修完。数字来自本机真实日志（单人、单机、list price），不是基准。
+状态：2026-11-23 起草；Phase 0 已完成（v0.1.0），Phase 1 的只读应用在 [app/](../app/README.md)（2026-11-25）。§6 的前三项（Codex 解析与时间模型、空闲压缩建模、`verify` 误判）已在引擎里修完。数字来自本机真实日志（单人、单机、list price），不是基准。
 
 ## 0. 结论
 
@@ -233,6 +233,12 @@ compactlab.app（LSUIElement，无 Dock 图标）
 
 菜单栏图标与状态、活跃会话、阈值表、立即重算、打开报告、登录启动、基本设置；Developer ID 签名并公证的构建（CI 里做），从第一版起就能发给别人试。
 验收：连续运行 7 天不崩；内存和 CPU 达标；活跃会话的上下文数和日志一致（误差 < 1%）。
+
+进展（2026-11-25，[app/](../app/README.md)）：功能都已做完。SwiftPM 包分两层：`CompactlabKit`（契约解码、引擎进程、调度、面板数据，37 个单测：共用 `tests/contract/` 夹具，进程测试用假引擎覆盖超时、取消、崩溃重启、乱码、忙锁）和 SwiftUI 应用。`scripts/package_app.sh` 打包，`--render-panel` 把面板画成 PNG，CI 用它在空 HOME 和 demo 数据上做启动冒烟。本机真实日志（40 个活跃会话）上首屏 2.4 s，应用常驻约 21 MB，watch 约 24 MB（峰值 33 MB）。
+还差：
+- 签名与公证：`App` workflow 已写好，在仓库加上 Developer ID 证书和 App Store Connect API key（见 app/README.md）后，推到 main 就出公证过的 zip；没有这些 secrets 时出 ad-hoc 构建。
+- 验收里的“连续 7 天不崩”要实际跑 7 天；上下文数直接显示引擎的值，引擎已和全量解析逐个核对过（Phase 0 第 4 项）。
+- bundle id 先用 `io.github.lemoncandy42.compactlab`（§7 第 5 项待填域名）。
 
 ### Phase 2：闭环
 

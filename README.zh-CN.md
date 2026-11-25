@@ -108,6 +108,10 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 
 `mods/compactlab-lens` 是一个可选的 Claude Code mod。它在输入框上方加一行,在桌面端加一个侧边面板,显示本会话的上下文和默认阈值、compactlab 阈值的位置,`simulate` 估算的每日节省,以及当前生效窗口和方案不一致时的 ⚠。它只读取 `simulate` 写出的 `~/.compactlab/lens.json`,不写设置、不调用模型、不联网;“复制”按钮会把 `/autocompact <n>` 放到剪贴板。安装:`/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`。详见 [docs/MOD.md](docs/MOD.md)。这是独立开源项目,与 Anthropic 无关。
 
+## 菜单栏应用(macOS,预览)
+
+`app/` 是一个只读的菜单栏应用,数据全部来自 `compactlab engine`:每个活跃的 Claude Code 和 Codex 会话离压缩阈值还有多远、提示词缓存是否还热(变冷后给出“复制 /compact”按钮)、最近一次校准的阈值表,并每天在后台校准一次。需要先装好本 CLI;用 `app/scripts/package_app.sh` 构建。详见 [app/README.md](app/README.md)。
+
 ## 应用之后核对预测
 
 `compactlab verify` 以最近一次 `apply` 的时间为界拆分日志,按模型和角色比较改动前后每 1k 轮的日志成本与压缩次数,并与用*改动前*会话回放得到的预测对照(同时给出用*改动后*会话回放的结果,用来发现工作负载变了)。它还会检查压缩是否真的发生在新阈值附近,从而发现被项目配置、环境变量或命令行参数覆盖的情况。两侧各不足 3 个会话、2 个活跃日时只提示"太早"。日志里不记压缩本身那次摘要请求,成本里会按估算补上;阈值压缩、空闲压缩和手动 `/compact` 分开计数;前后都没碰到阈值的角色不下结论。成本是标价估算,不是账单;墙钟时间不做核对。
