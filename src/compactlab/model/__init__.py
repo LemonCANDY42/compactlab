@@ -210,6 +210,25 @@ def lean_dict(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# what a pending user message that corrects the agent is kept as in the scan cache: `lean` keeps only that it does
+CORRECTION_MARK = "as I said"
+
+
+def lean_state(st: dict[str, Any]) -> dict[str, Any]:
+    """A parser's resume state (`Parser.dump`, without its session) with no text, for the scan cache; resuming from
+    it gives the same lean session as a full parse. What the log has not yet attached to a turn keeps only what
+    `lean` keeps of it: of a user message, whether it corrects the agent; of a tool call, its key's tool name and
+    hash; of its output, the token count. Returns a new dict."""
+    out = dict(st)
+    if out.get("pending_user"):
+        out["pending_user"] = CORRECTION_MARK if corrects(out["pending_user"]) else ""
+    if out.get("pending_tools"):
+        out["pending_tools"] = [[cid, tool_id(key)] for cid, key in out["pending_tools"]]
+    if out.get("pending_results"):
+        out["pending_results"] = {cid: ["", toks] for cid, (_, toks) in out["pending_results"].items()}
+    return out
+
+
 def snapshot(s: Session) -> Session:
     """Copy of a session that a parser can keep appending to without affecting the copy's lists."""
     out = Session(**{**vars(s), "turns": list(s.turns), "unknown_events": dict(s.unknown_events)})

@@ -64,7 +64,9 @@ fraction of the memory (on one 30-day history, 182,160 turns: 109 MB instead of 
 corrects the agent is checked with `model.corrects`, which runs the regex only on short windows around the words
 any match must contain: the same answer, about 5x faster on long pasted messages. A parser resumed from a lean row
 keeps working: after a resume it only appends to earlier turns and sets the last compaction's summary through
-`Compaction.set_summary`. Deep mode reads text, so it parses the logs itself instead of using the cache.
+`Compaction.set_summary`. Its resume state is lean too (`model.lean_state`): a user message, tool call or tool output
+the log has not yet attached to a turn keeps only the correction flag, the hashed tool key or the token count. Deep
+mode reads text, so it parses the logs itself instead of using the cache.
 
 - Unchanged → rebuild the session from the row, without reading the resume part.
 - Appended with the same head → resume from the offset. A torn last line is never consumed.

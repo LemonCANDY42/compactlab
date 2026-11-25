@@ -32,14 +32,16 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, NamedTuple
 
-from ..model import lean, lean_dict
+from ..model import lean, lean_dict, lean_state
 from .base import parse_lines
 
 if TYPE_CHECKING:
     from ..model import Session
     from .base import Adapter, Parser
 
-CACHE_VERSION = 5  # 5: lean rows, no transcript text (the first scan deletes version 4's, which had it)
+# 5: lean rows, no transcript text (the first scan deletes version 4's, which had it); 6: nor in the resume state (5's
+# kept a user message, tool command and tool output that no turn had yet)
+CACHE_VERSION = 6
 HEAD = 4096
 BUSY_TIMEOUT_S = 10.0  # wait this long for another run's write; then go on without caching that file
 ERASE_TIMEOUT_S = 1.0  # wait this long for other runs' reads to end before erasing pruned rows from the files
@@ -153,8 +155,7 @@ class ScanCache:
             state = parser.dump()
             session = lean_dict(state.pop("session"))  # no transcript text on disk (compactions; anything not shared)
             state.pop("path", None)
-            if not adapter.resumable:
-                state = {}  # only resuming reads it
+            state = lean_state(state) if adapter.resumable else {}  # only resuming reads it
             self._exec(
                 "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (

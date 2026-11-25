@@ -2,6 +2,9 @@
 
 import copy
 import json
+import shutil
+
+import pytest
 
 from compactlab import synth
 from compactlab.adapters import get_adapter
@@ -96,6 +99,63 @@ def test_cache_rows_hold_no_transcript_text(tmp_path):
     cache.close()
     stored = b"".join(p.read_bytes() for p in (tmp_path / "c").iterdir())
     assert not any(m in stored for m in MARKERS)
+
+
+def _secret_codex_log(tmp_path):
+    synth.write_codex(tmp_path / "srcx", n=1)
+    out = []
+    for line in sorted((tmp_path / "srcx").rglob("*.jsonl"))[0].read_text().splitlines():
+        r = json.loads(line)
+        p = r.get("payload") or {}
+        if p.get("type") == "user_message":
+            p["message"] = "SECRET-PROMPT I already told you " + p["message"]
+        elif p.get("type") == "message" and p.get("role") == "user":
+            for b in p.get("content") or []:
+                b["text"] = "SECRET-PROMPT " + b.get("text", "")
+        elif p.get("type") == "function_call":
+            a = json.loads(p["arguments"]) if isinstance(p.get("arguments"), str) else {}
+            a["command"] = ["cat", "/SECRET-PATH/a.py"]
+            p["arguments"] = json.dumps(a)
+        elif p.get("type") == "custom_tool_call":
+            p["input"] = "/SECRET-PATH " + str(p.get("input", ""))
+        elif p.get("type") in ("function_call_output", "custom_tool_call_output") and isinstance(p.get("output"), str):
+            p["output"] = "SECRET-OUTPUT " + p["output"]
+        elif r.get("type") == "compacted":
+            p["message"] = "SECRET-SUMMARY " + p["message"]
+        out.append(json.dumps(r) + "\n")
+    log = tmp_path / "logs" / "rollout-x.jsonl"
+    log.parent.mkdir()
+    log.write_text("".join(out))
+    return log, out
+
+
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+def test_a_log_cut_anywhere_leaves_no_text_in_the_cache_and_resumes_exactly(tmp_path, harness):
+    """A scan can stop after any line: a user message, a tool call or its output not yet in a turn. The resume
+    state keeps none of their text, and resuming gives the same lean session as a full parse."""
+    log, lines = (_secret_claude_log if harness == "claude-code" else _secret_codex_log)(tmp_path)
+    found = {m for m in MARKERS if m in "".join(lines).encode()}
+    assert {b"SECRET-PROMPT", b"SECRET-PATH", b"SECRET-OUTPUT"} <= found
+    ad = get_adapter(harness)(tmp_path / "logs")
+    want = session_to_dict(lean(ad.parse_file(log)))
+    assert any(t["correction"] for t in want["turns"])  # not vacuous: a correction crosses a cut
+    resumed = 0
+    for i in range(1, len(lines)):
+        log.write_text("".join(lines[:i]))
+        c = tmp_path / f"c{i}"
+        cache = ScanCache(c)
+        cache.parse(ad, log)
+        cache.close()
+        stored = b"".join(p.read_bytes() for p in c.iterdir())
+        assert not any(m in stored for m in MARKERS), f"text in the cache after line {i}"
+        log.write_text("".join(lines))
+        cache = ScanCache(c)
+        got = cache.parse(ad, log)
+        assert session_to_dict(got) == want, f"cut after line {i}"
+        resumed += cache.stats["resumed"]  # a cut inside the first 4 KiB changes the file's head: parsed again
+        cache.close()
+        shutil.rmtree(c)
+    assert resumed > len(lines) // 2
 
 
 def test_codex_keeps_the_first_summary_of_a_lean_compaction_on_resume(tmp_path):
