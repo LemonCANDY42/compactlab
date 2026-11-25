@@ -114,6 +114,14 @@ struct PanelTests {
         #expect(lastMain < firstSub)
     }
 
+    @Test func codexKeepCurrentShowsTheSetting() {
+        let key = GlobalKey(models: ["gpt-5-codex · main"], profiles: [:])
+        let pick = GlobalKey.Pick(action: "keep current", threshold: 300_000, current: 320_000, dUsdPerDay: nil, dMinPerDay: nil)
+        let row = Panel.globalRow(harness: "codex", key: key, pick: pick)
+        #expect(row.value == "320k")
+        #expect(row.detail == "keep your setting")
+    }
+
     @Test func idleRow() {
         let keep = IdleVerdict.Choice(dUsdPerDay: 0.8, dMinPerDay: 0, shouldSwitch: false)
         let v = IdleVerdict(enabled: true, configured: false, minTokens: 200_000, profile: "balanced", profiles: ["balanced": keep])

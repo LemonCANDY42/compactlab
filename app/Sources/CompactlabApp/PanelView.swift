@@ -178,7 +178,7 @@ struct PanelView: View {
             }
             .disabled(model.result == nil)
             Button("Recalibrate") { model.recalibrate() }
-                .disabled(!model.status.isUsable || model.isCalibrating)
+                .disabled(!model.status.canWrite || model.isCalibrating)
             Spacer()
             Button("Settings…") {
                 NSApp.activate(ignoringOtherApps: true)

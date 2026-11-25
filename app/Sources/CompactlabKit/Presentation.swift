@@ -236,8 +236,9 @@ public enum Panel {
         let change = pick.action == "set"
         var detail = change ? "set it (one key for every model)" : (pick.action == "keep current" ? "keep your setting" : "keep the default")
         if change, let usd = pick.dUsdPerDay { detail += ", \(Format.usd(usd))/day" }
+        let shown = pick.action == "keep current" ? (pick.current ?? pick.threshold) : pick.threshold
         return ThresholdRow(
-            id: "global/\(harness)", title: "\(name) (all models)", value: pick.threshold.map(Format.tokens) ?? "–",
+            id: "global/\(harness)", title: "\(name) (all models)", value: shown.map(Format.tokens) ?? "–",
             detail: detail, suggestsChange: change)
     }
 

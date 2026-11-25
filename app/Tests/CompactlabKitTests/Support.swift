@@ -13,7 +13,7 @@ enum Fixture {
     /// The fixture on one line, as `watch` prints it.
     static func line(_ name: String) throws -> String {
         let obj = try JSONSerialization.jsonObject(with: data(name))
-        return String(decoding: try JSONSerialization.data(withJSONObject: obj), as: UTF8.self)
+        return String(decoding: try JSONSerialization.data(withJSONObject: obj, options: .sortedKeys), as: UTF8.self)
     }
 }
 

@@ -226,6 +226,8 @@ public struct GlobalKey: Decodable, Sendable, Equatable {
     public struct Pick: Decodable, Sendable, Equatable {
         public var action: String
         public var threshold: Int?
+        /// The configured value, when the action is `keep current` (the pick may differ within tolerance).
+        public var current: Int?
         public var dUsdPerDay: Double?
         public var dMinPerDay: Double?
     }

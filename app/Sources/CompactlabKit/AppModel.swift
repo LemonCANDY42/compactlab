@@ -24,6 +24,13 @@ public final class AppModel {
             default: false
             }
         }
+
+        /// Commands that write (a calibration writes the result, the lens and the service state) need the contract
+        /// this app was built for.
+        public var canWrite: Bool {
+            if case .ready = self { return true }
+            return false
+        }
     }
 
     public enum WatchStatus: Equatable, Sendable {
@@ -87,10 +94,19 @@ public final class AppModel {
     private var fileWatcher: FileWatcher?
     private var ticker: Timer?
     private var lastScheduleCheck = Date.distantPast
+    private var lastHelloRefresh = Date.distantPast
+    /// A timed-out or cancelled calibration leaves no record in the service state (the engine writes it when a run
+    /// ends), so the app backs off on its own: 5 minutes, doubling, up to the interval.
+    private var interrupted = 0
+    private var notBefore = Date.distantPast
     /// Checked before a scheduled calibration; replaceable in tests.
     public var powerState: @Sendable () -> PowerState = { PowerState.current() }
     /// Whether scheduled calibrations run (tests turn them off).
     public var scheduling = true
+    /// A calibration running longer is stopped.
+    public var calibrateTimeout: Duration = .seconds(600)
+    /// Service state read this recently is not read again before a scheduled run.
+    public var serviceFreshFor: TimeInterval = 60
 
     public init(defaults: UserDefaults = .standard, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.defaults = defaults
@@ -119,6 +135,7 @@ public final class AppModel {
             switch try EngineAPI.decode(out.stdout) {
             case .hello(let h):
                 hello = h
+                lastHelloRefresh = Date()
                 status = h.engineApi == EngineAPI.version ? .ready(version: h.version) : .incompatible(api: h.engineApi, version: h.version)
             case .error(let e):
                 status = .failed(e.message)
@@ -154,6 +171,7 @@ public final class AppModel {
     }
 
     private func startWatch() {
+        stopWatch()  // two overlapping start()s must not leave a watcher running
         guard let exe = executable, let h = hello, h.commands.contains("watch") else {
             watchStatus = .off
             return
@@ -255,7 +273,7 @@ public final class AppModel {
 
     /// Run a calibration now (the panel's button). Scheduled ones go through `calibrateIfDue`.
     public func recalibrate(reason: String = "app") {
-        guard status.isUsable, calibrateTask == nil else { return }
+        guard status.canWrite, calibrateTask == nil else { return }
         calibration = .running(since: Date())
         calibrateTask = Task { [weak self] in
             guard let self else { return }
@@ -275,15 +293,17 @@ public final class AppModel {
 
     private func calibrate(reason: String) async {
         do {
-            let out = try await run(["engine", "calibrate", "--reason", reason], timeout: .seconds(600))
-            if out.cancelled {
-                calibration = .idle
+            let out = try await run(["engine", "calibrate", "--reason", reason], timeout: calibrateTimeout)
+            if out.cancelled || out.timedOut {
+                interrupted += 1
+                let every = result?.calibration?.everyS ?? Schedule.defaultEvery
+                notBefore = Date().addingTimeInterval(
+                    min(every, Schedule.firstBackoff * pow(2, Double(interrupted - 1))))
+                calibration = out.cancelled ? .idle : .failed("the calibration ran too long and was stopped")
                 return
             }
-            if out.timedOut {
-                calibration = .failed("calibration took longer than 10 minutes and was stopped")
-                return
-            }
+            interrupted = 0
+            notBefore = .distantPast
             switch try? EngineAPI.decode(out.stdout) {
             case .result:
                 calibration = .idle
@@ -303,14 +323,29 @@ public final class AppModel {
 
     /// Calibrate when the service schedule says so, unless saving power. Called at start, each tick and on wake.
     public func calibrateIfDue() async {
-        guard scheduling, status.isUsable, calibrateTask == nil, let h = hello else { return }
-        let every = result?.calibration?.everyS ?? Schedule.defaultEvery
-        guard Schedule.isDue(service: h.service, every: every, now: Date()) else { return }
+        guard scheduling, status.canWrite, calibrateTask == nil, Date() >= notBefore, hello != nil else { return }
+        // A calibration without an interval (`serve --every off`) means: manual only, as the engine's schedule has it.
+        let every: TimeInterval
+        if let c = result?.calibration {
+            guard let e = c.everyS else { return }
+            every = e
+        } else {
+            every = Schedule.defaultEvery
+        }
+        // The CLI, `serve` or a schedule may have calibrated (or failed) since: their bookkeeping moves the due time.
+        // Re-read it every half hour, and before starting a run unless it was read within `serviceFreshFor`.
+        if Date().timeIntervalSince(lastHelloRefresh) >= 1800 { await refreshHello() }
+        guard let h = hello, Schedule.isDue(service: h.service, every: every, now: Date()) else { return }
         if powerState().shouldDefer {
             log.info("calibration due but put off: low power")
             return
         }
         if case .busy = calibration, Date().timeIntervalSince(lastScheduleCheck) < 60 { return }
+        if Date().timeIntervalSince(lastHelloRefresh) >= serviceFreshFor {
+            await refreshHello()
+            guard calibrateTask == nil, let h = hello, Schedule.isDue(service: h.service, every: every, now: Date())
+            else { return }
+        }
         lastScheduleCheck = Date()
         recalibrate(reason: "app-schedule")
     }
@@ -321,6 +356,7 @@ public final class AppModel {
             case .hello(let h) = try? EngineAPI.decode(out.stdout)
         else { return }
         hello = h
+        lastHelloRefresh = Date()
     }
 
     /// Wake from sleep: timers are reset by the system; catch up on a missed calibration (once).

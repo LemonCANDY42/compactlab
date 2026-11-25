@@ -26,7 +26,13 @@ It is a thin client: every number comes from the `compactlab` command-line tool 
 | Settings | Open at login (`SMAppService`), percentage in the menu bar, project names (shown only in the panel), engine path, restart, copy diagnostics (no session content or project names). |
 
 If the watcher exits it is restarted; three exits within a minute stop it with a message and a Restart button.
-An engine that speaks another contract version is shown read-only with a note.
+An engine that speaks another contract version is shown read-only with a note, and nothing is calibrated.
+A calibration that times out or is cancelled backs off like a failed one (5 minutes, doubling); one whose interval
+is off (`serve --every off`) turns the app's schedule off too. Before a scheduled run the app re-reads the service
+state, so a calibration by the CLI or `serve` postpones it.
+
+Known gap: a log folder created after the app started (the first Codex session, say) is watched only after a
+restart; until then its sessions show up through the engine's own scan every 60 seconds.
 
 ## Build and test
 

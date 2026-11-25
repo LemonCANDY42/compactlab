@@ -259,6 +259,72 @@ struct AppModelTests {
         #expect(await eventually { m.watchStatus == .running })
     }
 
+    @Test func incompatibleEngineIsReadOnly() async throws {
+        let engine = try FakeEngine()
+        let hello = try engine.tmp.url.appendingPathComponent("hello.json")
+        try String(contentsOf: hello, encoding: .utf8).replacingOccurrences(of: #""engine_api":1"#, with: #""engine_api":2"#)
+            .write(to: hello, atomically: true, encoding: .utf8)
+        let m = model(engine)
+        m.scheduling = true
+        m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
+        await m.start()
+        defer { m.shutdown() }
+        #expect(m.status == .incompatible(api: 2, version: "0.1.0"))
+        #expect(m.result != nil)  // still shown
+        m.recalibrate()
+        await m.calibrateIfDue()
+        #expect(!engine.calls.contains { $0.hasPrefix("engine calibrate") })
+    }
+
+    @Test func externalCalibrationPostponesTheSchedule() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        await m.start()  // scheduling off: the fixture's service has never calibrated
+        defer { m.shutdown() }
+        // Meanwhile the CLI calibrates.
+        let hello = engine.tmp.url.appendingPathComponent("hello.json")
+        let now = Int(Date().timeIntervalSince1970)
+        try String(contentsOf: hello, encoding: .utf8)
+            .replacingOccurrences(of: #""last_attempt":null,"last_calibrated":null"#, with: #""last_attempt":\#(now),"last_calibrated":\#(now)"#)
+            .write(to: hello, atomically: true, encoding: .utf8)
+        m.scheduling = true
+        m.serviceFreshFor = 0
+        m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
+        await m.calibrateIfDue()
+        #expect(m.hello?.service.lastCalibrated == Double(now))
+        #expect(!engine.calls.contains { $0.hasPrefix("engine calibrate") })
+    }
+
+    @Test func interruptedCalibrationBacksOff() async throws {
+        let engine = try FakeEngine()
+        let m = model(engine)
+        m.calibrateTimeout = .milliseconds(50)  // the fake calibrate takes 200 ms
+        m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
+        await m.start()
+        defer { m.shutdown() }
+        m.scheduling = true
+        await m.calibrateIfDue()
+        #expect(await eventually { !m.isCalibrating && engine.calls.contains { $0.hasPrefix("engine calibrate") } })
+        #expect(m.calibration == .failed("the calibration ran too long and was stopped"))
+        let runs = engine.calls.filter { $0.hasPrefix("engine calibrate") }.count
+        await m.calibrateIfDue()  // still due by the service state, but backing off
+        #expect(engine.calls.filter { $0.hasPrefix("engine calibrate") }.count == runs)
+    }
+
+    @Test func scheduleOffMeansManualOnly() async throws {
+        let engine = try FakeEngine()
+        let result = engine.tmp.url.appendingPathComponent("result.json")
+        try String(contentsOf: result, encoding: .utf8).replacingOccurrences(of: #""every_s":[0-9.]+"#, with: #""every_s":null"#, options: .regularExpression)
+            .write(to: result, atomically: true, encoding: .utf8)
+        let m = model(engine)
+        m.scheduling = true
+        m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
+        await m.start()  // never calibrated by the service state, but the last run turned the schedule off
+        defer { m.shutdown() }
+        #expect(m.result?.calibration != nil && m.result?.calibration?.everyS == nil)
+        #expect(!engine.calls.contains { $0.hasPrefix("engine calibrate") })
+    }
+
     @Test func profileReloadsTheResult() async throws {
         let engine = try FakeEngine()
         let m = model(engine)
@@ -266,5 +332,32 @@ struct AppModelTests {
         defer { m.shutdown() }
         m.displayProfile = "cost"
         #expect(await eventually { engine.calls.contains("engine result --profile cost") })
+    }
+}
+
+struct FileWatcherTests {
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        func bump() { lock.withLock { n += 1 } }
+        var value: Int { lock.withLock { n } }
+    }
+
+    @Test @MainActor func writesAreReported() async throws {
+        let tmp = try TempDir()
+        let dir = tmp.url.resolvingSymlinksInPath()
+        let count = Counter()
+        let w = FileWatcher { count.bump() }
+        #expect(w.watch([dir.path], latency: 0.1))
+        try await Task.sleep(for: .milliseconds(200))
+        try Data("x".utf8).write(to: dir.appendingPathComponent("a.jsonl"))
+        #expect(await eventually { count.value > 0 })
+        w.stop()
+        // A replaced watcher's stream holds its callback; freeing the watcher is safe.
+        var other: FileWatcher? = FileWatcher { count.bump() }
+        other?.watch([dir.path], latency: 0.1)
+        other = nil
+        try Data("y".utf8).write(to: dir.appendingPathComponent("b.jsonl"))
+        try await Task.sleep(for: .milliseconds(300))
     }
 }
