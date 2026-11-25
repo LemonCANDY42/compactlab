@@ -86,7 +86,9 @@ line says so.
 
 - **Reads:** one local file, `~/.compactlab/lens.json`, or the path in the `lensPath` option. A full `result.json`
   also works if it is under 4 MiB. `compactlab simulate` writes `lens.json` by default (`--lens-out`, `''` to skip):
-  thresholds and per-day impact per model and role, with no session ids, paths or transcript text.
+  thresholds and per-day impact per model and role, with no session ids, paths or transcript text. The file keeps
+  the latest run of every harness (a `simulate --harness codex` leaves the Claude Code groups as they were); the mod
+  uses the Claude Code group of the session's model and the calibration age recorded for that harness.
 - **Reads from the engine:** the session's model, its context tokens and window, and the compaction window in force.
   These come from `$.session.usage({ breakdown: 'summary' })`, which estimates locally and sends no request. It also
   counts compactions of the main conversation.

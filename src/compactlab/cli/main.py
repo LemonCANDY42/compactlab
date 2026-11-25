@@ -232,6 +232,7 @@ def load_sessions(a: argparse.Namespace, cut: float | None = None, text: bool = 
     out: list[Session] = []
     cut = _cut(a) if cut is None else cut
     quiet, total, errors = getattr(a, "service", False), 0, 0
+    failed: set[str] = set()
     try:
         for h in a.harness or adapter_names():
             ad = get_adapter(h)(_roots(a).get(h))
@@ -246,6 +247,7 @@ def load_sessions(a: argparse.Namespace, cut: float | None = None, text: bool = 
                     found = ad.load(path, cache, cut)
                 except OSError:
                     errors += 1
+                    failed.add(h)
                     continue
                 out += [s if text else lean(s) for s in found if s.turns]
             if h == "claude-code":  # a resumed or forked log repeats its parent's history
@@ -270,8 +272,16 @@ def load_sessions(a: argparse.Namespace, cut: float | None = None, text: bool = 
         _progress("")
     st = cache.stats if cache else {"hit": 0, "resumed": 0, "parsed": total}
     a.scan_stats = {"files": total, "cached": st["hit"] + st["resumed"], "parsed": st["parsed"]}
-    a.scan_errors = errors
+    a.scan_errors, a.scan_failed = errors, failed
     return out
+
+
+def covered(a: argparse.Namespace, res: dict[str, Any]) -> list[str]:
+    """The harnesses a run speaks for in the shared files (publish.py): every one it scanned, so one with no logs
+    in the window loses its old entries, except one that came back empty because its logs could not be read."""
+    have = {g["harness"] for g in res["groups"]}
+    failed: set[str] = getattr(a, "scan_failed", set())  # a reused analysis comes from an error-free scan
+    return [h for h in dict.fromkeys(a.harness or adapter_names()) if h in have or h not in failed]
 
 
 # ---------- reusing an analysis result (lite mode, with the scan cache) ----------
@@ -469,6 +479,7 @@ def _run_analysis(a: argparse.Namespace, cut: float | None, keep: ScanCache | No
             reused = None
         if reused is not None:
             a.scan_stats = {"files": nfiles, "cached": 0, "parsed": 0, "reused": True}  # no log was read
+            a.scan_failed = set()  # not an earlier run's (the service reuses `a`)
             return reused
     sessions = load_sessions(a, cut, text=a.mode == "deep")
     if not sessions:
@@ -964,12 +975,11 @@ def cmd_simulate(a: argparse.Namespace) -> int:
         return 2
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(res, sort_keys=True))
-    if a.lens_out:
+    if a.lens_out:  # shared with the service and earlier runs: keeps the harnesses this run did not cover
         from ..lens import summarize
+        from ..publish import update
 
-        lens = Path(a.lens_out).expanduser()
-        lens.parent.mkdir(parents=True, exist_ok=True)
-        lens.write_text(json.dumps(summarize(res), sort_keys=True))
+        update(Path(a.lens_out).expanduser(), summarize(res), covered(a, res))
     _out(
         a,
         {
@@ -1451,6 +1461,7 @@ def _calibrator(a: argparse.Namespace):
         if res is None:
             raise RuntimeError("analysis returned nothing")
         res["scan"] = getattr(a, "scan_stats", None)  # popped by the calibrator for its log line
+        res["covered"] = covered(a, res)  # popped too: what its result and lens replace (publish.py)
         return res
 
     rules = Rules(min_days=a.min_days, min_turns=a.min_turns, max_step=a.max_step, cooldown_s=cooldown)

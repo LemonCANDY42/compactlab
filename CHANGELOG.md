@@ -5,6 +5,17 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **`lens.json` and the service's `result.json` keep the latest run of every harness.** A run replaces the harnesses
+  it scanned (every one unless `--harness` limits it, including one with no logs in the window) and keeps the
+  others' groups, sessions, Codex single-key decision, idle-compaction verdict and model notes from the file, so
+  `simulate --harness dsh` no longer leaves a lens with dsh alone. A harness whose logs could not be read keeps its
+  entries. The fields of the whole run (`options`, `mode`, `calibration`, ...) are the latest run's, and groups kept
+  from another run are re-selected (no replay) under its options. Both files and `engine result` gain `harnesses`:
+  per harness, the mode, newest turn and calibration its groups come from. Writes are atomic and serialized by a lock
+  file beside each file. `simulate --out` and `demo` still write their own run alone. The lens mod reads Claude Code
+  groups only (OpenCode can run the same models) and that harness's calibration age.
+
 ### Added
 - **One calibration or config write at a time, across processes.** `recalibrate`, `engine calibrate`, the runs of
   `serve`, `apply --write`, `retune` and `revert` take `<state-dir>/service/lock` (`flock`, without waiting), so the

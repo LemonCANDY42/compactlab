@@ -100,6 +100,7 @@ def result_message(
         data_through=res.get("data_through"),
         demo=bool(res.get("demo")),
         profile=(res.get("options") or {}).get("profile") or DEFAULT_PROFILE,
+        harnesses=lens["harnesses"],  # per harness: the run its groups come from (the result keeps each one's latest)
         groups=groups,
         idle_compaction=res.get("idle_compaction"),
         global_keys=res.get("global_keys") or {},

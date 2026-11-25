@@ -66,21 +66,27 @@ export const command = (threshold: number): string => `/autocompact ${k(threshol
 export const canonical = (model: string): string =>
   model.toLowerCase().replace(/\[.*?\]$/, '').replace(/-\d{8}$/, '').trim()
 
-/** Reads either lens.json (schema 1) or a full result.json, and picks this model's group for `role`. */
+type Cal = { at?: unknown; every_s?: unknown } | null | undefined
+
+/** Reads either lens.json (schema 1) or a full result.json, and picks this model's Claude Code group for `role`
+ * (the file holds every harness; OpenCode can run the same Claude models). */
 export const factsFrom = (text: string, path: string, model: string, role = 'main'): LensFacts => {
-  let data: { groups?: unknown; demo?: unknown; calibration?: { at?: unknown; every_s?: unknown } }
+  let data: { groups?: unknown; demo?: unknown; calibration?: Cal; harnesses?: Record<string, { calibration?: Cal }> }
   try {
     data = JSON.parse(text) as typeof data
   } catch {
     return { status: 'unreadable', path }
   }
-  const groups = Array.isArray(data.groups) ? (data.groups as Record<string, unknown>[]) : []
+  const groups = (Array.isArray(data.groups) ? (data.groups as Record<string, unknown>[]) : [])
+    .filter(x => x.harness === undefined || x.harness === 'claude-code')
   const want = canonical(model)
   const g = groups.find(x => canonical(String(x.model)) === want && x.role === role)
     ?? groups.find(x => want.startsWith(canonical(String(x.model))) && x.role === role)
   if (!g) return { status: 'no-group', path }
   const group = 'default_threshold' in g ? (g as unknown as LensGroup) : fromResultGroup(g)
-  const c = data.calibration
+  // each harness keeps the run its groups come from; files written before that have one calibration
+  const own = data.harnesses?.[String(g.harness)]
+  const c = own ? own.calibration : data.calibration
   const calibration: LensCalibration | null = c && typeof c.at === 'number'
     ? { at: c.at, every_s: typeof c.every_s === 'number' ? c.every_s : null } : null
   return group ? { status: 'ok', path, group, isDemo: Boolean(data.demo), calibration } : { status: 'unreadable', path }

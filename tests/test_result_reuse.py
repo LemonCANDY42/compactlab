@@ -201,6 +201,8 @@ def test_reused_calibration_is_fresh_and_auto_apply_still_runs(tmp_path, logs, c
     assert scans[0] == 1  # the second calibration reused the first one's analysis
     first, second = (r.pop("calibration") for r in results)
     assert second["at"] > first["at"] and second["reason"] == "cli"
+    for f, c in zip([*results, *lenses], [first, second, first, second], strict=True):
+        assert [h.pop("calibration") for h in f["harnesses"].values()] == [c]  # the run its groups come from
     assert results[0] == results[1]
     assert [ln.pop("calibration") for ln in lenses] == [first, second] and lenses[0] == lenses[1]
     assert outs[0]["auto_apply"]["decisions"] and outs[0]["auto_apply"] == outs[1]["auto_apply"]
