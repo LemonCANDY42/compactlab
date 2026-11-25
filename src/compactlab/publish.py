@@ -87,7 +87,10 @@ def merge(prev: Any, new: dict[str, Any], covered: Iterable[str] | None) -> dict
         from .sim.engine import reselect  # the per-harness `global_keys` and Claude Code's `idle_compaction`
 
         out["groups"] = json.loads(json.dumps(out["groups"]))  # reselect() mutates; `new` stays the caller's
-        reselect(out)
+        try:
+            reselect(out)
+        except (KeyError, TypeError, ValueError, IndexError, ZeroDivisionError):  # groups an older compactlab wrote
+            return {**new, "harnesses": harness_info(new)}
     return out
 
 

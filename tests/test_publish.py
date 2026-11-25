@@ -57,6 +57,8 @@ def test_what_is_replaced_whole(tmp_path):
         assert merge(prev, new, ["codex"])["groups"] == new["groups"]
     assert merge(real, new, None)["groups"] == new["groups"]  # a run that covered every harness
     assert len(merge(real, new, ["codex"])["groups"]) == 2
+    # a result whose kept groups cannot be re-selected (an older compactlab's): this run alone, not an error
+    assert merge({**real, "options": {}}, {**new, "options": {}}, ["codex"])["groups"] == new["groups"]
     p = tmp_path / "lens.json"
     p.write_text("{")  # damaged: replaced, not an error
     assert update(p, new, ["codex"])["groups"] == new["groups"] == json.loads(p.read_text())["groups"]
