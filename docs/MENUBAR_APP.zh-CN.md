@@ -58,7 +58,7 @@ Codex 从没设过阈值。修复后（GPT-6 原来全按兜底价 $3/$15 算，
 
 ### 1.4 工程质量
 
-约 9.1k 行 Python，约 200 个测试，CI 绿，零运行时依赖，方法、安全、威胁模型文档齐全。`apply` 是唯一写配置的代码，有备份、manifest、按键回滚，应用要保持这个边界。弱点集中在后台场景：缓存设计、跨进程单飞（`Calibrator` 的锁只在进程内；已修，见 §5 Phase 0 第 5 项）、结果文件按“最后一次运行”整体覆盖，以及时间模型对异常输入没有合理性检查。
+约 9.1k 行 Python，约 200 个测试，CI 绿，零运行时依赖，方法、安全、威胁模型文档齐全。`apply` 是唯一写配置的代码，有备份、manifest、按键回滚，应用要保持这个边界。弱点集中在后台场景：缓存设计（已修，见 §5 Phase 0 第 3 项）、跨进程单飞（`Calibrator` 的锁只在进程内；已修，见 §5 Phase 0 第 5 项）、结果文件按“最后一次运行”整体覆盖，以及时间模型对异常输入没有合理性检查。
 
 ## 2. 同类应用调研（2026-11-23）
 
@@ -186,7 +186,7 @@ compactlab.app（LSUIElement，无 Dock 图标）
 | 调用 | 形态 | 频率 | 内存目标 |
 | --- | --- | --- | --- |
 | `compactlab engine watch` | 常驻、轻量；只读活跃文件尾部，输出 JSON Lines：会话上下文、模型、生效阈值、最后活动时间、缓存何时变冷 | FSEvents 触发（stdin 发 `refresh`），活跃时最多每 5 s 一次 | < 40 MB（实测峰值 32 MB） |
-| `compactlab engine calibrate / result`（已有）；`verify / plan / apply / revert`（Phase 0 第 5 项和 Phase 2） | 一次性子进程，跑完退出 | 定时（默认每天）+ 手动 | 峰值 < 300 MB（现在约 1 GB） |
+| `compactlab engine calibrate / result`（已有）；`verify / plan / apply / revert`（Phase 0 第 5 项和 Phase 2） | 一次性子进程，跑完退出 | 定时（默认每天）+ 手动 | 峰值 < 300 MB（已达到：追加日志后约 200 MB，没有变化时 56 MB） |
 
 - 活跃会话放在 Python 里做，是为了让格式知识（resume 复制的历史、fork、subagent 目录、Codex token_count）只有一份。如果 watch 进程的常驻开销实测不达标，退路是只把“读最后一条 usage”这一小段移到 Swift，并用同一套夹具测试。
 - 契约：每个输出带 `engine_api` 版本；Python 测试和 Swift 测试共用一套 JSON 夹具（`tests/contract/`）。字段和命令见 [ENGINE_API.md](ENGINE_API.md)。
@@ -222,7 +222,7 @@ compactlab.app（LSUIElement，无 Dock 图标）
 
 1. ~~修 §6.1 的时间模型 bug~~（已完成）。
 2. ~~空闲压缩分类与建模~~（已完成，§6.2）。
-3. 缓存重做：按文件分片或 SQLite，只加载需要的条目；清掉已删除文件的条目；版本升级时删旧缓存。验收：同一份 30 天日志，增量重算峰值 < 300 MB，没有变化时 < 5 s。
+3. ~~缓存重做~~（已完成，PR #13、#14）：扫描缓存改用 SQLite，每个日志一行，只读需要的行；每次扫描后删掉已删除日志的行；版本升级时删旧版本的缓存，不碰更新版本的。缓存只存 token 数、耗时、“用户在纠正”标记、工具调用的哈希和摘要长度，不再存提示词、命令和工具输出；deep 模式需要原文，直接读日志。简版校准先用各日志的身份和其余输入（价格、选项、已配置阈值、引擎代码、时区）算一个键，都没变就直接用上次的结果，输出和完整运行逐字节一致。同一份 30 天日志、`recalibrate` 端到端：没有变化时 0.5–1.3 s CPU、56 MB（原来 20 s 以上、1.2–1.5 GB）；追加日志后峰值约 200 MB（原来 1.2–1.5 GB）；冷启动峰值约 0.3 GB（原来 2.1 GB）。
 4. ~~`engine` 子命令组、版本化 JSON 契约、`watch`~~（已完成）：`hello / sessions / watch / result / calibrate`，契约见 [ENGINE_API.md](ENGINE_API.md)。用真实日志（3,200 个文件；83 个活跃会话，外加一个末尾有 20 MB 重写历史的 109 MB 日志）核对：尾部读取的最新请求时间、上下文、模型、会话关系、压缩状态和全量解析逐个一致；Claude Code 在末尾追加旧消息副本（原时间戳）时按时间取最新请求，必要时往前多读，最多 32 MiB；watch 峰值 32 MB（解释器加 CLI 导入约占 28 MB），会话持续写入、每 2 s 一次 `refresh` 时约占单核 1.5%。
 5. ~~跨进程文件锁；`apply --expect-plan`~~（已完成）：`<state-dir>/service/lock` 用 `flock`（不等待）把每次校准（`recalibrate`、`engine calibrate`、`serve` 的定时和手动运行）和每次写配置（`apply --write`、`retune`、`revert`）串成一个；拿不到锁的一方什么都不做，立即返回：`engine calibrate` 给 `busy` 错误，命令行打印占锁的任务、pid 和开始时间并以 75 退出，服务的定时运行记日志、一分钟后再试，不算失败。锁随持有进程退出（含崩溃、`kill -9`）由内核释放，不会留下陈旧锁。服务状态在锁内重读，别的进程刚校准过时定时运行直接跳过，别处的失败也照样退避。`apply` 打印计划哈希（覆盖每项改动的工具、文件、键、现值和新值，不含时间），`--expect-plan <hash>` 在锁内重算计划，不一致就拒绝写入（退出 2，`--json` 时给出新计划和 `plan_changed` 错误）。`engine plan / apply` 留到 Phase 2。
 6. `lens.json` 和结果按 harness 合并，不再整体覆盖。
@@ -250,7 +250,7 @@ DMG、Homebrew cask、Sparkle、中英本地化、无障碍检查；可选 Widge
 1. ~~**Codex 时间模型爆掉。**~~ 已修。根因有三层：适配器不认 `custom_tool_call`/`custom_tool_call_output`（30 天 24,107 次 `exec`），只数到 `{"accepted":true}` 这类小回执；Codex 先写工具输出再写 `token_count`，原来的延迟口径要么是工具运行时间要么是 0；找回时间用“全部工具结果的中位数”去除先验的找回 token，单位不一致。另外加了“收益不超过 2% 容差就保持默认”的规则（和选点规则一致）。
 2. ~~**空闲压缩建模。**~~ 已完成：识别、回放（摘要读取与输出计费、回来时更小的上下文、找回成本、没回来的会话白做的摘要）、开/关两种状态的全局建议、`recommend` 片段、`verify` 分开计数。
 3. ~~**`verify` 误导结论。**~~ 已修：阈值没碰到时给出 `untouched`；成本里补上日志不记的压缩请求。
-4. **缓存。** 1 GB 峰值、231 MB 单文件整写；旧版 257 MB 没删；`cache clear` 只删当前版本（`adapters/cache.py:101`）；缓存里有转写片段，越大隐私面越大。
+4. ~~**缓存。**~~ 已修（Phase 0 第 3 项）：原来 1 GB 峰值、231 MB 单文件整写，旧版 257 MB 没删，`cache clear` 只删当前版本，缓存里有转写片段。现在每个日志一行、增量写入，旧版本自动删除，`cache clear` 删所有版本，缓存里没有对话原文。
 5. **`lens.json` 被单 harness 的运行覆盖。** 现状就是只剩 dsh。改成按 harness 合并。
 6. **新模型没有阈值、没有价格。** 已做：模型 ID 按厂商和平台归一（Bedrock / Vertex / OpenRouter / Azure），没有价格时借同族最接近的型号并标注，`pricing auto on` 后后台在出现新模型时自动下载公开价格；`simulate` 列出借用价格的模型，以及没有单独设置、会话又到得了阈值的 Claude Code 模型（数据不足 3 天时给出参照值）。
 7. **发布卫生。** PR #5 已绿 3 周没合；Dependabot 两个；v0.1.0 没打；没有 PyPI 和 Homebrew。应用要依赖可安装的引擎，这一步是前置。
