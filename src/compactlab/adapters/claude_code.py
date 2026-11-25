@@ -118,7 +118,7 @@ class ClaudeParser(Parser):
             if self.replayed_summary:
                 self.replayed_summary = False
             elif s.compactions:
-                s.compactions[-1].summary_text = text
+                s.compactions[-1].set_summary(text)
             return
         if isinstance(content, list):
             for b in content:

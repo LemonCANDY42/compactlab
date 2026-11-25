@@ -2,7 +2,59 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+import sys
 from dataclasses import dataclass, field
+from typing import Any
+
+# A user message that corrects the agent ("I already told you", "你忘了"): counted by the re-discovery penalty.
+CORRECTION_RE = re.compile(
+    r"(\bi (already )?(told|said|mentioned)\b|\byou forgot\b|\bas i said\b|\bnot what i\b|"
+    r"\bwe (already )?(did|discussed|decided)\b|\balready (told|said|did)\b|"
+    r"我说过|我刚才说|你忘了|不是这个|已经说过|之前说过|刚才不是)",
+    re.I,
+)
+# Every match of CORRECTION_RE contains one of these (lowercase), starting at most _BEFORE characters after the
+# match starts and ending at most _AFTER characters before it ends ("i already told", "we already discussed"). So
+# the regex need only run on short windows around them, which is many times faster on long messages. `str.lower`
+# keeps positions and differs from the regex's case-insensitive matching only for the four letters below; a text
+# with one of them goes straight to the regex.
+_CORRECTION_WORDS = ("told", "said", "mentioned", "you forgot", "not what i", "we did", "we discussed", "we decided",
+                     "we already ", "already did", "我说过", "我刚才说", "你忘了", "不是这个", "已经说过", "之前说过",
+                     "刚才不是")  # fmt: skip
+_BEFORE, _AFTER = 10, 9
+_FOLDS_TO_ASCII = ("\u0130", "\u0131", "\u017f", "\u212a")  # İ ı ſ K
+
+
+def corrects(text: str) -> bool:
+    """Whether a user message corrects the agent: exactly `CORRECTION_RE.search(text)`, run only where it can match.
+
+    A window starts _BEFORE characters before a word (the regex sees the real text before it, so `\b` there is
+    exact) and ends _AFTER + 1 after it, merged with overlapping ones: a match ends before the window's end, so the
+    end of the window never stands in for the end of the text."""
+    if not text:
+        return False
+    if any(c in text for c in _FOLDS_TO_ASCII):
+        return CORRECTION_RE.search(text) is not None
+    low = text.lower()
+    spans = []
+    for w in _CORRECTION_WORDS:
+        i = low.find(w)
+        while i >= 0:
+            spans.append((max(i - _BEFORE, 0), i + len(w) + _AFTER + 1))
+            i = low.find(w, i + 1)
+    if not spans:
+        return False
+    spans.sort()
+    start, end = spans[0]
+    for a, b in spans[1:]:
+        if a > end:
+            if CORRECTION_RE.search(text, start, end):
+                return True
+            start = a
+        end = max(end, b)
+    return CORRECTION_RE.search(text, start, end) is not None
 
 
 @dataclass
@@ -21,6 +73,11 @@ class Turn:
     user_text: str = ""  # user text that preceded this turn (may be empty)
     snippets: list[str] = field(default_factory=list)  # truncated tool commands/results, for fact checks
     start_ts: float | None = None  # when the request was sent (last user/tool-result line before it)
+    correction: bool = False  # set by `lean()`: user_text matched CORRECTION_RE before it was dropped
+
+    def corrects(self) -> bool:
+        """Whether the user text before this turn corrects the agent (from the text, or from a lean turn's flag)."""
+        return self.correction or corrects(self.user_text)
 
 
 @dataclass
@@ -32,6 +89,16 @@ class Compaction:
     duration_s: float | None = None  # wall-clock spent compacting, if it can be inferred
     trigger: str = ""  # "auto" | "manual" (/compact) | "" when the log does not say
     idle: bool = False  # Claude Code idle compaction: precomputed while the cache was warm, applied on return
+    summary_chars: int = 0  # set by `lean()`: the length of summary_text before it was dropped
+
+    @property
+    def summary_len(self) -> int:
+        """Characters of the summary: of its text, or of a lean compaction's recorded length."""
+        return len(self.summary_text) if self.summary_text else self.summary_chars
+
+    def set_summary(self, text: str) -> None:
+        """Replace the summary (a parser that learns it after the boundary, possibly on a lean compaction)."""
+        self.summary_text, self.summary_chars = text, 0
 
 
 def is_auto(c: Compaction) -> bool:
@@ -79,6 +146,68 @@ def session_to_dict(s: Session) -> dict:
     d["compactions"] = [dict(vars(c)) for c in s.compactions]
     d["unknown_events"] = dict(s.unknown_events)
     return d
+
+
+# ---------- lean sessions: what the lite analysis needs, without the transcript's text ----------
+#
+# The lite analysis reads text in three places only: whether a user message corrects the agent (CORRECTION_RE), which
+# tool calls repeat (identity and tool name), and how long a compaction summary is. A lean session keeps those as a
+# flag, a hashed key and a length, and drops the prompts, output snippets and summaries. The scan cache stores lean
+# sessions and the lite analysis runs on them (a fraction of the memory); deep mode, which reads text, parses the
+# logs itself. `lean` is idempotent, and a parser resumed from a lean session keeps working: it only appends to
+# earlier turns, never reads their text.
+
+_HASHED = "\x00"  # never in a tool key a harness logged
+
+
+def tool_id(key: str) -> str:
+    """A tool key without its argument's text: the tool name (what `_is_rediscovery` reads) and a 96-bit hash of the
+    whole key, so equal keys stay equal. `key.split(":", 1)[0]` is the same before and after."""
+    if _HASHED in key:
+        return sys.intern(key)
+    digest = hashlib.blake2b(key.encode(), digest_size=12).hexdigest()
+    return sys.intern(f"{key.partition(':')[0]}:{_HASHED}{digest}")
+
+
+def lean(s: Session) -> Session:
+    """Drop the text of a session in place (see above) and share repeated strings; returns it."""
+    for t in s.turns:
+        if t.user_text:
+            t.correction = t.corrects()
+            t.user_text = ""
+        if t.snippets:
+            t.snippets = []
+        if t.tool_keys:
+            t.tool_keys = [tool_id(k) for k in t.tool_keys]
+        t.model = sys.intern(t.model)
+    for c in s.compactions:
+        if c.summary_text:
+            c.summary_chars, c.summary_text = len(c.summary_text), ""
+    return s
+
+
+def lean_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """`lean` for a session as `session_to_dict` gives it; returns a new dict and leaves `d` (and its lists) alone."""
+    out = dict(d)
+    turns = []
+    for t in d.get("turns", []):
+        t = dict(t)
+        if t.get("user_text"):
+            t["correction"] = bool(t.get("correction")) or corrects(t["user_text"])
+            t["user_text"] = ""
+        if t.get("snippets"):
+            t["snippets"] = []
+        if t.get("tool_keys"):
+            t["tool_keys"] = [tool_id(k) for k in t["tool_keys"]]
+        turns.append(t)
+    out["turns"] = turns
+    comps = []
+    for c in d.get("compactions", []):
+        if c.get("summary_text"):
+            c = {**c, "summary_chars": len(c["summary_text"]), "summary_text": ""}
+        comps.append(c)
+    out["compactions"] = comps
+    return out
 
 
 def snapshot(s: Session) -> Session:

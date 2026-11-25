@@ -123,7 +123,8 @@ class CodexParser(Parser):
                 return
             msg = str(p.get("message") or "") if typ == "compacted" else ""
             if s.compactions and s.compactions[-1].turn_index == len(s.turns):
-                s.compactions[-1].summary_text = s.compactions[-1].summary_text or msg
+                if not s.compactions[-1].summary_len:  # a lean compaction keeps only the summary's length
+                    s.compactions[-1].set_summary(msg)
             else:
                 s.compactions.append(
                     Compaction(

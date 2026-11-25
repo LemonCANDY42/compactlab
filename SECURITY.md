@@ -10,10 +10,13 @@ file paths and tool output) and harness configuration files it may modify.
   (models.dev, else LiteLLM) when the logs show a model with no price row (retried daily, or after an hour for a newly
   seen model, up to 5 times) and once a week otherwise. The request is a plain GET of the whole file with a generic
   User-Agent; no model names, paths or usage leave the machine.
-- The scan cache (`~/.compactlab/cache`, 0600 files in a 0700 directory) stores parsed excerpts: the text of your
-  prompts, tool commands and 400-character output snippets. Rows of deleted logs are dropped (and zeroed in the file)
-  after each scan, and older cache versions are deleted on upgrade. Disable it with `--no-cache`; wipe every version with
-  `compactlab cache clear`.
+- The scan cache (`~/.compactlab/cache`, 0600 files in a 0700 directory) stores lean sessions: token counts and
+  times, whether a user message corrected the agent, a hash of each tool call (its tool name and a hash, no path or
+  command) and the length of each compaction summary. No prompt text, tool arguments, output snippets or summaries;
+  the one exception is a log whose last user message has no reply yet, whose text waits in the cache until it does.
+  It also keeps the last few analysis results (numbers, model names and session ids). Rows of deleted logs are
+  dropped (and zeroed in the file) after each scan, and older cache versions are deleted on upgrade (version 4, which
+  held prompt text, included). Disable it with `--no-cache`; wipe every version with `compactlab cache clear`.
 - Reports and `result.json` contain token counts, model names and session ids, never transcript text or paths.
   `report --redact` hashes session ids.
 - `share` writes a local file of rounded aggregates (no ids, paths, timestamps or text) that you post yourself; the tool

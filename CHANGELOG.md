@@ -165,7 +165,31 @@ versioning: [SemVer](https://semver.org/).
 
   `engine calibrate` with nothing changed: 0.4-0.8 s wall at load 14, 59 MB. Building the key costs a full run
   0.6-1.9 s. A run with appended logs still analyses every session, so its peak stays at ~0.8 GB: the sessions
-  themselves (mostly the text of user messages), which the planned per-session derived records address.
+  themselves (mostly the text of user messages), which the next entry removes.
+- **The scan cache and the lite analysis keep no transcript text** (cache version 5; the first run deletes version
+  4's file, which held it). The lite analysis reads text in three places only: whether a user message corrects the
+  agent, which tool calls repeat and how long a compaction summary is. Sessions are now kept lean, on disk and in
+  memory: a correction flag, tool keys reduced to the tool name and a 96-bit hash (no path or command), summary
+  lengths, and no prompts, output snippets or summaries. Only a log's still-unanswered last message waits in the
+  cache until its reply. Results are byte for byte the same; deep mode, which reads text, parses the logs itself.
+  The correction check runs the regex only on short windows around the words any match must contain: the same
+  answer on all 33,288 prompts of the test history, 5x faster. For adapter authors: a resumed parser must not read
+  the text of turns or compactions it made before (use `Compaction.set_summary` / `summary_len`).
+  Measured end to end (`recalibrate` through publishing result.json and lens.json; same APFS clone of 30 days of
+  logs: 3,243 files, 182,160 turns; scratch HOME; `/usr/bin/time -l`; interleaved runs; load 20-32 from Swift builds
+  elsewhere, so CPU time):
+
+  | run | before (result reuse, text in cache) | lean |
+  | --- | --- | --- |
+  | incremental (5 logs, 12.9 MB appended) | 22.9-25.5 s CPU, 0.80-0.85 GB | 19.0-21.6 s, **189-218 MB** |
+  | `engine calibrate`, incremental | 14.8 s, 0.82 GB | 14.7 s, 201 MB |
+  | 5 logs rewritten | 23.3-25.8 s, 0.75-0.84 GB | 18.8-20.1 s, 193-209 MB |
+  | warm (nothing changed) | 1.35-1.63 s, 56-57 MB | 1.13-1.37 s, 56-59 MB |
+  | cold (empty cache) | 168 s (104-148 s in earlier pairs), 0.78-0.88 GB | 132 s, 0.29 GB |
+
+  Cold CPU is within the load noise: the cold scan step alone, three alternating pairs on the same 600 files, was
+  18.5-23.4 s before and 21.1-23.9 s lean (mean +5%). The lean sessions of that history hold 109 MB instead of 475
+  MB, and the cache file is 99 MB instead of 314 MB. result.json and lens.json are identical to before.
 - **Clearer terminal and report wording** (from a review while making the promo video):
   - one verdict line first in `demo` / `simulate` (terminal and plain output) and `top`:
     `→ Opus 5.5 main: set 625k  ▼ −22% cost  ▲ +3.0 min/day wall-clock`;

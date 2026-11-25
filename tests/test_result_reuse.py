@@ -176,10 +176,11 @@ def test_saved_result_and_its_keys_hold_no_prompt_text(tmp_path, capsys):
     f.write_text("".join(json.dumps(r) + "\n" for r in recs))
     _simulate(tmp_path, logs, capsys)
     sc = ScanCache(tmp_path / "c")
-    assert b"SECRET-PROMPT" in b"".join(r[0].encode() for r in sc._exec("SELECT session FROM entries"))
     rows = sc._exec("SELECT files, inputs, facts, result FROM results")
     assert len(rows) == 1 and not any("SECRET-PROMPT" in col for col in rows[0])
     assert len(rows[0][0]) == len(rows[0][1]) == 64  # keys are hashes: no paths either
+    sc.close()
+    assert b"SECRET-PROMPT" not in b"".join(p.read_bytes() for p in (tmp_path / "c").iterdir())  # nor the rows
 
 
 def test_reused_calibration_is_fresh_and_auto_apply_still_runs(tmp_path, logs, capsys, scans):

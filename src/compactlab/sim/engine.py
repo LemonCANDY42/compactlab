@@ -917,7 +917,7 @@ def analyze(
         window, window_source, window_note = group_window(harness, model, ss, price.max_window, opts)
         cap = effective_max(harness, window)
         base = opts.base_tokens or min(max(_median([s.turns[0].ctx for s in ss], 35_000), 10_000), 80_000)
-        obs_summ = [len(c.summary_text) // 4 for s in ss for c in s.compactions if c.summary_text]
+        obs_summ = [c.summary_len // 4 for s in ss for c in s.compactions if c.summary_len]
         summ = opts.summary_tokens or _median(obs_summ, 12_000)
         pen = opts.penalty or calibrate(ss, base, summ)
         tm = fit(ss, pooled.get(harness))

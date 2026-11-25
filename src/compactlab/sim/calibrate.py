@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import statistics
 from dataclasses import asdict, dataclass
 
@@ -12,13 +11,6 @@ WINDOW = 20  # turns inspected before/after a compaction
 MIN_OBSERVED = 5
 PRIOR_STEP_TOKENS = 2000  # tokens one re-discovery call brings back, paired with the prior penalty
 MIN_STEP_SAMPLES = 20
-
-CORRECTION_RE = re.compile(
-    r"(\bi (already )?(told|said|mentioned)\b|\byou forgot\b|\bas i said\b|\bnot what i\b|"
-    r"\bwe (already )?(did|discussed|decided)\b|\balready (told|said|did)\b|"
-    r"我说过|我刚才说|你忘了|不是这个|已经说过|之前说过|刚才不是)",
-    re.I,
-)
 
 REDISCOVERY_TOOLS = (
     "Read",
@@ -63,7 +55,7 @@ def repeat_stats(s: Session, start: int, end: int) -> tuple[int, int, int]:
                 reps += 1
                 toks += t.tool_result_tokens[i] if i < len(t.tool_result_tokens) else 2000
             seen.add(k)
-        if t.user_text and CORRECTION_RE.search(t.user_text):
+        if t.corrects():
             corr += 1
     return reps, toks, corr
 
