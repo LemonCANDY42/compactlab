@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .publish import harness_info
 from .sim.select import PROFILE_NAMES
 
 LENS_SCHEMA = 1
@@ -74,4 +75,6 @@ def summarize(result: dict[str, Any]) -> dict[str, Any]:
         "data_through": result.get("data_through"),
         "demo": bool(result.get("demo")),
         "groups": groups,
+        # per harness: mode, newest turn, calibration; the file keeps every harness's latest run (publish.py)
+        "harnesses": {h: {k: v for k, v in i.items() if k != "options"} for h, i in harness_info(result).items()},
     }

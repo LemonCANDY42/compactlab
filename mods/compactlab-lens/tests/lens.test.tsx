@@ -162,7 +162,7 @@ test('pure helpers: dot bar ticks, sparkline, sign convention, result.json group
   const imp = { usd: per(-1), minutes: per(2), wait_minutes: per(3), turn_gain_minutes: per(1), compactions: per(4), ref_compactions: per(1) }
   const full = {
     groups: [{
-      harness: 'codex', model: 'gpt-5-codex', role: 'main', days: 5, active_days: 4, no_action_needed: false,
+      harness: 'claude-code', model: 'gpt-5-codex', role: 'main', days: 5, active_days: 4, no_action_needed: false,
       default: { threshold: 360_000 }, current: null,
       profiles: { cost: { threshold: 300_000, flags: [] }, balanced: { threshold: 350_000, flags: [] }, time: { threshold: 350_000, flags: [] } },
       comparison: {
@@ -177,6 +177,27 @@ test('pure helpers: dot bar ticks, sparkline, sign convention, result.json group
   if (f.status === 'ok') expect(f.group.profiles.cost.vs_default?.usd_per_day).toBe(-1)
   expect(factsFrom('{', '/x', 'm').status).toBe('unreadable')
   expect(factsFrom(JSON.stringify(LENS), '/l', 'claude-sonnet-5-5').status).toBe('no-group')
+})
+
+test('a lens holding every harness: this Claude Code group, with its own calibration', () => {
+  const g = LENS.groups[0]
+  const merged = {
+    ...LENS,
+    calibration: { at: 2000, every_s: 86400 },  // the latest run, which covered OpenCode only
+    groups: [{ ...g, harness: 'opencode', default_threshold: 1 }, g],
+    harnesses: { 'claude-code': { calibration: { at: 1000, every_s: 86400 } }, opencode: { calibration: { at: 2000, every_s: 86400 } } },
+  }
+  const f = factsFrom(JSON.stringify(merged), '/l', 'claude-opus-5-5')
+  expect(f.status).toBe('ok')
+  if (f.status === 'ok') {
+    expect(f.group.default_threshold).toBe(967_000)
+    expect(f.calibration?.at).toBe(1000)
+  }
+  const simulated = { ...merged, harnesses: { 'claude-code': { calibration: null } } }  // written by `simulate`
+  const s = factsFrom(JSON.stringify(simulated), '/l', 'claude-opus-5-5')
+  expect(s.status === 'ok' && s.calibration).toBe(null)
+  const other = { ...LENS, groups: [{ ...g, harness: 'opencode' }] }
+  expect(factsFrom(JSON.stringify(other), '/l', 'claude-opus-5-5').status).toBe('no-group')
 })
 
 test('labels follow the locale, one language at a time', async ($, on) => {

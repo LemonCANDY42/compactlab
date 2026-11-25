@@ -16,7 +16,7 @@ import pytest
 
 from compactlab.cli import main
 from compactlab.cli.main import EX_BUSY
-from compactlab.service import lock
+from compactlab.service import core, lock
 from compactlab.service.core import Calibrator
 from compactlab.service.lock import Busy, LockError, lock_path, single_flight
 
@@ -284,13 +284,11 @@ def test_a_lock_that_cannot_be_taken_is_a_failure_not_busy_and_not_a_dead_schedu
 def test_a_run_that_cannot_write_its_result_saves_the_failure_before_releasing_the_lock(tmp_path, monkeypatch):
     state = tmp_path / "state"
     cal = Calibrator(_result, state, 3600.0)
-    write, save = cal._write, cal._save_state
+    save = cal._save_state
     held = []
 
-    def failing_write(name, obj):
-        if name == "result.json":
-            raise OSError(errno.ENOSPC, "No space left on device")
-        write(name, obj)
+    def failing_update(path, new, covered):
+        raise OSError(errno.ENOSPC, "No space left on device")
 
     def probing_save():
         try:
@@ -300,7 +298,7 @@ def test_a_run_that_cannot_write_its_result_saves_the_failure_before_releasing_t
             held.append(True)
         save()
 
-    monkeypatch.setattr(cal, "_write", failing_write)
+    monkeypatch.setattr(core, "update", failing_update)  # writing result.json
     monkeypatch.setattr(cal, "_save_state", probing_save)
     out = cal.recalibrate("manual")
     assert out["status"] == "error" and "No space left" in out["error"]

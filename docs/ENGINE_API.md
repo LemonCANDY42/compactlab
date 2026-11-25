@@ -100,7 +100,15 @@ process holds it, `calibrate` runs nothing and prints `busy` at once (exit 1); t
 when it started. Retry later; a busy run is not a failure in `service`. The lock is released when its holder exits,
 crashes included. Fields:
 
+The result keeps the latest run of every harness. A calibration replaces the harnesses it scanned (all of them
+unless `--harness` limits it, a harness with no logs in the window included, so its rows disappear) and keeps the
+others as they were; a harness whose logs could not be read keeps its rows. Kept groups keep their picks, and
+`--profile` re-selects each harness under the options of the run it comes from. `lens.json` follows the same rule.
+
 - `calibration`: `at`, `took_s`, `reason`, `every_s`; `mode`, `data_through`, `demo`, `profile` (the selected one).
+  These describe the latest run.
+- `harnesses`: per harness with groups, the run they come from: `mode`, `data_through` (its newest turn analysed)
+  and `calibration` (`null` for a run that was not a calibration, such as `simulate`).
 - `groups`, one per harness, model and role: `selected`, `default_threshold`, `current_threshold` (configured or
   `null`), `current_note`, `effective_max`, `max_window`, `window_source`, `platform`, `days`, `active_days`,
   `n_sessions`, `n_turns`, `no_action_needed`, `superseded_by`, and `profiles.<cost|balanced|time>` with

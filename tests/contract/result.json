@@ -1,10 +1,10 @@
 {
  "auto_apply": null,
  "calibration": {
-  "at": 1795429846.914912,
+  "at": 1795599101.911392,
   "every_s": 86400.0,
   "reason": "app",
-  "took_s": 0.3
+  "took_s": 0.1
  },
  "data_through": 1789043204.961737,
  "demo": false,
@@ -424,6 +424,28 @@
    "window_source": "observed in logs (latest sessions)"
   }
  ],
+ "harnesses": {
+  "claude-code": {
+   "calibration": {
+    "at": 1795599101.911392,
+    "every_s": 86400.0,
+    "reason": "app",
+    "took_s": 0.1
+   },
+   "data_through": 1789043204.961737,
+   "mode": "lite"
+  },
+  "codex": {
+   "calibration": {
+    "at": 1795599101.911392,
+    "every_s": 86400.0,
+    "reason": "app",
+    "took_s": 0.1
+   },
+   "data_through": 1788533044.531195,
+   "mode": "lite"
+  }
+ },
  "idle_compaction": null,
  "kind": "result",
  "mode": "lite",
@@ -474,8 +496,8 @@
  "profile": "balanced",
  "service": {
   "failures": 0,
-  "last_attempt": 1795429846.659607,
-  "last_calibrated": 1795429846.914912,
+  "last_attempt": 1795599101.8137689,
+  "last_calibrated": 1795599101.911392,
   "last_error": null
  }
 }

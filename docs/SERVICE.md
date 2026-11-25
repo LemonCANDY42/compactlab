@@ -78,7 +78,8 @@ like a failed analysis, the error shows in `/api/health`, and the scheduler keep
   auto-compact settings (read only, for comparison), and the consent file.
 - **Writes:** only under `~/.compactlab/`:
   - `service/` holds the result, state, token, log (rotating, 1 MB × 3), journal, applied values and the lock;
-  - `lens.json` and the scan cache;
+  - `lens.json` (with `lens.json.lock` beside it) and the scan cache. The result and `lens.json` keep the latest run of every harness: a run limited
+    with `--harness` replaces only those harnesses (see [ENGINE_API.md](ENGINE_API.md#result-and-calibrate));
   - backups and manifests, written only when auto-apply changes something.
 
   With auto-apply, it also changes the consented key in the consented file.

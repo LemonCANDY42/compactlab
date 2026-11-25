@@ -14,6 +14,7 @@ from typing import Any
 
 from .. import apply as ap
 from ..lens import summarize
+from ..publish import update
 from .lock import Busy, LockError, single_flight
 from .policy import Consent, Rules, load_applied, load_consent, run_auto_apply
 from .schedule import next_due
@@ -156,17 +157,15 @@ class Calibrator:
             return self._fail(f"{type(e).__name__}: {e}")
         now = self.clock()
         scan = res.pop("scan", None) or {}
+        covered = res.pop("covered", None)  # None: this run covers every harness
         res["calibration"] = {"at": now, "every_s": self.every, "reason": reason, "took_s": round(now - start, 1)}
-        self.result = res
+        # the published files keep the harnesses this run did not cover; auto-apply sees only this run's groups
+        self.result = update(self.dir / "result.json", res, covered)
         self.last_ok, self.failures, self.last_error = now, 0, None
-        self._write("result.json", res)
-        lens = summarize(res)
-        lens["calibration"] = res["calibration"]
         if self.lens_out:
-            self.lens_out.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.lens_out.with_suffix(".tmp")
-            tmp.write_text(json.dumps(lens, sort_keys=True))
-            tmp.replace(self.lens_out)
+            lens = summarize(res)
+            lens["calibration"] = res["calibration"]
+            update(self.lens_out, lens, covered)
         out: dict[str, Any] = {"status": "ok", "took_s": res["calibration"]["took_s"]}
         if self.auto_apply:
             try:
