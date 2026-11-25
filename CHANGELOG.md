@@ -5,6 +5,10 @@ versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-25
+
+First release. Install with `brew install LemonCANDY42/tap/compactlab` or from GitHub with `uv tool install`.
+
 ### Changed
 - **`lens.json` and the service's `result.json` keep the latest run of every harness.** A run replaces the harnesses
   it scanned (every one unless `--harness` limits it, including one with no logs in the window) and keeps the
@@ -451,9 +455,7 @@ versioning: [SemVer](https://semver.org/).
 ### Changed
 - Renamed the opt-in mode `hyper` to `deep`.
 
-## [0.1.0] - unreleased
-
-### Added
+### Added (the first working version)
 - Claude Code and Codex adapters with resumable parsers, unknown-event counting and fork/inherited-prefix handling.
 - Incremental on-disk scan cache keyed by size, mtime, head hash and byte offset.
 - Replay simulator: cache read/write/output costs, long-context tiers, cache TTL/idle effects, summary size,

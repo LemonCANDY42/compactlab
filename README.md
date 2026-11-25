@@ -32,7 +32,7 @@ you where the trade-off sits, per model and per role (main agent vs subagent).
 ## Quickstart
 
 ```bash
-uv tool install git+https://github.com/LemonCANDY42/compactlab   # or: pipx install git+https://github.com/LemonCANDY42/compactlab
+brew install LemonCANDY42/tap/compactlab   # or: uv tool install git+https://github.com/LemonCANDY42/compactlab (or pipx)
 
 compactlab demo                       # synthetic data -> report (zero config)
 compactlab doctor                     # where are my logs and configs?
@@ -42,7 +42,7 @@ compactlab apply --result result.json --claude-settings ~/.claude/settings.json 
 compactlab verify                     # days later: did the change do what the replay predicted?
 ```
 
-compactlab installs from GitHub (it is not on PyPI). Python 3.11+, no runtime dependencies.
+compactlab installs with Homebrew or from GitHub (it is not on PyPI). Python 3.11+, no runtime dependencies.
 
 ## What you get
 
