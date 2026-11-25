@@ -1,9 +1,10 @@
 # Running compactlab as a service
 
 `compactlab serve` keeps a calibration current in the background. On a schedule it rescans your session logs (only
-files that changed since the last scan; the first scan is the only full one) and reruns the lite analysis. It serves
-the live report and a small JSON API on localhost. If you opt in, it also nudges your settings toward the chosen
-profile, under the rules below.
+files that changed since the last scan; the first scan is the only full one) and reruns the lite analysis; when no
+log and no input (prices, options, settings, compactlab itself) changed, it reuses the last result instead, which
+takes about a second. It serves the live report and a small JSON API on localhost. If you opt in, it also nudges
+your settings toward the chosen profile, under the rules below.
 
 ```bash
 compactlab serve                      # 127.0.0.1, a free port, recalibrate daily

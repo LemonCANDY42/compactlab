@@ -329,7 +329,10 @@ step coarse. `apply` writes neither until their config locations and precedence 
 - **Sharing is a file you post yourself.** `compactlab share` writes an anonymous record of the estimated savings
   (numbers and model names, no ids, paths or timestamps) for the research issue form; it sends nothing. See
   [docs/SHARING.md](docs/SHARING.md).
-- The scan cache (`~/.compactlab/cache`, mode 0600) stores short excerpts. Use `--no-cache` or `compactlab cache clear`.
+- The scan cache (`~/.compactlab/cache`, 0600 files in a 0700 directory) stores what the parser kept of each log:
+  token counts, your prompts' text, tool commands and 400-character output snippets, plus the last few analysis
+  results (numbers, model names and session ids). Rows of deleted logs are dropped after each scan and older cache
+  versions are deleted on upgrade. Use `--no-cache`, or `compactlab cache clear` to delete every version.
 
 ## Limitations
 

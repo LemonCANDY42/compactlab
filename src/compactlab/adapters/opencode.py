@@ -327,6 +327,29 @@ class OpenCodeAdapter(Adapter):
             con.close()
         return out
 
+    def fingerprint(self, path: Path, since: float | None = None) -> list[Any] | None:
+        """The database and its write-ahead log as files (any write changes one of them), and which sessions are
+        recent enough to load: a session ages out of `since` without the file changing."""
+        files = [[q.name, q.stat().st_size, q.stat().st_mtime_ns] for q in (path, Path(f"{path}-wal")) if q.exists()]
+        try:
+            con, _ = connect(path)
+        except sqlite3.DatabaseError as e:
+            raise OSError(f"{path}: {e}") from e
+        try:
+            ids = (
+                con.execute(
+                    "select id, time_updated from session where time_updated >= ? order by time_created, id",
+                    (int(since * 1000) if since else 0,),
+                ).fetchall()
+                if "session" in _tables(con)
+                else []
+            )
+        except sqlite3.DatabaseError as e:
+            raise OSError(f"{path}: {e}") from e
+        finally:
+            con.close()
+        return [str(path), self.parser_cls.version, files, ids]
+
     def doctor_checks(self) -> list[dict[str, Any]]:
         out = []
         for path in self.find_files():

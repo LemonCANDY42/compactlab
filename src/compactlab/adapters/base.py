@@ -22,7 +22,12 @@ _REGISTRY: dict[str, type[Adapter]] = {}
 
 
 class Parser(abc.ABC):
-    """Stateful, resumable line parser. `dump()` must return JSON-serializable state."""
+    """Stateful, resumable line parser.
+
+    `dump()` must return JSON-serializable state with the session under "session" (as `session_to_dict`). The scan
+    cache stores that session apart from the rest of the state and rebuilds an unchanged file with
+    `load({"path": ..., "session": ...}).finish()`, so `finish()` must depend only on the session.
+    """
 
     version: ClassVar[int] = 1
     # records at the top of a file a reader of only the file's end must feed first (e.g. Codex's session_meta)
@@ -101,6 +106,19 @@ class Adapter(abc.ABC):
         if since and path.stat().st_mtime < since:
             return []
         return [cache.parse(self, path) if cache is not None else self.parse_file(path)]
+
+    def fingerprint(self, path: Path, since: float | None = None) -> list[Any] | None:
+        """Identity of what `load(path, cache, since)` would read, taken before reading it: part of the key a saved
+        analysis result is reused under, so it must change whenever the sessions `load` returns could. None when
+        `load` would return nothing. A harness that overrides `load` overrides this too."""
+        import hashlib
+
+        st = path.stat()
+        if since and st.st_mtime < since:
+            return None
+        with open(path, "rb") as f:
+            head = hashlib.sha1(f.read(4096)).hexdigest()
+        return [str(path), self.parser_cls.version, st.st_size, st.st_mtime_ns, head]
 
     def doctor_checks(self) -> list[dict[str, Any]]:
         """Extra `doctor` lines for this harness: [{"ok": bool, "label": str, "text": str}]."""

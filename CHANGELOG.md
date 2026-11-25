@@ -133,6 +133,39 @@ versioning: [SemVer](https://semver.org/).
   tolerance (by the selection rule the default is as good a choice); the reason says "net gain under 2%".
 
 ### Changed
+- **Scan cache is SQLite, one row per log** (`~/.compactlab/cache/scan-v4.sqlite3`), so a background recalibration
+  no longer loads and rewrites one big JSON file. A scan reads and writes only the rows of the files it scans, one
+  row per transaction (two runs can share the cache; a write that cannot get the lock in 10 s is skipped), streams
+  each log line by line, and rebuilds an unchanged file from its session without reading the resume-only state. Same
+  rules as before: size, mtime_ns, SHA-1 of the first 4 KiB, resume offset, parser version, a torn last line is
+  never consumed, 0600 files in a 0700 directory. New: rows of deleted logs are pruned after each scan in one
+  transaction and zeroed in the files (`secure_delete`, then a checkpoint; a prune that cannot delete, or cannot
+  erase yet because another run is reading, says so); a corrupt database is rebuilt, and a row of the wrong shape is
+  parsed again instead of failing the calibration; the first scan deletes older cache versions (`scan-v1.json` to
+  `scan-v3.json`) and never a newer one's; `cache clear` deletes every version; `cache info` shows rows, rows of
+  deleted logs, saved results and older or newer versions; `doctor` reports the cache actually in use (it looked for
+  `scan-v1.json`). For adapter authors: a parser's `finish()` must now depend only on its session, and an adapter
+  that overrides `load()` overrides `fingerprint()` too (see docs/ADDING_A_HARNESS.md).
+- **A calibration with nothing new reuses the last result.** A lite run with the cache keys its result by every log
+  it would read (path, parser version, size, mtime_ns, first 4 KiB; OpenCode: the database files and the sessions in
+  the window) and by every other input (effective prices, options and the harness settings they read, configured
+  thresholds, compactlab's own files, local time rules). When both keys match it returns the saved result without
+  decoding a session; the output is byte for byte a full run's, the calibrator still stamps a fresh time and runs
+  auto-apply. Zero newly parsed files is not enough on its own (another command may have refreshed the scan cache),
+  so the key is the files themselves, taken before the scan. `--no-cache` and deep mode never reuse.
+  Measured end to end (`recalibrate`, through publishing result.json and lens.json) on one machine's 30 days of logs
+  (3,237 files found, 2,820 in the window; APFS clone, scratch HOME, `/usr/bin/time -l`, CPU time and macOS peak
+  memory footprint; the machine was also building Swift, load 8-95, so wall time is given only where load was low):
+
+  | run | before (JSON cache) | SQLite rows | + result reuse |
+  | --- | --- | --- | --- |
+  | cold (empty cache) | 115 s CPU, 2.10 GB | 85 s, 0.82 GB | 85 s, 0.78 GB |
+  | warm (nothing changed) | 20-23 s, 1.17-1.52 GB (15 s wall) | 19-23 s, 0.75-0.84 GB | 0.5-1.3 s, 56 MB (0.9-3.2 s wall) |
+  | incremental (5 logs, 12.8 MB appended) | 31-56 s, 1.17-1.51 GB | 13-23 s, 0.75-0.84 GB | 17-25 s, 0.78-0.84 GB |
+
+  `engine calibrate` with nothing changed: 0.4-0.8 s wall at load 14, 59 MB. Building the key costs a full run
+  0.6-1.9 s. A run with appended logs still analyses every session, so its peak stays at ~0.8 GB: the sessions
+  themselves (mostly the text of user messages), which the planned per-session derived records address.
 - **Clearer terminal and report wording** (from a review while making the promo video):
   - one verdict line first in `demo` / `simulate` (terminal and plain output) and `top`:
     `→ Opus 5.5 main: set 625k  ▼ −22% cost  ▲ +3.0 min/day wall-clock`;

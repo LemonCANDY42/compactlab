@@ -28,8 +28,8 @@ class MyParser(Parser):
             return
         ...
 
-    def finish(self) -> Session: ...  # return a copy; do not consume state
-    def dump(self) -> dict[str, Any]: ...  # JSON-serializable state, for the resumable cache
+    def finish(self) -> Session: ...  # a copy built from self.session alone; do not consume state
+    def dump(self) -> dict[str, Any]: ...  # {"path", "session": session_to_dict(...), ...}: JSON-serializable
     @classmethod
     def load(cls, state: dict[str, Any]) -> "MyParser": ...  # state may be just {"path": ...}
 
@@ -46,6 +46,10 @@ class MyAdapter(Adapter):
 
 Import the module in `adapters/__init__.py`.
 
+The scan cache keeps `dump()["session"]` apart from the rest of the state (seen ids, pending calls) and rebuilds
+an unchanged file from `load({"path": ..., "session": ...}).finish()` without reading the rest, so `finish()` must
+not depend on anything but the session.
+
 Logs that are not plain append-only JSONL (compressed, one file per generation, a document rewritten in place)
 override `find_files()` and `read_records()` and set `resumable = False`: the scan cache then reuses unchanged files
 and re-parses changed ones from the start instead of resuming at a byte offset. The dsh and Gemini CLI adapters are
@@ -54,7 +58,9 @@ the examples.
 A harness that keeps every session in one database overrides `load(path, cache, since)` instead: it returns all
 sessions in that file, filters by each session's own update time (the file's mtime says little), and opens the
 database read-only so a running harness is never disturbed. The OpenCode adapter is the example (SQLite with
-`mode=ro`). Extra `doctor` lines (a decoder, a storage version it cannot read) come from `doctor_checks()`.
+`mode=ro`). It overrides `fingerprint(path, since)` too: a saved analysis result is reused only while every file's
+fingerprint is unchanged, so it must change whenever `load` could return something different (the default, a
+file's size, mtime and first 4 KiB, cannot see a session aging out of `since` inside one database). Extra `doctor` lines (a decoder, a storage version it cannot read) come from `doctor_checks()`.
 
 If the harness reads environment variables for its paths, add them to the `isolated_home` fixture in
 `tests/conftest.py` so tests never see real data.

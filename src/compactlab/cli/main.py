@@ -23,7 +23,7 @@ from typing import Any
 from .. import __version__, synth
 from .. import apply as ap
 from ..adapters import adapter_names, get_adapter
-from ..adapters.cache import CACHE_VERSION, ScanCache
+from ..adapters.cache import ScanCache
 from ..eval.deep import EvalError, MockClient, deep_analyze, load_client, plan_deep
 from ..model import Session, drop_inherited
 from ..pricing import DEFAULT_REFRESHED, PricingTable
@@ -210,13 +210,26 @@ def _progress(msg: str) -> None:
     print(f"\r\033[K{msg}", end="", file=sys.stderr, flush=True)
 
 
-def load_sessions(a: argparse.Namespace) -> list[Session]:
-    import time as _time
+def _cut(a: argparse.Namespace) -> float | None:
+    return time.time() - a.since_days * 86400 if a.since_days else None
 
+
+def _warn(a: argparse.Namespace, msg: str) -> None:
+    """A warning on stderr; a service run's goes to its log too."""
+    if getattr(a, "service", False):
+        import logging
+
+        logging.getLogger("compactlab.service").warning("%s", msg)
+    else:
+        _progress("")
+        print(f"warning: {msg}", file=sys.stderr)
+
+
+def load_sessions(a: argparse.Namespace, cut: float | None = None) -> list[Session]:
     cache = None if a.no_cache else ScanCache(a.cache_dir)
     out: list[Session] = []
-    cut = _time.time() - a.since_days * 86400 if a.since_days else None
-    quiet, total = getattr(a, "service", False), 0
+    cut = _cut(a) if cut is None else cut
+    quiet, total, errors = getattr(a, "service", False), 0, 0
     try:
         for h in a.harness or adapter_names():
             ad = get_adapter(h)(_roots(a).get(h))
@@ -230,19 +243,102 @@ def load_sessions(a: argparse.Namespace) -> list[Session]:
                 try:
                     found = ad.load(path, cache, cut)
                 except OSError:
+                    errors += 1
                     continue
                 out += [s for s in found if s.turns]
-                if cache and i % 500 == 0:
-                    cache.save()  # keep progress if the scan is interrupted
             if h == "claude-code":  # a resumed or forked log repeats its parent's history
                 out[first:] = drop_inherited(out[first:])
+        if cache:
+            pr = cache.prune()  # rows of deleted logs
+            if not pr.deleted:
+                _warn(
+                    a,
+                    f"the scan cache still holds {pr.stale} row(s) of deleted logs (the database was busy or "
+                    "unwritable); the next scan tries again, `compactlab cache clear` removes them now",
+                )
+            elif not pr.erased:
+                _warn(
+                    a,
+                    f"dropped {pr.stale} row(s) of deleted logs from the scan cache; another compactlab run is "
+                    "reading it, so their bytes stay in the cache files until the last run using it ends",
+                )
     finally:
         if cache:
-            cache.save()
+            cache.close()
         _progress("")
     st = cache.stats if cache else {"hit": 0, "resumed": 0, "parsed": total}
     a.scan_stats = {"files": total, "cached": st["hit"] + st["resumed"], "parsed": st["parsed"]}
+    a.scan_errors = errors
     return out
+
+
+# ---------- reusing an analysis result (lite mode, with the scan cache) ----------
+
+
+def _files_key(a: argparse.Namespace, cut: float | None) -> tuple[str, int]:
+    """Key of the logs `load_sessions(a)` would read, from each eligible file's identity in scan order (see
+    `Adapter.fingerprint`), and how many files were found (as `load_sessions` counts them). Taken before any is read:
+    a file that grows while the analysis runs then only makes the saved result's key stale, never a key that claims
+    data the result lacks."""
+    import hashlib
+
+    h, n = hashlib.sha256(), 0
+    for name in a.harness or adapter_names():
+        ad = get_adapter(name)(_roots(a).get(name))
+        for path in ad.find_files():
+            n += 1
+            try:
+                fp = ad.fingerprint(path, cut)
+            except OSError:
+                fp = [str(path), "unreadable"]
+            if fp is not None:
+                h.update(json.dumps([name, fp]).encode() + b"\n")
+    return h.hexdigest(), n
+
+
+def _code_version() -> str:
+    """Hash of compactlab's own files (code, bundled data): any change to how a result is made changes the key."""
+    global _CODE
+    if _CODE is None:
+        import hashlib
+
+        h, root = hashlib.sha256(), Path(__file__).resolve().parents[1]
+        for p in sorted(root.rglob("*")):
+            if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
+                h.update(str(p.relative_to(root)).encode() + b"\0" + p.read_bytes() + b"\0")
+        _CODE = h.hexdigest()
+    return _CODE
+
+
+_CODE: str | None = None
+
+
+def _local_time() -> list[Any]:
+    """The local time rules (the analysis counts active days by local date): TZ, the zone file and its contents."""
+    import hashlib
+
+    zone = Path("/etc/localtime")
+    try:
+        data = hashlib.sha1(zone.read_bytes()).hexdigest() if zone.exists() else None
+        where = str(zone.resolve()) if zone.exists() else None
+    except OSError:
+        data = where = None
+    return [os.environ.get("TZ"), where, data, time.timezone, time.altzone, time.daylight, list(time.tzname)]
+
+
+def _inputs_key(pricing: PricingTable, opts: SimOptions, current: dict[tuple[str, str], tuple[int | None, str]]) -> str:
+    """Key of everything besides the sessions that `analyze` reads: prices, options (with what was read from the
+    harness settings), the configured thresholds, compactlab's own files and the local time rules."""
+    import hashlib
+
+    inputs = {
+        "code": _code_version(),
+        "pricing": pricing.data,
+        "opts": {k: (v.to_dict() if hasattr(v, "to_dict") else v) for k, v in vars(opts).items()},
+        "current": sorted([h, m, thr, why] for (h, m), (thr, why) in current.items()),
+        "local_time": _local_time(),
+    }
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True, default=repr).encode()).hexdigest()
 
 
 def _opts(a: argparse.Namespace) -> SimOptions:
@@ -312,13 +408,13 @@ def _config_paths(a: argparse.Namespace) -> dict[str, Path | None]:
     return paths
 
 
-def _current(a: argparse.Namespace, sessions: list[Session]) -> dict[tuple[str, str], tuple[int | None, str]]:
+def _current(a: argparse.Namespace, pairs: set[tuple[str, str]]) -> dict[tuple[str, str], tuple[int | None, str]]:
     """Read the configured threshold per (harness, model) from config files, read-only."""
     if getattr(a, "no_current", False):
         return {}
     paths = _config_paths(a)
     out = {}
-    for h, m in {(x.harness, x.model) for x in sessions}:
+    for h, m in sorted(pairs):
         try:
             out[(h, m)] = read_current(h, m, paths.get(h))
         except (OSError, ValueError) as e:
@@ -345,7 +441,34 @@ def _load_result(path: str) -> dict[str, Any]:
 
 
 def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
-    sessions = load_sessions(a)
+    """Scan and analyse. A lite run with the scan cache first looks for a saved result made from the same files and
+    inputs and, when there is one, returns it without decoding a session; output is the same as a full run's."""
+    cut = _cut(a)
+    keep = None if a.no_cache or a.mode != "lite" else ScanCache(a.cache_dir)
+    try:
+        return _run_analysis(a, cut, keep)
+    finally:
+        if keep is not None:
+            keep.close()
+
+
+def _run_analysis(a: argparse.Namespace, cut: float | None, keep: ScanCache | None) -> dict[str, Any] | None:
+    files, nfiles = _files_key(a, cut) if keep is not None else ("", 0)
+    priced: dict[frozenset[tuple[str, str]], PricingTable] = {}
+    facts = _facts(keep.facts(files)) if keep is not None else None
+    if keep is not None and facts is not None:
+        seen, pairs = facts
+        pricing = _prices(a, seen, priced)
+        opts = _idle_opts(a, _opts(a))
+        saved = keep.result(files, _inputs_key(pricing, opts, _current(a, pairs)))
+        try:
+            reused = _notes(saved) if saved is not None else None
+        except (KeyError, TypeError, AttributeError):  # a damaged row: analyse again, which replaces it
+            reused = None
+        if reused is not None:
+            a.scan_stats = {"files": nfiles, "cached": 0, "parsed": 0, "reused": True}  # no log was read
+            return reused
+    sessions = load_sessions(a, cut)
     if not sessions:
         roots = [str(r) for h in (a.harness or adapter_names()) for r in get_adapter(h)(_roots(a).get(h)).roots]
         raise CLIError(
@@ -354,12 +477,53 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
             + "\nRun `compactlab doctor` to check locations, `--since-days 0` to include older files, "
             "or `compactlab demo` to see a report built from synthetic data."
         )
+    seen = {(t.model, s.platform) for s in sessions for t in s.turns}
+    pairs = {(x.harness, x.model) for x in sessions}
+    pricing = _prices(a, seen, priced)
+    quiet = getattr(a, "service", False)
+
+    def step(i: int, n: int, name: str) -> None:
+        _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
+
+    opts = _idle_opts(a, _opts(a))
+    current = _current(a, pairs)
+    res = analyze(sessions, pricing, opts, current=current, progress=step)
+    _progress("")
+    if keep is not None and not a.scan_errors:  # a log that could not be read this time must not be keyed as read
+        try:
+            text = json.dumps(res)
+        except (TypeError, ValueError):
+            text = ""
+        if text:
+            about = {"seen": sorted(seen, key=json.dumps), "pairs": sorted(pairs)}
+            keep.save_result(files, _inputs_key(pricing, opts, current), about, text, time.time())
+            res = json.loads(text)  # the same object a run reusing it gets
+    res = _notes(res)
+    if a.mode == "deep":
+        return _deep(a, sessions, res, pricing)
+    return res
+
+
+def _facts(d: Any) -> tuple[set[tuple[Any, Any]], set[tuple[str, str]]] | None:
+    """The models seen (model, platform or None) and harness/model pairs saved with a result; None if damaged."""
+    try:
+        return {(m, p) for m, p in d["seen"]}, {(str(h), str(m)) for h, m in d["pairs"]}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _prices(
+    a: argparse.Namespace, seen: set[tuple[str, str]], priced: dict[frozenset[tuple[str, str]], PricingTable]
+) -> PricingTable:
+    """The price table for these (model, platform) pairs: with automatic refresh on, a service run may download a
+    newer one first. Memoized in `priced`, so a run that looks for a saved result and then analyses refreshes once."""
+    if frozenset(seen) in priced:
+        return priced[frozenset(seen)]
     pricing = _pricing(a)
     quiet = getattr(a, "service", False)
     if quiet and not getattr(a, "offline_pricing", False) and not getattr(a, "pricing", None):
         from ..pricing.auto import maybe_refresh
 
-        seen = {(t.model, s.platform) for s in sessions for t in s.turns}
         pricing, info = maybe_refresh(pricing, seen, time.time(), lambda: _pricing(a))
         if info:
             import logging
@@ -371,12 +535,12 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
                 f"from {info['source']}; changed for your models: {moved or 'nothing'}; "
                 f"still unpriced: {', '.join(info['still_missing']) or 'none'}"
                 if info["refreshed"] else f"failed ({info['error']})")  # fmt: skip
+    priced[frozenset(seen)] = pricing
+    return pricing
 
-    def step(i: int, n: int, name: str) -> None:
-        _progress(f"simulating {i}/{n}" + ("" if quiet else f": {name}"))
 
-    res = analyze(sessions, pricing, _idle_opts(a, _opts(a)), current=_current(a, sessions), progress=step)
-    _progress("")
+def _notes(res: dict[str, Any]) -> dict[str, Any]:
+    """Notes that depend on today and on the price refresh state, not on the analysis: added to a saved result too."""
     from ..pricing.auto import load_state
 
     res["model_notes"]["auto_refresh"] = bool(load_state().get("enabled"))
@@ -386,8 +550,6 @@ def run_analysis(a: argparse.Namespace) -> dict[str, Any] | None:
     res["model_notes"]["price_changes"] = [
         c for c in recent_changes(DEFAULT_REFRESHED, used, limit=50) if str(c.get("date", "")) >= since
     ]
-    if a.mode == "deep":
-        return _deep(a, sessions, res, pricing)
     return res
 
 
@@ -1071,8 +1233,9 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         "refreshed_file": str(rp),
         "refreshed": rp.exists(),
     }
-    cf = Path(f"{STATE}/cache/scan-v{CACHE_VERSION}.json").expanduser()
-    report["cache"] = {"path": str(cf), "exists": cf.exists(), "bytes": cf.stat().st_size if cf.exists() else 0}
+    sc = ScanCache(f"{STATE}/cache")
+    report["cache"] = sc.info()
+    sc.close()
     lines = [f"compactlab {__version__} · Python {report['python']} · {platform.system()}"]
     for h in report["harnesses"]:
         lines.append(f"\n{h['name']}: CLI {h['cli'] or 'not found'}")
@@ -1089,7 +1252,7 @@ def cmd_doctor(a: argparse.Namespace) -> int:
         f"\npricing: bundled snapshot {report['pricing']['bundled']}; "
         f"refreshed: {'yes' if report['pricing']['refreshed'] else 'no'}"
     )
-    lines.append(f"scan cache: {cf} ({'present' if cf.exists() else 'none'})")
+    lines.append(f"scan cache {_cache_line(report['cache'])}")
     t = _term(a)
     if t and not a.json:
         from ..term.views import doctor_view
@@ -1166,13 +1329,31 @@ def cmd_pricing(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cache_line(info: dict[str, Any]) -> str:
+    text = f"{info['path']}: " + (
+        f"{info['files']} files, {info['results']} saved results, {info['bytes'] / 1e6:.1f} MB"
+        if info["exists"]
+        else "none"
+    )
+    if info["stale"]:
+        text += f"; {info['stale']} rows of deleted logs (dropped by the next scan)"
+    if info["old_bytes"]:
+        text += f"; older cache versions {info['old_bytes'] / 1e6:.1f} MB (deleted by the next scan)"
+    if info["newer_bytes"]:
+        text += f"; a newer compactlab's cache {info['newer_bytes'] / 1e6:.1f} MB (left alone)"
+    return text
+
+
 def cmd_cache(a: argparse.Namespace) -> int:
     c = ScanCache(a.cache_dir)
     if a.action == "clear":
-        c.clear()
-        print(f"cleared {c.file}")
+        gone = c.clear()
+        text = f"removed {len(gone)} cache files from {c.dir}" if gone else f"no cache files in {c.dir}"
+        _out(a, {"removed": [str(p) for p in gone]}, text)
     else:
-        _out(a, {"path": str(c.file), "files": len(c.entries)}, f"{c.file}: {len(c.entries)} files cached")
+        info = c.info()
+        c.close()
+        _out(a, info, f"scan cache {_cache_line(info)}")
     return 0
 
 
