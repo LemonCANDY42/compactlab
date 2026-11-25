@@ -51,33 +51,33 @@ def harness_info(d: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return out
 
 
-def _entries(x: Any) -> bool:
-    return isinstance(x, list) and all(isinstance(e, dict) and isinstance(e.get("harness"), str) for e in x)
-
-
-def _mergeable(prev: Any, new: dict[str, Any]) -> bool:
-    """Only a file of the same kind and schema, real or demo data alike, with well-formed entries is merged into;
-    anything else (missing, damaged, older or newer, demo against real) is replaced."""
-    if not isinstance(prev, dict) or prev.get("schema") != new.get("schema"):
-        return False
-    if bool(prev.get("demo")) != bool(new.get("demo")) or not _entries(prev.get("groups")):
-        return False
-    if "sessions" in prev and not _entries(prev["sessions"]):
-        return False
-    return all(not (k in prev and prev[k] is not None) or isinstance(prev[k], dict)
-               for k in ("harnesses", "global_keys", "model_notes", "options", "idle_compaction"))  # fmt: skip
-
-
 def merge(prev: Any, new: dict[str, Any], covered: Iterable[str] | None) -> dict[str, Any]:
-    """`new` plus the entries of `prev` for the harnesses `new` did not cover (`covered` None: it covered all)."""
+    """`new` plus the entries of `prev` for the harnesses `new` did not cover (`covered` None: it covered all). A
+    previous file that is missing, of another schema, demo data against real or damaged in any way (any entry that
+    cannot be read as written) is replaced: results are made again by the next run, and a background service must not
+    stop on a bad file."""
     out = dict(new)
     out["harnesses"] = harness_info(new)
-    if covered is None or not _mergeable(prev, new):
+    if covered is None or not isinstance(prev, dict) or prev.get("schema") != new.get("schema"):
         return out
-    cov = set(covered)
+    if bool(prev.get("demo")) != bool(new.get("demo")):
+        return out
+    try:
+        return _keep(prev, new, out, set(covered))
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return out
 
-    def kept(items: Any) -> list[Any]:
-        return [x for x in items or [] if isinstance(x, dict) and x.get("harness") not in cov]
+
+def _keep(prev: dict[str, Any], new: dict[str, Any], out: dict[str, Any], cov: set[str]) -> dict[str, Any]:
+    out = dict(out)  # `out` stays as it was if this raises
+
+    def kept(items: Any) -> list[Any]:  # raises on anything not written by this code: the file is then replaced
+        if items is not None and not isinstance(items, list):
+            raise TypeError(f"not a list: {type(items).__name__}")
+        out = [x for x in items or [] if x["harness"] not in cov]
+        if not all(isinstance(x["harness"], str) for x in out):
+            raise TypeError("a harness that is not a name")
+        return out
 
     old = kept(prev["groups"])
     if not old:
@@ -96,9 +96,7 @@ def merge(prev: Any, new: dict[str, Any], covered: Iterable[str] | None) -> dict
         notes, was = dict(new["model_notes"]), prev.get("model_notes") or {}
         for k, v in notes.items():
             w = was.get(k)
-            if not (isinstance(v, list) and isinstance(w, list)):
-                continue
-            if all("harness" in x for x in [*v, *w] if isinstance(x, dict)):
+            if isinstance(v, list) and isinstance(w, list) and all("harness" in x for x in [*v, *w]):
                 notes[k] = sorted([*v, *kept(w)], key=lambda x: x["harness"])
         out["model_notes"] = notes
     return out

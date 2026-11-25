@@ -70,8 +70,13 @@ def test_what_is_replaced_whole(tmp_path):
         assert merge(prev, new, ["codex"])["groups"] == new["groups"]
     assert merge(real, new, None)["groups"] == new["groups"]  # a run that covered every harness
     assert len(merge(real, new, ["codex"])["groups"]) == 2
-    for bad in ({"sessions": 1}, {"sessions": [{}]}, {"harnesses": []}, {"global_keys": [1]}, {"model_notes": "x"}):
-        assert merge({**real, **bad}, new, ["codex"])["groups"] == new["groups"]  # damaged: replaced, no crash
+    group = real["groups"][0]
+    for bad in ({"sessions": 1}, {"sessions": [{}]}, {"global_keys": [1]}, {"model_notes": "x"}, {"groups": [1]},
+                {"groups": [{**group, "span": [0]}]}, {"groups": [{**group, "harness": 3}]},
+                {"groups": None}):  # fmt: skip
+        res = {**new, "sessions": [], "global_keys": {}, "model_notes": {"prices": []}}  # what a result has
+        assert merge({**real, **bad}, res, ["codex"])["groups"] == new["groups"]  # damaged: replaced, no crash
+    assert merge({**real, "harnesses": []}, new, ["codex"])["harnesses"].keys() == {"claude-code", "codex"}
     p = tmp_path / "lens.json"
     p.write_text("{")  # damaged: replaced, not an error
     assert update(p, new, ["codex"])["groups"] == new["groups"] == json.loads(p.read_text())["groups"]
