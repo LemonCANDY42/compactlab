@@ -252,6 +252,13 @@ writes settings, calls a model or uses the network. Its "copy" button puts `/aut
 
 See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, not affiliated with Anthropic.
 
+## Menu bar app (macOS, preview)
+
+`app/` is a read-only menu bar app built on `compactlab engine`: every active Claude Code and Codex session's
+context against its threshold, whether its prompt cache is still warm (with a "copy /compact" button once it is
+cold), the last calibration's thresholds, and a daily calibration in the background. It needs this CLI installed;
+build it with `app/scripts/package_app.sh`. See [app/README.md](app/README.md).
+
 ## Two modes
 
 | | `lite` (default) | `deep` (opt-in) |
