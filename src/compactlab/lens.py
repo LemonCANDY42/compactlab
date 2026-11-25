@@ -76,5 +76,5 @@ def summarize(result: dict[str, Any]) -> dict[str, Any]:
         "demo": bool(result.get("demo")),
         "groups": groups,
         # per harness: mode, newest turn, calibration; the file keeps every harness's latest run (publish.py)
-        "harnesses": harness_info(result),
+        "harnesses": {h: {k: v for k, v in i.items() if k != "options"} for h, i in harness_info(result).items()},
     }

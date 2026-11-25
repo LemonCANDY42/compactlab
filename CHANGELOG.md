@@ -10,9 +10,10 @@ versioning: [SemVer](https://semver.org/).
   it scanned (every one unless `--harness` limits it, including one with no logs in the window) and keeps the
   others' groups, sessions, Codex single-key decision, idle-compaction verdict and model notes from the file, so
   `simulate --harness dsh` no longer leaves a lens with dsh alone. A harness whose logs could not be read keeps its
-  entries. The fields of the whole run (`options`, `mode`, `calibration`, ...) are the latest run's, and groups kept
-  from another run are re-selected (no replay) under its options. Both files and `engine result` gain `harnesses`:
-  per harness, the mode, newest turn and calibration its groups come from. Writes are atomic and serialized by a lock
+  entries. Kept groups keep their picks, and re-selection (`--profile`) and the threshold cap use the options of
+  the run each harness comes from (another run's cap may not even fit their grid); the top-level fields (`options`,
+  `mode`, `calibration`, ...) are the latest run's. Both files and `engine result` gain `harnesses`: per harness, the
+  mode, newest turn and calibration its groups come from (and, in `result.json`, its options). Writes are atomic and serialized by a lock
   file beside each file. `simulate --out` and `demo` still write their own run alone. The lens mod reads Claude Code
   groups only (OpenCode can run the same models) and that harness's calibration age.
 

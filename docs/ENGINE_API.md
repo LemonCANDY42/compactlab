@@ -102,8 +102,8 @@ crashes included. Fields:
 
 The result keeps the latest run of every harness. A calibration replaces the harnesses it scanned (all of them
 unless `--harness` limits it, a harness with no logs in the window included, so its rows disappear) and keeps the
-others as they were; a harness whose logs could not be read keeps its rows. Groups kept from an earlier run are
-re-selected under the latest run's options (no replay). `lens.json` follows the same rule.
+others as they were; a harness whose logs could not be read keeps its rows. Kept groups keep their picks, and
+`--profile` re-selects each harness under the options of the run it comes from. `lens.json` follows the same rule.
 
 - `calibration`: `at`, `took_s`, `reason`, `every_s`; `mode`, `data_through`, `demo`, `profile` (the selected one).
   These describe the latest run.

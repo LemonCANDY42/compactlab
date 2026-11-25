@@ -4,10 +4,23 @@ import argparse
 import json
 import threading
 
+import pytest
+
 from compactlab.cli import main
 from compactlab.cli.main import covered
 from compactlab.engine import result_message
 from compactlab.publish import merge, update
+from compactlab.sim.engine import harness_options, reselect
+
+
+def cli_json(args):
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        main(args)
+    return json.loads(buf.getvalue())
 
 
 def _sim(tmp_path, *src, lens, extra=()):
@@ -57,8 +70,8 @@ def test_what_is_replaced_whole(tmp_path):
         assert merge(prev, new, ["codex"])["groups"] == new["groups"]
     assert merge(real, new, None)["groups"] == new["groups"]  # a run that covered every harness
     assert len(merge(real, new, ["codex"])["groups"]) == 2
-    # a result whose kept groups cannot be re-selected (an older compactlab's): this run alone, not an error
-    assert merge({**real, "options": {}}, {**new, "options": {}}, ["codex"])["groups"] == new["groups"]
+    for bad in ({"sessions": 1}, {"sessions": [{}]}, {"harnesses": []}, {"global_keys": [1]}, {"model_notes": "x"}):
+        assert merge({**real, **bad}, new, ["codex"])["groups"] == new["groups"]  # damaged: replaced, no crash
     p = tmp_path / "lens.json"
     p.write_text("{")  # damaged: replaced, not an error
     assert update(p, new, ["codex"])["groups"] == new["groups"] == json.loads(p.read_text())["groups"]
@@ -81,10 +94,11 @@ def test_concurrent_writers_keep_each_others_harnesses(tmp_path):
         ("claude-code", 39), ("codex", 39), ("dsh", 39)]  # fmt: skip
 
 
-def test_the_service_result_keeps_other_harnesses_and_auto_apply_sees_this_run(
-    tmp_path, claude_root, codex_root, monkeypatch
-):
+@pytest.fixture
+def recal(tmp_path, monkeypatch):
+    """`recalibrate` into one state dir with a consent for Claude Code; returns (run, what auto-apply saw)."""
     from compactlab.service import core
+    from compactlab.service.policy import Consent, save_consent
 
     seen = []
     real = core.run_auto_apply
@@ -92,34 +106,55 @@ def test_the_service_result_keeps_other_harnesses_and_auto_apply_sees_this_run(
     state = tmp_path / "state"
     settings = tmp_path / "settings.json"
     settings.write_text("{}")
-    from compactlab.service.policy import Consent, save_consent
-
     save_consent(state / "consent.json", Consent("claude-code", str(settings), ["claude-opus-5-5"], "balanced"))
 
     def run(*src):
-        args = ["recalibrate", *src, "--since-days", "0", "--grid", "100k:600k:50k", "--offline-pricing",
-                "--claude-settings", str(settings), "--state-dir", str(state), "--cache-dir", str(tmp_path / "c"),
-                "--lens-out", str(state / "lens.json"), "--auto-apply", "--dry-run", "--min-days", "0",
-                "--min-turns", "0"]  # fmt: skip
+        args = ["recalibrate", *src, "--since-days", "0", "--offline-pricing", "--claude-settings", str(settings),
+                "--state-dir", str(state), "--cache-dir", str(tmp_path / "c"), "--lens-out", str(state / "lens.json"),
+                "--auto-apply", "--dry-run", "--min-days", "0", "--min-turns", "0"]  # fmt: skip
         assert main(args) == 0
         return json.loads((state / "service" / "result.json").read_text())
 
-    first = run("--claude-root", str(claude_root), "--codex-root", str(codex_root))
-    second = run("--harness", "codex", "--codex-root", str(codex_root), "--profile", "time")
+    return run, seen, state
+
+
+def test_the_service_result_keeps_other_harnesses_and_auto_apply_sees_this_run(recal, claude_root, codex_root):
+    run, seen, state = recal
+    first = run("--claude-root", str(claude_root), "--codex-root", str(codex_root), "--grid", "100k:600k:50k")
+    second = run("--harness", "codex", "--codex-root", str(codex_root), "--grid", "100k:600k:50k", "--profile", "time")
     assert {g["harness"] for g in seen[1]["groups"]} == {"codex"}  # auto-apply: this run's groups only
     assert {s["harness"] for s in second["sessions"]} == {"claude-code", "codex"}
     assert [s for s in second["sessions"] if s["harness"] == "claude-code"] == [
         s for s in first["sessions"] if s["harness"] == "claude-code"]  # fmt: skip
+    assert _by(second, "claude-code") == _by(first, "claude-code")  # kept with their own picks
     assert second["global_keys"].keys() == first["global_keys"].keys() == {"codex"}
+    assert second["idle_compaction"] == first["idle_compaction"]
     assert second["harnesses"]["claude-code"] == first["harnesses"]["claude-code"]
     assert second["harnesses"]["codex"]["calibration"] == second["calibration"]
-    # kept groups are re-selected under this file's options (here the profile), like `--profile` re-selection
-    assert {g["profile"] for g in second["groups"]} == {"time"}
+    assert {g["profile"] for g in _by(second, "codex")} == {"time"} and second["options"]["profile"] == "time"
     for kind in first["model_notes"]:
         if isinstance(first["model_notes"][kind], list) and kind != "price_changes":
             mine = [x for x in first["model_notes"][kind] if x.get("harness") == "claude-code"]
             assert [x for x in second["model_notes"][kind] if x.get("harness") == "claude-code"] == mine
     msg = result_message(second, state)
-    assert msg["harnesses"] == second["harnesses"] and {g["harness"] for g in msg["groups"]} == {"claude-code", "codex"}
+    assert {g["harness"] for g in msg["groups"]} == {"claude-code", "codex"}
     lens = json.loads((state / "lens.json").read_text())
-    assert lens["harnesses"] == second["harnesses"] and len(lens["groups"]) == len(second["groups"])
+    assert lens["harnesses"] == msg["harnesses"] and len(lens["groups"]) == len(second["groups"])
+    assert "options" not in lens["harnesses"]["codex"]  # the lens stays small
+
+
+def test_each_harness_keeps_its_own_options(recal, claude_root, codex_root):
+    """A later run's options may not fit the groups it keeps (a cap below their grid): re-selection and the cap use
+    each harness's own."""
+    run, _, state = recal
+    run("--claude-root", str(claude_root), "--harness", "claude-code", "--grid", "200k:600k:50k")
+    res = run("--harness", "codex", "--codex-root", str(codex_root), "--grid", "100k:600k:50k",
+              "--max-threshold", "150k")  # fmt: skip
+    assert _by(res, "claude-code") and harness_options(res, "claude-code").get("max_threshold") is None
+    assert harness_options(res, "codex")["max_threshold"] == 150_000
+    reselect(res, profile="cost")  # what `engine result --profile cost` does; under one set of options it raised
+    assert {g["profile"] for g in res["groups"]} == {"cost"}
+    assert all(p["threshold"] <= 150_000 for g in _by(res, "codex") for p in g["profiles"].values())
+    assert any(p["threshold"] > 150_000 for g in _by(res, "claude-code") for p in g["profiles"].values())
+    msg = cli_json(["engine", "result", "--state-dir", str(state), "--profile", "time"])
+    assert msg["kind"] == "result" and {g["harness"] for g in msg["groups"]} == {"claude-code", "codex"}

@@ -607,21 +607,35 @@ def global_keys(groups: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str,
     return out
 
 
+def harness_options(result: dict[str, Any], harness: str) -> dict[str, Any]:
+    """The options a harness's groups were selected with: a result that keeps every harness's latest run
+    (publish.py) records them per harness; otherwise the result's own."""
+    info = (result.get("harnesses") or {}).get(harness)
+    opts = info.get("options") if isinstance(info, dict) else None
+    if isinstance(opts, dict):
+        return opts
+    return result["options"] if isinstance(result.get("options"), dict) else {}
+
+
 def reselect(result: dict[str, Any], profile: str | None = None, value_of_time: float | None = None) -> dict:
-    """Re-run profile selection on a stored result (no replay). Mutates and returns `result`."""
-    opts = result.setdefault("options", {})
-    if profile:
-        opts["profile"] = profile
-    if value_of_time is not None:
-        opts["value_of_time"] = value_of_time
-    for g in result["groups"]:
-        select_group(g, opts)
-    result["global_keys"] = global_keys(result["groups"], opts)
-    for g in result["groups"]:
+    """Re-run profile selection on a stored result (no replay), each harness under its own options, with `profile`
+    and `value_of_time` applied to all. Mutates and returns `result`."""
+    over = {k: v for k, v in (("profile", profile), ("value_of_time", value_of_time)) if v is not None}
+    groups = result["groups"]
+    harnesses = sorted({g.get("harness", "") for g in groups})
+    for o in (result.setdefault("options", {}), *(harness_options(result, h) for h in harnesses)):
+        o.update(over)
+    for g in groups:
+        select_group(g, harness_options(result, g.get("harness", "")))
+    keys: dict[str, Any] = {}
+    for h in harnesses:  # per harness, like the single-key decision and the superseded models themselves
+        keys.update(global_keys([g for g in groups if g.get("harness", "") == h], harness_options(result, h)))
+    result["global_keys"] = keys
+    for g in groups:
         if (g.get("idle") or {}).get("alt", {}).get("rows"):
             idle_select(g)
-    if "idle_compaction" in result:
-        result["idle_compaction"] = idle_advice(result["groups"], opts)
+    if "idle_compaction" in result:  # Claude Code's setting: only its groups have the idle alternative
+        result["idle_compaction"] = idle_advice(groups, harness_options(result, "claude-code"))
     return result
 
 

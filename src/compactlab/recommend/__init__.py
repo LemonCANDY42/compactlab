@@ -13,6 +13,7 @@ from datetime import date
 from importlib import resources
 from typing import Any, ClassVar
 
+from ..sim.engine import harness_options
 from ..sim.select import DEFAULT_PROFILE, PROFILE_NAMES
 
 SCOPES = ("global", "project", "agent")
@@ -129,7 +130,7 @@ def safe_value(g: dict[str, Any], profile: str, result: dict[str, Any], lo: int,
     if cmp["action"] != "set":
         return None, f"{g['model']} · {g['role']}: {cmp['action']}"
     v = int(g["profiles"][profile]["threshold"])
-    cap = (result.get("options") or {}).get("max_threshold")
+    cap = harness_options(result, g["harness"]).get("max_threshold")  # the cap its run was selected under
     limit = min(x for x in (hi, g.get("effective_max"), g.get("max_window"), cap) if x)
     if v < lo or v > limit:
         return None, f"{g['model']} · {g['role']}: {v} outside allowed range [{lo}, {limit}]; not emitted"
