@@ -10,6 +10,8 @@ struct SettingsView: View {
         TabView {
             GeneralSettings(model: model)
                 .tabItem { Label("General", systemImage: "gearshape") }
+            ChangesSettings(model: model)
+                .tabItem { Label("Changes", systemImage: "slider.horizontal.3") }
             EngineSettings(model: model)
                 .tabItem { Label("Engine", systemImage: "terminal") }
         }
@@ -42,9 +44,34 @@ private struct GeneralSettings: View {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError = nil
         } catch {
-            loginError = "Could not change the login item: \(error.localizedDescription)"
+            loginError = L("Could not change the login item: \(error.localizedDescription)")
         }
         openAtLogin = SMAppService.mainApp.status == .enabled
+    }
+}
+
+private struct ChangesSettings: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(
+                    "Apply suggestions automatically",
+                    isOn: Binding(get: { model.autoApply }, set: { on in Task { await model.setAutoApply(on) } })
+                )
+                .disabled(!model.canChangeSettings || model.isWriting)
+                Text("Claude Code only. A threshold moves only after 7 days and 500 turns of data, by at most 100k, at most once a week, and never over a value someone else set. Each change is notified and can be undone. Off: nothing is written until you click Apply.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Notify me about") {
+                Toggle("Suggestions the last two calibrations agree on", isOn: $model.notifySuggestions)
+                Toggle("Changes: auto-apply, settings edited elsewhere, verification results", isOn: $model.notifyChanges)
+                Toggle("Calibration failing three times in a row", isOn: $model.notifyProblems)
+                Text("macOS asks once whether compactlab may notify you; change that later in System Settings → Notifications.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 
@@ -56,7 +83,7 @@ private struct EngineSettings: View {
         Form {
             LabeledContent("Status") { Text(statusText).textSelection(.enabled) }
             LabeledContent("In use") {
-                Text(model.executable?.path ?? "not found").font(.callout.monospaced()).textSelection(.enabled)
+                Text(model.executable?.path ?? L("not found")).font(.callout.monospaced()).textSelection(.enabled)
             }
             HStack {
                 TextField("Path to compactlab", text: $model.enginePath, prompt: Text("found automatically"))
@@ -78,10 +105,10 @@ private struct EngineSettings: View {
 
     private var statusText: String {
         switch model.status {
-        case .starting: "starting"
-        case .missing: "not found"
-        case .failed(let why): "failed: \(why)"
-        case .incompatible(let api, let v): "\(v) (contract \(api); read-only)"
+        case .starting: L("starting")
+        case .missing: L("not found")
+        case .failed(let why): L("failed: \(why)")
+        case .incompatible(let api, let v): L("\(v) (contract \(String(api)); read-only)")
         case .ready(let v): "compactlab \(v)"
         }
     }

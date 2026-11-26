@@ -17,6 +17,7 @@ public final class WatchProcess: @unchecked Sendable {
     private var buffer = Data()
     private var stderrTail = Data()
     private var eof = false
+    private var stderrEOF = false
     private var status: Int32?
     private var finished = false
 
@@ -53,11 +54,13 @@ public final class WatchProcess: @unchecked Sendable {
         }
         stderr.fileHandleForReading.readabilityHandler = { [weak self] h in
             let data = h.availableData
+            guard let self else { return }
             if data.isEmpty {
                 h.readabilityHandler = nil
+                self.lock.withLock { self.stderrEOF = true }
+                self.flush()
                 return
             }
-            guard let self else { return }
             self.lock.withLock { self.stderrTail = (self.stderrTail + data).suffix(4096) }
         }
         process.terminationHandler = { [weak self] p in
@@ -92,29 +95,25 @@ public final class WatchProcess: @unchecked Sendable {
         }
     }
 
-    /// Yield every complete line; once stdout is at its end and the process has exited, yield the exit and finish.
+    /// Yield every complete line; once both pipes are at their end and the process has exited, yield the exit (with
+    /// `lastStderr` complete, for the message) and finish.
+    /// Yields happen under the lock: three handlers call this from different threads, and the order must hold.
     private func flush() {
-        var lines: [Data] = []
-        var exit: Int32?
         lock.withLock {
             while let nl = buffer.firstIndex(of: UInt8(ascii: "\n")) {
                 let line = buffer[buffer.startIndex..<nl]
-                if !line.isEmpty { lines.append(Data(line)) }
+                if !line.isEmpty { continuation.yield(.line(Data(line))) }
                 buffer.removeSubrange(buffer.startIndex...nl)
             }
             if eof, !buffer.isEmpty {  // a last line without a newline
-                lines.append(buffer)
+                continuation.yield(.line(buffer))
                 buffer.removeAll()
             }
-            if eof, let status, !finished {
+            if eof, stderrEOF, let status, !finished {
                 finished = true
-                exit = status
+                continuation.yield(.exited(status: status))
+                continuation.finish()
             }
-        }
-        for line in lines { continuation.yield(.line(line)) }
-        if let exit {
-            continuation.yield(.exited(status: exit))
-            continuation.finish()
         }
     }
 }

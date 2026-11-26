@@ -29,16 +29,16 @@ public enum Format {
     /// A span of seconds as "45 s", "12 min", "3 h", "2 d".
     public static func duration(_ seconds: TimeInterval) -> String {
         let s = max(0, seconds)
-        if s < 60 { return "\(Int(s)) s" }
-        if s < 3600 { return "\(Int(s / 60)) min" }
-        if s < 86_400 * 2 { return "\(Int(s / 3600)) h" }
-        return "\(Int(s / 86_400)) d"
+        if s < 60 { return L("\(String(Int(s))) s") }
+        if s < 3600 { return L("\(String(Int(s / 60))) min") }
+        if s < 86_400 * 2 { return L("\(String(Int(s / 3600))) h") }
+        return L("\(String(Int(s / 86_400))) d")
     }
 
     /// "just now", "12 min ago", "3 h ago".
     public static func ago(_ t: Double, now: Date) -> String {
         let s = now.timeIntervalSince1970 - t
-        return s < 60 ? "just now" : "\(duration(s)) ago"
+        return s < 60 ? L("just now") : L("\(duration(s)) ago")
     }
 
     /// −0.21 → "−21%", 0.004 → "+0.4%".
@@ -46,6 +46,21 @@ public enum Format {
         let p = x * 100
         let body = abs(p) < 1 && p != 0 ? trimmed(abs(p), digits: 1) : "\(Int(abs(p).rounded()))"
         return (p < 0 ? "−" : "+") + body + "%"
+    }
+
+    /// A profile's name in the interface language.
+    public static func profile(_ name: String) -> String {
+        switch name {
+        case "cost": L("cost")
+        case "balanced": L("balanced")
+        case "time": L("time")
+        default: name
+        }
+    }
+
+    /// 0.12 → "+0.1", −2.6 → "−2.6".
+    public static func signed(_ x: Double, digits: Int) -> String {
+        (x < 0 ? "−" : "+") + String(format: "%.\(digits)f", abs(x))
     }
 
     /// −2.15 → "−$2.15", 11.8 → "+$11.80".
@@ -155,8 +170,8 @@ public enum Panel {
         let name = project ?? (s.harness == "codex" ? "Codex" : "Claude Code")
         return SessionRow(
             id: s.key,
-            title: s.isSubagent ? "\(name) · subagent" : name,
-            model: s.model.map(Format.model) ?? "unknown model",
+            title: s.isSubagent ? L("\(name) · subagent") : name,
+            model: s.model.map(Format.model) ?? L("unknown model"),
             ctx: s.ctx,
             threshold: s.threshold,
             fraction: fraction,
@@ -206,27 +221,27 @@ public enum Panel {
     }
 
     static func groupRow(_ g: Group) -> ThresholdRow {
-        let title = Format.model(g.model) + (g.role == "main" ? "" : " · \(g.role)")
+        let title = Format.model(g.model) + (g.role == "main" ? "" : " · " + (g.role == "subagent" ? L("subagent") : g.role))
         guard let p = g.pick else {
-            return ThresholdRow(id: g.id, title: title, value: "–", detail: "no pick", suggestsChange: false)
+            return ThresholdRow(id: g.id, title: title, value: "–", detail: L("no pick"), suggestsChange: false)
         }
         let inForce = g.currentThreshold ?? g.defaultThreshold
         var detail: String
         var change = false
         if g.noActionNeeded || p.action == "no action needed" {
-            detail = "no change needed: sessions never reach the threshold"
+            detail = L("no change needed: sessions never reach the threshold")
         } else {
             switch p.action {
             case "set":
                 change = true
                 let vs = p.vsCurrent ?? p.vsDefault
-                detail = "set it" + (vs?.costPct.map { " (\(Format.percent($0)) cost)" } ?? "")
-            case "keep current": detail = "keep your setting"
-            case "keep default": detail = "keep the default"
+                detail = vs?.costPct.map { L("set it (\(Format.percent($0)) cost)") } ?? L("set it")
+            case "keep current": detail = L("keep your setting")
+            case "keep default": detail = L("keep the default")
             default: detail = p.action
             }
         }
-        if g.days < fewDays { detail += " · only \(Int(g.days.rounded(.up))) days of data" }
+        if g.days < fewDays { detail += " · " + L("only \(String(Int(g.days.rounded(.up)))) days of data") }
         let value = (change ? p.threshold : (inForce ?? p.threshold)).map(Format.tokens) ?? "–"
         return ThresholdRow(id: g.id, title: title, value: value, detail: detail, suggestsChange: change)
     }
@@ -234,23 +249,113 @@ public enum Panel {
     static func globalRow(harness: String, key: GlobalKey, pick: GlobalKey.Pick) -> ThresholdRow {
         let name = harness == "codex" ? "Codex" : harness
         let change = pick.action == "set"
-        var detail = change ? "set it (one key for every model)" : (pick.action == "keep current" ? "keep your setting" : "keep the default")
-        if change, let usd = pick.dUsdPerDay { detail += ", \(Format.usd(usd))/day" }
+        var detail =
+            change ? L("set it (one key for every model)") : (pick.action == "keep current" ? L("keep your setting") : L("keep the default"))
+        if change, let usd = pick.dUsdPerDay { detail += ", " + L("\(Format.usd(usd))/day") }
         let shown = pick.action == "keep current" ? (pick.current ?? pick.threshold) : pick.threshold
         return ThresholdRow(
-            id: "global/\(harness)", title: "\(name) (all models)", value: shown.map(Format.tokens) ?? "–",
+            id: "global/\(harness)", title: L("\(name) (all models)"), value: shown.map(Format.tokens) ?? "–",
             detail: detail, suggestsChange: change)
     }
 
     static func idleRow(_ idle: IdleVerdict, _ c: IdleVerdict.Choice) -> ThresholdRow {
-        let state = idle.enabled ? "on" : "off"
+        let state = idle.enabled ? L("on") : L("off")
+        let usd = Format.usd(c.dUsdPerDay)
         let detail: String
-        if c.shouldSwitch {
-            detail = (idle.enabled ? "turn it off" : "turn it on") + " (\(Format.usd(c.dUsdPerDay))/day)"
-        } else {
-            let other = idle.enabled ? "turning it off" : "turning it on"
-            detail = "keep it \(state) (\(other): \(Format.usd(c.dUsdPerDay))/day)"
+        switch (c.shouldSwitch, idle.enabled) {
+        case (true, true): detail = L("turn it off (\(usd)/day)")
+        case (true, false): detail = L("turn it on (\(usd)/day)")
+        case (false, true): detail = L("keep it on (turning it off: \(usd)/day)")
+        case (false, false): detail = L("keep it off (turning it on: \(usd)/day)")
         }
-        return ThresholdRow(id: "idle", title: "Idle compaction", value: state, detail: detail, suggestsChange: c.shouldSwitch)
+        return ThresholdRow(id: "idle", title: L("Idle compaction"), value: state, detail: detail, suggestsChange: c.shouldSwitch)
+    }
+}
+
+// MARK: - Changing settings
+
+extension Panel {
+    /// "opus-5.5", or "Codex" for its one key.
+    public static func changeTitle(harness: String, model: String) -> String {
+        harness == "codex" ? L("Codex (all models)") : Format.model(model)
+    }
+
+    /// "default" or "650k".
+    public static func setting(_ v: SettingValue) -> String {
+        switch v {
+        case .unset: L("default")
+        case .tokens(let n): Format.tokens(n)
+        case .other: L("other")
+        }
+    }
+
+    /// "opus-5.5: default → 625k, −$11.85/day"
+    public static func planLine(_ c: Plan.Change) -> String {
+        var s = "\(changeTitle(harness: c.harness, model: c.model)): \(setting(c.old)) → \(Format.tokens(c.new))"
+        if let usd = c.impact.usdPerDay { s += ", " + L("\(Format.usd(usd))/day") }
+        return s
+    }
+
+    /// "opus-5.5: 650k → 550k"
+    public static func changeLine(_ r: History.Row) -> String {
+        "\(changeTitle(harness: r.harness, model: r.model)): \(setting(r.old)) → \(Format.tokens(r.new))"
+    }
+
+    /// What a change does per day: "−$11.85/day (−23% cost), +0.1 min/day, against the default".
+    public static func impact(_ i: Plan.Change.Impact) -> String {
+        var parts: [String] = []
+        if let usd = i.usdPerDay {
+            parts.append(
+                i.costPct.map { L("\(Format.usd(usd))/day (\(Format.percent($0)) cost)") } ?? L("\(Format.usd(usd))/day"))
+        }
+        if let m = i.minPerDay { parts.append(L("\(Format.signed(m, digits: 1)) min/day")) }
+        var s = parts.joined(separator: ", ")
+        switch i.against {
+        case "current": s += " " + L("against your setting")
+        case "default": s += " " + L("against the default")
+        default: break
+        }
+        return s
+    }
+
+    /// "4 days, 3 sessions of data"
+    public static func evidence(_ i: Plan.Change.Impact) -> String? {
+        guard let d = i.days else { return nil }
+        let days = String(Int(d.rounded(.up)))
+        return i.sessions.map { L("\(days) days, \(String($0)) sessions of data") } ?? L("\(days) days of data")
+    }
+
+    /// verify's verdict in a few words.
+    public static func verdict(_ g: Verification.Group) -> String {
+        let observed = g.costPct.map { Format.percent($0) }
+        let predicted = g.costPctPredicted.map { Format.percent($0) }
+        switch g.verdict {
+        case "consistent":
+            return L("as predicted") + (observed.map { " (" + L("cost \($0)") + ")" } ?? "")
+        case "less":
+            return L("saved less than predicted") + pair(observed, predicted)
+        case "more":
+            return L("saved more than predicted") + pair(observed, predicted)
+        case "untouched": return L("no effect: sessions did not reach the threshold")
+        case "already": return L("it was in effect before the recorded time")
+        case "unclear": return L("not enough turns to compare")
+        case "too_early": return L("too early to tell")
+        case "no_data": return L("no sessions since the change")
+        default: return g.verdict
+        }
+    }
+
+    static func pair(_ observed: String?, _ predicted: String?) -> String {
+        guard let o = observed, let p = predicted else { return "" }
+        return " (" + L("cost \(o), predicted \(p)") + ")"
+    }
+
+    /// "in effect", "undone", "changed since (now 600k)".
+    public static func status(_ r: History.Row) -> String {
+        switch r.status {
+        case "in_effect": L("in effect")
+        case "reverted": L("undone")
+        default: L("changed since (now \(setting(r.now)))")
+        }
     }
 }
