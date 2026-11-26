@@ -21,6 +21,12 @@ public enum EngineAPI {
         case "result": return .result(try decoder.decode(ResultSummary.self, from: data))
         case "error": return .error(try decoder.decode(ErrorEnvelope.self, from: data).error)
         case "pong": return .pong
+        case "plan": return .plan(try decoder.decode(Plan.self, from: data))
+        case "applied": return .applied(try decoder.decode(Applied.self, from: data))
+        case "reverted": return .reverted(try decoder.decode(Reverted.self, from: data))
+        case "history": return .history(try decoder.decode(History.self, from: data))
+        case "verification": return .verification(try decoder.decode(Verification.self, from: data))
+        case "consent": return .consent(try decoder.decode(ConsentMessage.self, from: data).consent)
         default: return .unknown(kind: head.kind)
         }
     }
@@ -41,6 +47,12 @@ public enum EngineMessage: Sendable {
     case result(ResultSummary)
     case error(EngineError)
     case pong
+    case plan(Plan)
+    case applied(Applied)
+    case reverted(Reverted)
+    case history(History)
+    case verification(Verification)
+    case consent(Consent?)
     case unknown(kind: String)
 }
 
@@ -93,6 +105,11 @@ public struct Hello: Decodable, Sendable, Equatable {
     public var stateDir: String
     public var result: PathInfo
     public var service: ServiceState
+    /// The stored auto-apply consent; nil when there is none (or an engine before 0.2).
+    public var consent: Consent?
+
+    /// The engine can plan and write settings (0.2 and later).
+    public var canChangeSettings: Bool { commands.contains("plan") && commands.contains("apply") }
 
     /// Existing log directories of the harnesses `watch` reads: what the app watches with FSEvents.
     public var liveRoots: [String] {
@@ -162,6 +179,26 @@ public struct ResultSummary: Decodable, Sendable, Equatable {
     public var idleCompaction: IdleVerdict?
     public var globalKeys: [String: GlobalKey]?
     public var service: ServiceState?
+    /// What `calibrate --auto-apply` decided; nil otherwise.
+    public var autoApply: AutoApply?
+}
+
+public struct AutoApply: Decodable, Sendable, Equatable {
+    public struct Decision: Decodable, Sendable, Equatable {
+        public var model: String
+        public var action: String
+        public var reason: String
+    }
+
+    public var decisions: [Decision]?
+    /// The manifest path when something was written.
+    public var manifest: String?
+    public var error: String?
+
+    /// The id `revert --id` takes.
+    public var manifestId: String? {
+        manifest.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
+    }
 }
 
 public struct Impact: Decodable, Sendable, Equatable {
@@ -234,4 +271,149 @@ public struct GlobalKey: Decodable, Sendable, Equatable {
 
     public var models: [String]
     public var profiles: [String: Pick]
+}
+
+// MARK: - Changing settings (plan, apply, revert, history, verify, consent)
+
+/// A config value as the engine reports it: absent, a token count, or something else (a string, "unreadable").
+public enum SettingValue: Decodable, Sendable, Equatable {
+    case unset
+    case tokens(Int)
+    case other
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            self = .unset
+        } else if let n = try? c.decode(Int.self) {
+            self = .tokens(n)
+        } else {
+            self = .other
+        }
+    }
+
+    public var tokens: Int? {
+        if case .tokens(let n) = self { return n }
+        return nil
+    }
+}
+
+public struct Plan: Decodable, Sendable, Equatable {
+    public struct Change: Decodable, Sendable, Equatable, Identifiable {
+        public struct Impact: Decodable, Sendable, Equatable {
+            /// `current` (the setting in force) or `default` (nothing set yet).
+            public var against: String?
+            /// Negative: cheaper / faster.
+            public var usdPerDay: Double?
+            public var minPerDay: Double?
+            public var costPct: Double?
+            public var timePct: Double?
+            public var days: Double?
+            public var sessions: Int?
+        }
+
+        public var harness: String
+        public var model: String
+        public var file: String
+        public var key: String
+        public var old: SettingValue
+        public var new: Int
+        public var impact: Impact
+        /// Apply just this change: `--only harness:model --expect-plan planHash`.
+        public var planHash: String
+
+        public var id: String { key }
+        public var selector: String { "\(harness):\(model)" }
+    }
+
+    public var profile: String
+    public var planHash: String
+    public var changes: [Change]
+    public var skipped: [String]
+    public var diff: String
+    public var notes: [String]
+}
+
+public struct Applied: Decodable, Sendable, Equatable {
+    public struct Change: Decodable, Sendable, Equatable {
+        public var harness: String
+        public var model: String
+        public var key: String
+        public var old: SettingValue
+        public var new: Int
+    }
+
+    public var id: String
+    public var changes: [Change]
+}
+
+public struct Reverted: Decodable, Sendable, Equatable {
+    public var id: String
+    public var log: [String]
+    /// False when a key edited since the apply was left alone.
+    public var complete: Bool
+}
+
+public struct History: Decodable, Sendable, Equatable {
+    public struct Apply: Decodable, Sendable, Equatable, Identifiable {
+        public var id: String
+        public var at: Double?
+        /// Who wrote it: `app`, `consent` (auto-apply), or the CLI's preauth.
+        public var by: String?
+        public var changes: [Row]
+
+        public var inEffect: Bool { changes.contains { $0.status == "in_effect" } }
+        /// Keys someone else changed since.
+        public var drifted: [Row] { changes.filter { $0.status == "changed" } }
+    }
+
+    public struct Row: Decodable, Sendable, Equatable {
+        public var harness: String
+        public var model: String
+        public var file: String
+        public var key: String
+        public var old: SettingValue
+        public var new: Int
+        public var now: SettingValue
+        /// `in_effect`, `reverted` or `changed`.
+        public var status: String
+    }
+
+    public var applies: [Apply]
+}
+
+public struct Verification: Codable, Sendable, Equatable {
+    public struct Group: Codable, Sendable, Equatable {
+        public var harness: String
+        public var model: String
+        public var role: String?
+        public var verdict: String
+        public var summary: String?
+        public var inEffect: String?
+        public var costPct: Double?
+        public var costPctPredicted: Double?
+        public var sessionsBefore: Int?
+        public var sessionsAfter: Int?
+    }
+
+    public var id: String
+    public var appliedAt: Double
+    public var groups: [Group]
+
+    /// Verdicts that will not change with more data.
+    public static let final: Set<String> = ["consistent", "less", "more", "untouched", "already", "unclear"]
+    public var isFinal: Bool { !groups.isEmpty && groups.allSatisfy { Self.final.contains($0.verdict) } }
+}
+
+public struct Consent: Decodable, Sendable, Equatable {
+    public var harness: String
+    public var file: String
+    public var models: [String]
+    public var profile: String
+    public var created: String?
+    public var expires: String?
+}
+
+struct ConsentMessage: Decodable {
+    var consent: Consent?
 }

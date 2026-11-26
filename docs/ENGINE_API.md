@@ -9,6 +9,12 @@ compactlab engine sessions                # the active sessions now
 compactlab engine watch                   # the same as JSON Lines while running; commands on stdin
 compactlab engine result [--profile time] # the last calibration, summarized
 compactlab engine calibrate --reason app  # run one lite calibration (like `recalibrate`), then print its summary
+compactlab engine plan                    # what `apply` would change for the calibrated pick, with its hash
+compactlab engine apply --expect-plan H   # write exactly that plan (or one change of it with --only)
+compactlab engine revert [--id ID]        # undo an apply from its manifest
+compactlab engine history                 # the latest applies and what each key holds now
+compactlab engine verify [--id ID]        # an apply's predicted effect against the logs since
+compactlab engine consent show|set|clear  # the auto-apply consent (Claude Code)
 ```
 
 ## Contract
@@ -28,7 +34,8 @@ stderr for an unknown command).
 ## `hello`
 
 Run it first. `version` is the compactlab version, `commands` the engine commands this version has,
-`live_harnesses` the harnesses `sessions` and `watch` read. `harnesses` lists every adapter with its log roots and
+`live_harnesses` the harnesses `sessions` and `watch` read. `consent` is the stored auto-apply consent (`null` when
+there is none or it has lapsed); a consumer turns on writing only when `commands` has `plan` and `apply` (0.2 on). `harnesses` lists every adapter with its log roots and
 config file (`exists` says whether each is there). `result` is where `calibrate` keeps its result, `service` the
 calibrator's bookkeeping: `last_calibrated`, `last_attempt`, `failures` (in a row) and `last_error`.
 
@@ -135,16 +142,47 @@ The result never contains transcript text, paths or project names.
 | `calibration_failed` | `calibrate` failed (no sessions, a malformed config, …); the message says why |
 | `busy` | `calibrate`: another process holds the state dir's lock (a calibration, `apply --write`, `retune` or `revert`); nothing ran |
 | `bad_args` | an invalid option value |
+| `plan_changed` | `apply`: the plan is no longer the one with `--expect-plan`'s hash (a calibration moved the pick, the file changed); nothing written |
+| `refused` | `plan` / `apply` / `revert` / `consent`: a config file that cannot be edited safely, nothing to change, no settings file |
+| `no_apply` | `revert` / `verify`: no apply manifest (or not the one `--id` names) |
+| `no_sessions` | `verify`: no sessions in the window |
 | `bad_command`, `scan_failed` | `watch` only; it keeps running |
 | `internal` | an unexpected exception (traceback on stderr); `watch` prints it too when it cannot start |
 
-## Writing settings
+## Changing settings: `plan`, `apply`, `revert`, `history`, `verify`, `consent`
 
-Not an engine command yet (Phase 2 adds `plan` / `apply` / `revert`). Until then: `compactlab apply --json` prints
-the plan with `plan_hash`, and `compactlab apply --write --expect-plan <plan_hash> --json` writes only if the plan is
-still that one, holding the same lock. A refusal is `{"error": {"code": "plan_changed" | "busy" | "refused", ...}}`
-on stdout (`plan_changed` with the new plan beside it); exit 2, or 75 for `busy`. See
-[SAFETY.md](SAFETY.md#writing-exactly-the-reviewed-plan).
+These go through the same code as `compactlab apply` / `revert` / `verify` (backups, atomic writes, manifests; see
+[SAFETY.md](SAFETY.md)). The targets are each harness's config file (`--claude-settings`, `--codex-config`, or the
+default the adapter finds), every main-session model of the result, and the usual bounds (100k–1M). The person who
+clicks Apply on a reviewed plan is the authorization; nothing here writes without `--expect-plan`.
+
+- `plan [--profile P] [--only HARNESS:MODEL ...]`: `profile`, `plan_hash`, `changes` (per change: `harness`, `model`,
+  `file`, `key`, `old` (`null` when unset), `new`, `plan_hash` (of that change alone) and `impact`: `against`
+  (`current` or `default`), `usd_per_day`, `min_per_day`, `cost_pct`, `time_pct` (negative: cheaper / faster; the
+  share is `null` for Codex's one key), `days`, `sessions`), `skipped` (reasons), `diff` (unified) and `notes`. Only
+  picks whose action is `set` become changes.
+- `apply --expect-plan HASH [--profile P] [--only ...]`: takes the state dir's lock, plans again and writes only if the
+  hash is unchanged (`plan_changed` otherwise), then records the write as auto-apply does (`service/applied.json`,
+  `service/journal.jsonl`), so auto-apply's manual-edit check and cooldown count it. Prints `applied`: `id` (the
+  manifest) and `changes`. To apply one change of a plan, pass its `--only harness:model` and its own `plan_hash`.
+- `revert [--id ID]` (default: the latest apply): under the lock, restores the file from the backup when nobody has
+  touched it since, else only the keys still holding what compactlab wrote. Prints `reverted`: `id`, `log` and
+  `complete` (`false` when a key edited since was left alone).
+- `history [--limit 10]`: `applies`, newest first: `id`, `at`, `by` (`app`, `consent` for auto-apply, or the CLI's
+  preauth), and per key `old`, `new`, `now` (what the file holds now) and `status`: `in_effect`, `reverted`, or
+  `changed` (someone edited it since: drift).
+- `verify [--id ID] [--since-days N]`: `verification`: `id`, `applied_at`, and per model `verdict` (`consistent`,
+  `less`, `more`, `untouched`, `already`, `unclear`, `too_early`, `no_data`), `summary`, `in_effect`, `cost_pct`,
+  `cost_pct_predicted`, `sessions_before`, `sessions_after`. It reads the logs (with the scan cache); the app runs it
+  at most daily and passes a window around the change.
+- `consent show|set|clear [--models M ...] [--profile P]`: `consent` (as in `hello`). `set` stores a consent for
+  Claude Code's settings file; `--models` defaults to `*`, every model, including ones that appear later.
+  `calibrate --auto-apply` then applies within the auto-apply rules (7 days and 500 turns of data, at most 100k per
+  step, a 7-day cooldown, never over a value someone else set).
+
+The CLI keeps its own form: `compactlab apply --json` prints the plan with `plan_hash`, and
+`compactlab apply --write --expect-plan <plan_hash> --json` writes only if the plan is still that one (exit 2, or 75
+for `busy`).
 
 ## Privacy
 

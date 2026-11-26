@@ -1,0 +1,49 @@
+{
+ "changes": [
+  {
+   "file": "~/settings.json",
+   "harness": "claude-code",
+   "impact": {
+    "against": "default",
+    "cost_pct": -0.22579001516401706,
+    "days": 4.294923625472519,
+    "min_per_day": 0.12212791546956081,
+    "sessions": 3,
+    "time_pct": 0.0014106739167469551,
+    "usd_per_day": -11.849765990753243
+   },
+   "key": "modelSettings.claude-opus-5-5.autoCompactWindow",
+   "model": "claude-opus-5-5",
+   "new": 625000,
+   "old": null,
+   "plan_hash": "6ff37c8f1149dd98"
+  },
+  {
+   "file": "~/settings.json",
+   "harness": "claude-code",
+   "impact": {
+    "against": "default",
+    "cost_pct": -0.4046904006855865,
+    "days": 4.309471321839977,
+    "min_per_day": -2.5896727844476986,
+    "sessions": 3,
+    "time_pct": -0.0351590866873516,
+    "usd_per_day": -8.578268097436148
+   },
+   "key": "modelSettings.claude-sonnet-5-5.autoCompactWindow",
+   "model": "claude-sonnet-5-5",
+   "new": 450000,
+   "old": null,
+   "plan_hash": "a76a64d700dc7129"
+  }
+ ],
+ "diff": "--- a/~/settings.json\n+++ b/~/settings.json\n@@ -1,4 +1,14 @@\n {\n     \"theme\": \"dark\",\n-    \"env\": {\"A\": \"1\"}\n+    \"env\": {\n+        \"A\": \"1\"\n+    },\n+    \"modelSettings\": {\n+        \"claude-opus-5-5\": {\n+            \"autoCompactWindow\": 625000\n+        },\n+        \"claude-sonnet-5-5\": {\n+            \"autoCompactWindow\": 450000\n+        }\n+    }\n }\n",
+ "engine_api": 1,
+ "kind": "plan",
+ "notes": [
+  "~/settings.json: JSON formatting will be normalized (content of other keys is unchanged)"
+ ],
+ "plan_hash": "fe57dcf034377cd2",
+ "profile": "balanced",
+ "skipped": []
+}

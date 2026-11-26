@@ -114,8 +114,11 @@ def model_key(harness: str, model: str) -> str:
 
 
 def model_allowed(harness: str, model: str, allowed: list[str]) -> bool:
-    """`model` is in `allowed`, also when either side is a dated, platform or alias ID of the same Claude model."""
-    return model in allowed or any(model_key(harness, m) == model_key(harness, model) for m in allowed)
+    """`model` is in `allowed`, also when either side is a dated, platform or alias ID of the same Claude model.
+    `*` allows every model (a consent that should cover models that appear later)."""
+    return (
+        "*" in allowed or model in allowed or any(model_key(harness, m) == model_key(harness, model) for m in allowed)
+    )
 
 
 def plan_changes(recs: list[dict], pre: Preauth) -> tuple[list[Change], list[str]]:

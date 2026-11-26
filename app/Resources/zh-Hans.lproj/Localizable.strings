@@ -1,0 +1,208 @@
+/* compactlab menu bar app, Simplified Chinese. Keys are the English text; app/scripts/check_strings.py checks them.
+   Terms follow the project's Chinese docs (README.zh-CN.md, docs/MENUBAR_APP.zh-CN.md): 校准, 阈值, 空闲压缩,
+   缓存冷/热, 省钱/均衡/省时, 撤销, subagent (kept in English there). macOS terms as the system writes them:
+   设置…, 退出, 登录时打开, 系统设置 → 通知. */
+
+/* Windows, menus, buttons */
+"Review changes" = "审阅修改";
+"Review" = "审阅";
+"Undo" = "撤销";
+"Cancel" = "取消";
+"Retry" = "重试";
+"Restart" = "重新启动";
+"Close" = "关闭";
+"Copy" = "复制";
+"Apply" = "应用";
+"Apply all" = "全部应用";
+"Open report" = "打开报告";
+"Recalibrate" = "立即重算";
+"Settings…" = "设置…";
+"Quit" = "退出";
+"Review…" = "审阅…";
+"Check again" = "重新检查";
+"Choose…" = "选取…";
+"Restart engine" = "重启引擎";
+"Remind me in a week" = "一周后再提醒";
+"Copy /compact" = "复制 /compact";
+
+/* Header and status */
+"Profile" = "方案";
+"Calibrated (%@)" = "校准时的方案（%@）";
+"Which profile the threshold table shows" = "阈值表按哪个方案显示";
+"Last calibration" = "上次校准";
+"cost" = "省钱";
+"balanced" = "均衡";
+"time" = "省时";
+"Starting the engine…" = "正在启动引擎…";
+"The engine did not start" = "引擎没有启动";
+"Engine %@ speaks contract %@" = "引擎 %@ 使用第 %@ 版接口";
+"This app was built for contract %@. It shows what it can and will not change any settings. Update the app and the engine to matching versions." = "本应用按第 %@ 版接口构建：能显示的照常显示，但不会修改任何设置。请把应用和引擎更新到匹配的版本。";
+"Active sessions are not updating" = "活跃会话没有更新";
+"Calibration failed" = "校准失败";
+"Another calibration is running" = "另一个校准正在运行";
+"The report could not be made" = "没能生成报告";
+
+/* Active sessions */
+"Active sessions" = "活跃会话";
+"last %@ h" = "近 %@ 小时";
+"Not watching." = "未在监视。";
+"Reading…" = "正在读取…";
+"No sessions in the last %@ hours." = "近 %@ 小时没有会话。";
+"Show fewer" = "收起";
+"Show %@ more" = "再显示 %@ 个";
+"1 log file could not be read." = "有 1 个日志文件读不了。";
+"%@ log files could not be read." = "有 %@ 个日志文件读不了。";
+"%@ · subagent" = "%@ · subagent";
+"unknown model" = "未知模型";
+"compacted %@ ago" = "%@前已压缩";
+"at the threshold" = "已到阈值";
+"%@ to compaction" = "还有 %@ 压缩";
+"cache warm (cold in %@)" = "缓存热（%@后变冷）";
+"cache cold: next send rewrites %@" = "缓存已冷：下次发送重写 %@";
+"cache cold" = "缓存已冷";
+"+1 subagent" = "+1 个 subagent";
+"+%@ subagents" = "+%@ 个 subagent";
+"– / %@" = "– / %@";
+"Compacting before the next message avoids writing the whole context to cache again" = "在发下一条消息前压缩，可以免去把整个上下文重新写入缓存";
+
+/* Thresholds */
+"Thresholds" = "阈值";
+"demo data" = "演示数据";
+"No model has enough sessions yet." = "还没有哪个模型的会话足够多。";
+"Calibrating for the first time…" = "正在首次校准…";
+"No calibration yet." = "还没有校准过。";
+"subagent" = "subagent";
+"no pick" = "没有选出";
+"no change needed: sessions never reach the threshold" = "无需调整：会话从来到不了阈值";
+"set it (%@ cost)" = "建议设置（成本 %@）";
+"set it" = "建议设置";
+"keep your setting" = "保持你的设置";
+"keep the default" = "保持默认";
+"only %@ days of data" = "只有 %@ 天数据";
+"set it (one key for every model)" = "建议设置（所有模型共用一个键）";
+"%@ (all models)" = "%@（所有模型）";
+"Codex (all models)" = "Codex（所有模型）";
+"on" = "开";
+"off" = "关";
+"turn it off (%@/day)" = "建议关闭（每天 %@）";
+"turn it on (%@/day)" = "建议开启（每天 %@）";
+"keep it on (turning it off: %@/day)" = "保持开启（关掉每天 %@）";
+"keep it off (turning it on: %@/day)" = "保持关闭（打开每天 %@）";
+"Idle compaction" = "空闲压缩";
+
+/* Changes: panel */
+"Changes" = "修改";
+"the last two calibrations agree" = "最近两次校准结论一致";
+"To change settings from here, update compactlab to 0.2 or later. Until then: `compactlab apply`." = "要在这里修改设置，请把 compactlab 升级到 0.2 或更高版本；在此之前可以用 `compactlab apply`。";
+"%@/day" = "每天 %@";
+"1 suggested change" = "1 项建议修改";
+"%@ suggested changes" = "%@ 项建议修改";
+"Restore the values from before this change (settings edited since are left alone)" = "恢复这次修改之前的值（之后被改过的设置保持不动）";
+"auto-apply" = "自动应用";
+"you, from the app" = "你（在应用里）";
+"the command line" = "命令行";
+"Last change · %@ · by %@" = "上次修改 · %@ · 来自%@";
+"Verification: " = "验证：";
+"Verified against your logs after a day of use." = "使用一天后会对照你的日志验证。";
+"default" = "默认";
+"other" = "其他";
+"in effect" = "生效中";
+"undone" = "已撤销";
+"changed since (now %@)" = "之后被改过（现在是 %@）";
+
+/* Review window */
+"Suggested changes" = "建议的修改";
+"Nothing was written" = "没有写入任何内容";
+"Nothing to change: your settings match the last calibration." = "无需修改：你的设置和上次校准结果一致。";
+"Not changed: %@" = "不修改：%@";
+"What will be written" = "将写入的内容";
+"compactlab keeps a backup of every file it changes. Undo from the menu bar panel, or run `compactlab revert`." = "compactlab 会备份它修改的每个文件。可以在菜单栏面板里撤销，或运行 `compactlab revert`。";
+"This is the demo result: there is nothing of yours to change." = "这是演示结果，没有你的设置可改。";
+"This engine speaks another contract version: the app does not change settings with it." = "这个引擎使用另一版接口，应用不会通过它修改设置。";
+"Changing settings from the app needs compactlab 0.2 or later. Until then: `compactlab apply`." = "在应用里修改设置需要 compactlab 0.2 或更高版本；在此之前可以用 `compactlab apply`。";
+"Profile: %@" = "方案：%@";
+"calibrated %@" = "%@校准";
+"%@/day (%@ cost)" = "每天 %@（成本 %@）";
+"%@ min/day" = "每天 %@ 分钟";
+"%@, %@ min/day" = "%@，每天 %@ 分钟";
+"against your setting" = "（相对你的设置）";
+"against the default" = "（相对默认值）";
+"%@ days, %@ sessions of data" = "数据：%@ 天，%@ 个会话";
+"%@ days of data" = "数据：%@ 天";
+
+/* Verification */
+"as predicted" = "与预测一致";
+"cost %@" = "成本 %@";
+"saved less than predicted" = "省得比预测少";
+"saved more than predicted" = "省得比预测多";
+"no effect: sessions did not reach the threshold" = "没有影响：会话没到阈值";
+"it was in effect before the recorded time" = "在记录的时间之前就已生效";
+"not enough turns to compare" = "轮数不够，无法比较";
+"too early to tell" = "现在下结论还太早";
+"no sessions since the change" = "修改之后还没有会话";
+"cost %@, predicted %@" = "成本 %@，预测 %@";
+
+/* Notifications */
+"compactlab changed a setting" = "compactlab 修改了一项设置";
+"removed" = "已删除";
+"A setting was changed" = "有设置被改动";
+"%@: compactlab set %@, now %@. compactlab will leave it as it is." = "%@：compactlab 设的是 %@，现在是 %@。compactlab 不会再改它。";
+"The last change is verified" = "上次修改的验证结果出来了";
+"Calibration keeps failing" = "校准连续失败";
+"%@ failures in a row." = "已连续失败 %@ 次。";
+"%@ changes, %@/day in all." = "%@ 项修改，合计每天 %@。";
+"compactlab suggests a change" = "compactlab 建议修改设置";
+"The last two calibrations agree." = "最近两次校准结论一致。";
+
+/* Errors from changing settings */
+"The engine's reply could not be read; check the settings file." = "读不懂引擎的回复，请检查设置文件。";
+"Undone, except settings someone changed since: they were left as they are." = "已撤销；之后被改过的设置保持不动。";
+"The settings or the suggestion changed since this was shown. Review the new plan." = "显示之后，设置或建议已经变了。请审阅新的方案。";
+"A calibration or another change is running. Try again in a minute." = "有校准或别的修改正在进行，请过一分钟再试。";
+"The engine took too long." = "引擎运行超时。";
+
+/* Missing engine */
+"compactlab is not installed" = "没有安装 compactlab";
+"The app reads your sessions through the compactlab command-line tool. Install it with one of:" = "本应用通过 compactlab 命令行工具读取会话。用下面任一命令安装：";
+"Installed somewhere else? Set its path in Settings." = "装在别处？在设置里填写它的路径。";
+
+/* Settings */
+"General" = "通用";
+"Engine" = "引擎";
+"Open at login" = "登录时打开";
+"Show the fullest session's percentage in the menu bar" = "在菜单栏显示最满会话的百分比";
+"Show project names" = "显示项目名";
+"Project names (the last part of each session's folder) are shown only in this panel and never written to a file." = "项目名（会话所在文件夹的最后一段）只在本面板显示，不会写进任何文件。";
+"Could not change the login item: %@" = "无法修改登录项：%@";
+"Apply suggestions automatically" = "自动应用建议";
+"Claude Code only. A threshold moves only after 7 days and 500 turns of data, by at most 100k, at most once a week, and never over a value someone else set. Each change is notified and can be undone. Off: nothing is written until you click Apply." = "仅限 Claude Code。至少有 7 天、500 轮数据才会调整，每次最多移动 100k，每周最多一次，也不会覆盖别人设的值；每次修改都会通知，并可撤销。关闭时，你点“应用”之前不会写入任何内容。";
+"Notify me about" = "通知我";
+"Suggestions the last two calibrations agree on" = "最近两次校准一致的建议";
+"Changes: auto-apply, settings edited elsewhere, verification results" = "修改：自动应用、在别处被改动的设置、验证结果";
+"Calibration failing three times in a row" = "校准连续失败三次";
+"macOS asks once whether compactlab may notify you; change that later in System Settings → Notifications." = "macOS 会询问一次是否允许 compactlab 发通知；之后可以在“系统设置 → 通知”里修改。";
+"Status" = "状态";
+"In use" = "正在使用";
+"not found" = "未找到";
+"Path to compactlab" = "compactlab 的路径";
+"found automatically" = "自动查找";
+"Searched when empty: your PATH, ~/.local/bin, /opt/homebrew/bin, /usr/local/bin." = "留空时依次查找：PATH、~/.local/bin、/opt/homebrew/bin、/usr/local/bin。";
+"Versions, paths and states; no session content or project names" = "版本、路径和状态；不含会话内容和项目名";
+"starting" = "正在启动";
+"failed: %@" = "失败：%@";
+"%@ (contract %@; read-only)" = "%@（第 %@ 版接口，只读）";
+
+/* Menu bar icon (VoiceOver) */
+"compactlab: engine problem" = "compactlab：引擎出错";
+"compactlab: no active sessions" = "compactlab：没有活跃会话";
+"compactlab: fullest session at %@ of its threshold" = "compactlab：最满的会话已到阈值的 %@";
+"compactlab: a session is at %@ of its threshold" = "compactlab：有会话已到阈值的 %@";
+"a change to review" = "有待审阅的修改";
+
+/* Units */
+"%@ s" = "%@ 秒";
+"%@ min" = "%@ 分钟";
+"%@ h" = "%@ 小时";
+"%@ d" = "%@ 天";
+"just now" = "刚刚";
+"%@ ago" = "%@前";

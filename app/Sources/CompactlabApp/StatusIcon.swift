@@ -3,9 +3,9 @@ import CompactlabKit
 
 /// The menu bar icon: a small half-circle gauge, filled to the context share of the fullest recently active session.
 /// Template (follows the menu bar's colour) except near a threshold (amber). An engine problem shows an exclamation
-/// mark instead of the needle.
+/// mark instead of the needle. A dot at the top right: something waits for review.
 enum StatusIcon {
-    static func image(_ state: IconState, text: String?) -> NSImage {
+    static func image(_ state: IconState, text: String?, dot: Bool = false) -> NSImage {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let textSize = text.map { ($0 as NSString).size(withAttributes: [.font: font]) } ?? .zero
         let gauge = NSSize(width: 18, height: 16)
@@ -55,6 +55,10 @@ enum StatusIcon {
                 NSBezierPath(ovalIn: NSRect(x: center.x - 1.5, y: center.y - 1.5, width: 3, height: 3)).fill()
             }
 
+            if dot {
+                ink.setFill()
+                NSBezierPath(ovalIn: NSRect(x: gauge.width - 5, y: gauge.height - 5, width: 4.5, height: 4.5)).fill()
+            }
             if let text {
                 (text as NSString).draw(
                     at: NSPoint(x: gauge.width + 3, y: (gauge.height - textSize.height) / 2),
@@ -66,12 +70,15 @@ enum StatusIcon {
         return image
     }
 
-    static func accessibilityLabel(_ state: IconState) -> String {
-        switch state {
-        case .engineProblem: "compactlab: engine problem"
-        case .idle: "compactlab: no active sessions"
-        case .active(let f): "compactlab: fullest session at \(Int(f * 100))% of its threshold"
-        case .nearThreshold(let f): "compactlab: a session is at \(Int(f * 100))% of its threshold"
-        }
+    static func accessibilityLabel(_ state: IconState, pending: Bool) -> String {
+        let pct = { (f: Double) in "\(Int(f * 100))%" }
+        let s: String =
+            switch state {
+            case .engineProblem: L("compactlab: engine problem")
+            case .idle: L("compactlab: no active sessions")
+            case .active(let f): L("compactlab: fullest session at \(pct(f)) of its threshold")
+            case .nearThreshold(let f): L("compactlab: a session is at \(pct(f)) of its threshold")
+            }
+        return pending ? s + ", " + L("a change to review") : s
     }
 }

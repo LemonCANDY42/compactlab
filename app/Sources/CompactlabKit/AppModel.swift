@@ -4,9 +4,11 @@ import os
 
 /// The app's state and everything it asks the engine. One instance, on the main actor.
 ///
-/// Engine processes: `hello` at start; one resident `watch` for the active sessions (FSEvents → `refresh`); `result`
-/// after start and after each calibration; `calibrate` when due (the service's schedule and backoff, put off on low
-/// power) or when asked. Nothing here parses logs, writes settings or uses the network.
+/// Engine processes: `hello` at start; one resident `watch` for the active sessions (FSEvents → `refresh`); `result`,
+/// `plan` and `history` after start and after each calibration or change; `calibrate` when due (the service's schedule
+/// and backoff, put off on low power) or when asked; `apply` / `revert` when the person clicks; `verify` at most daily
+/// for the latest change. Nothing here parses logs, writes files of other tools or uses the network: the engine's
+/// `apply` is the only writer of settings.
 @MainActor
 @Observable
 public final class AppModel {
@@ -65,8 +67,22 @@ public final class AppModel {
     public var displayProfile: String {
         didSet {
             defaults.set(displayProfile, forKey: Keys.displayProfile)
-            if oldValue != displayProfile { Task { await loadResult() } }
+            if oldValue != displayProfile {
+                Task {
+                    await loadResult()
+                    await loadPlan()
+                }
+            }
         }
+    }
+    public var notifySuggestions: Bool {
+        didSet { defaults.set(notifySuggestions, forKey: Keys.notifySuggestions) }
+    }
+    public var notifyChanges: Bool {
+        didSet { defaults.set(notifyChanges, forKey: Keys.notifyChanges) }
+    }
+    public var notifyProblems: Bool {
+        didSet { defaults.set(notifyProblems, forKey: Keys.notifyProblems) }
     }
 
     public private(set) var status: EngineStatus = .starting
@@ -79,6 +95,21 @@ public final class AppModel {
     public private(set) var resultError: EngineError?
     public private(set) var calibration: CalibrationStatus = .idle
     public private(set) var reportError: String?
+    /// What `apply` would change now (nil: not loaded, or the engine cannot write settings).
+    public private(set) var plan: Plan?
+    public private(set) var planError: EngineError?
+    /// The latest applies, newest first, with what each key holds now.
+    public private(set) var history: History?
+    /// The verification of the newest apply (kept between launches).
+    public private(set) var verification: Verification?
+    /// An apply, revert or consent change is running.
+    public private(set) var isWriting = false
+    /// The outcome of the last apply or revert when it needs saying (a refusal, a partial undo).
+    public private(set) var writeMessage: String?
+    /// Moves when something (a notification) asks for the review window.
+    public private(set) var reviewRequest = 0
+    /// Posts a notification (the app sets it; tests record).
+    public var post: @MainActor (Notice) -> Void = { _ in }
     /// Moves once a minute so time-based text (cache going cold, "2 h ago") and the icon stay current.
     public private(set) var now = Date()
 
@@ -95,6 +126,8 @@ public final class AppModel {
     private var ticker: Timer?
     private var lastScheduleCheck = Date.distantPast
     private var lastHelloRefresh = Date.distantPast
+    private var lastHistoryLoad = Date.distantPast
+    private var noticeState: NoticeState
     /// A timed-out or cancelled calibration leaves no record in the service state (the engine writes it when a run
     /// ends), so the app backs off on its own: 5 minutes, doubling, up to the interval.
     private var interrupted = 0
@@ -115,6 +148,11 @@ public final class AppModel {
         showProjects = defaults.object(forKey: Keys.showProjects) as? Bool ?? true
         showPercent = defaults.bool(forKey: Keys.showPercent)
         displayProfile = defaults.string(forKey: Keys.displayProfile) ?? ""
+        notifySuggestions = defaults.object(forKey: Keys.notifySuggestions) as? Bool ?? true
+        notifyChanges = defaults.object(forKey: Keys.notifyChanges) as? Bool ?? true
+        notifyProblems = defaults.object(forKey: Keys.notifyProblems) as? Bool ?? true
+        noticeState = defaults.data(forKey: Keys.notices).flatMap { try? JSONDecoder().decode(NoticeState.self, from: $0) } ?? NoticeState()
+        verification = defaults.data(forKey: Keys.verification).flatMap { try? JSONDecoder().decode(Verification.self, from: $0) }
     }
 
     // MARK: Lifecycle
@@ -151,7 +189,9 @@ public final class AppModel {
         startTicker()
         startWatch()
         await loadResult()
+        await loadSettings()
         await calibrateIfDue()
+        await verifyIfDue()
     }
 
     /// Stop the engine processes (app quitting).
@@ -220,11 +260,11 @@ public final class AppModel {
                 watchError = nil
             case .error(let e):
                 watchError = e.message
-            case .hello, .pong, .unknown, .result:
-                break
             case nil:
                 watchError = "the engine printed something that is not JSON"
                 log.error("watch: undecodable line (\(data.count) bytes)")
+            default:
+                break
             }
         case .exited(let status):
             if stoppingWatch == ObjectIdentifier(w) {
@@ -279,6 +319,7 @@ public final class AppModel {
             guard let self else { return }
             await self.calibrate(reason: reason)
             self.calibrateTask = nil
+            await self.verifyIfDue()  // after clearing the task: verify never runs alongside a calibration
         }
     }
 
@@ -293,7 +334,9 @@ public final class AppModel {
 
     private func calibrate(reason: String) async {
         do {
-            let out = try await run(["engine", "calibrate", "--reason", reason], timeout: calibrateTimeout)
+            var args = ["engine", "calibrate", "--reason", reason]
+            if canChangeSettings, hello?.consent != nil { args.append("--auto-apply") }
+            let out = try await run(args, timeout: calibrateTimeout)
             if out.cancelled || out.timedOut {
                 interrupted += 1
                 let every = result?.calibration?.everyS ?? Schedule.defaultEvery
@@ -319,6 +362,7 @@ public final class AppModel {
         }
         await refreshHello()
         await loadResult()
+        await loadSettings()
     }
 
     /// Calibrate when the service schedule says so, unless saving power. Called at start, each tick and on wake.
@@ -364,6 +408,184 @@ public final class AppModel {
         now = Date()
         watch?.send("snapshot")
         Task { await calibrateIfDue() }
+    }
+
+    // MARK: Changing settings
+
+    /// The engine can write settings and the result is real (not the demo's).
+    public var canChangeSettings: Bool {
+        status.canWrite && (hello?.canChangeSettings ?? false) && result?.demo != true
+    }
+
+    public var autoApply: Bool { hello?.consent != nil }
+
+    /// Something waits for the person: a suggestion two calibrations agree on, or a setting changed by someone else.
+    public var hasPending: Bool {
+        Notices.pending(plan: plan, result: result, history: history, state: noticeState, now: now)
+    }
+
+    /// Suggested changes the last two calibrations agree on (the ones a notification is about).
+    public var stableChanges: [Plan.Change] {
+        Notices.stable(plan, result: result, state: noticeState, now: now)
+    }
+
+    /// Plan and history, then the notices they call for.
+    public func loadSettings() async {
+        await loadPlan()
+        await loadHistory()
+        updateNotices()
+    }
+
+    public func loadPlan() async {
+        guard canChangeSettings, result != nil else {
+            plan = nil
+            return
+        }
+        var args = ["engine", "plan"]
+        if !displayProfile.isEmpty { args += ["--profile", displayProfile] }
+        switch await oneShot(args, timeout: .seconds(60)) {
+        case .success(.plan(let p)):
+            plan = p
+            planError = nil
+        case .success(.error(let e)):
+            plan = nil
+            planError = e
+        case .success:
+            plan = nil
+            planError = EngineError(code: "internal", message: "unexpected reply to engine plan")
+        case .failure(let e):
+            plan = nil
+            planError = e
+        }
+    }
+
+    public func loadHistory() async {
+        guard status.isUsable, hello?.commands.contains("history") == true else { return }
+        lastHistoryLoad = Date()
+        if case .success(.history(let h)) = await oneShot(["engine", "history", "--limit", "5"], timeout: .seconds(30)) {
+            history = h
+        }
+    }
+
+    /// Write one suggested change, or all of them (nil). The engine plans again under its lock and writes only if the
+    /// plan is still the one shown.
+    public func apply(_ change: Plan.Change?) async {
+        guard canChangeSettings, let plan, !isWriting else { return }
+        isWriting = true
+        writeMessage = nil
+        var args = ["engine", "apply"]
+        if !displayProfile.isEmpty { args += ["--profile", displayProfile] }
+        if let c = change {
+            args += ["--only", c.selector, "--expect-plan", c.planHash]
+        } else {
+            args += ["--expect-plan", plan.planHash]
+        }
+        switch await oneShot(args, timeout: .seconds(60)) {
+        case .success(.applied):
+            break
+        case .success(.error(let e)):
+            writeMessage = refusal(e)
+        case .success:
+            writeMessage = L("The engine's reply could not be read; check the settings file.")
+        case .failure(let e):
+            writeMessage = e.message
+        }
+        isWriting = false
+        await loadSettings()
+    }
+
+    /// Undo an apply from its manifest (only the keys nobody changed since).
+    public func revert(_ id: String) async {
+        guard status.canWrite, hello?.canChangeSettings == true, !isWriting else { return }
+        isWriting = true
+        writeMessage = nil
+        switch await oneShot(["engine", "revert", "--id", id], timeout: .seconds(60)) {
+        case .success(.reverted(let r)):
+            if !r.complete { writeMessage = L("Undone, except settings someone changed since: they were left as they are.") }
+        case .success(.error(let e)):
+            writeMessage = refusal(e)
+        case .success:
+            writeMessage = L("The engine's reply could not be read; check the settings file.")
+        case .failure(let e):
+            writeMessage = e.message
+        }
+        isWriting = false
+        await loadSettings()
+    }
+
+    /// Turn auto-apply (Claude Code, within the engine's limits) on or off: the engine's stored consent.
+    public func setAutoApply(_ on: Bool) async {
+        guard canChangeSettings, !isWriting else { return }
+        isWriting = true
+        let args = on ? ["engine", "consent", "set", "--profile", result?.profile ?? "balanced"] : ["engine", "consent", "clear"]
+        if case .success(.error(let e)) = await oneShot(args, timeout: .seconds(30)) { writeMessage = e.message }
+        isWriting = false
+        await refreshHello()
+    }
+
+    /// "Remind me in a week": no notification or menu bar dot for these suggestions until then.
+    public func snooze(_ changes: [Plan.Change]) {
+        let until = Date().addingTimeInterval(Notices.snooze).timeIntervalSince1970
+        for c in changes { noticeState.snoozed[c.key] = until }
+        saveNotices()
+    }
+
+    public func requestReview() { reviewRequest += 1 }
+
+    public func clearWriteMessage() { writeMessage = nil }
+
+    /// Check the newest apply against the logs since: once it is a day old, at most daily, until the verdict is final.
+    public func verifyIfDue() async {
+        guard status.isUsable, hello?.commands.contains("verify") == true, let newest = history?.applies.first,
+            newest.inEffect, let at = newest.at, calibrateTask == nil
+        else { return }
+        let age = Date().timeIntervalSince1970 - at
+        guard age >= 86_400 else { return }
+        if let v = verification, v.id == newest.id, v.isFinal { return }
+        let ran = defaults.double(forKey: Keys.verifiedAt)
+        guard Date().timeIntervalSince1970 - ran >= 20 * 3600 else { return }
+        defaults.set(Date().timeIntervalSince1970, forKey: Keys.verifiedAt)
+        let days = min(60, Int((2 * age / 86_400 + 7).rounded(.up)))  // enough before the change to compare with
+        let args = ["engine", "verify", "--id", newest.id, "--since-days", String(days)]
+        if case .success(.verification(let v)) = await oneShot(args, timeout: .seconds(600)) {
+            verification = v
+            defaults.set(try? JSONEncoder().encode(v), forKey: Keys.verification)
+            updateNotices()
+        }
+    }
+
+    private func updateNotices() {
+        let enabled = Notices.Enabled(suggestions: notifySuggestions, changes: notifyChanges, problems: notifyProblems)
+        let notices = Notices.evaluate(
+            plan: plan, result: result, history: history, verification: verification, service: hello?.service,
+            enabled: enabled, state: &noticeState, now: Date())
+        saveNotices()
+        for n in notices { post(n) }
+    }
+
+    private func saveNotices() {
+        defaults.set(try? JSONEncoder().encode(noticeState), forKey: Keys.notices)
+    }
+
+    private func refusal(_ e: EngineError) -> String {
+        switch e.code {
+        case "plan_changed": L("The settings or the suggestion changed since this was shown. Review the new plan.")
+        case "busy": L("A calibration or another change is running. Try again in a minute.")
+        default: e.message
+        }
+    }
+
+    /// Run a one-shot engine command and decode its one object.
+    private func oneShot(_ args: [String], timeout: Duration) async -> Result<EngineMessage, EngineError> {
+        do {
+            let out = try await run(args, timeout: timeout)
+            if out.timedOut { return .failure(EngineError(code: "timeout", message: L("The engine took too long."))) }
+            return .success(try EngineAPI.decode(out.stdout))
+        } catch let e as EngineError {
+            return .failure(e)
+        } catch {
+            return .failure(EngineError(code: "internal", message: describe(error, stderr: nil)))
+        }
     }
 
     // MARK: Report
@@ -426,6 +648,7 @@ public final class AppModel {
         lines.append("watch: \(watchStatus)\(watchError.map { " (\($0))" } ?? "")")
         lines.append("sessions: \(sessions?.sessions.count ?? 0), unreadable files \(sessions?.unreadable ?? 0)")
         lines.append("calibration: \(calibration); result: \(result == nil ? (resultError?.code ?? "none") : "loaded")")
+        lines.append("settings: \(canChangeSettings ? "writable, \(plan?.changes.count ?? 0) suggested" : "read-only")")
         return lines.joined(separator: "\n")
     }
 
@@ -438,6 +661,8 @@ public final class AppModel {
                 guard let self else { return }
                 self.now = Date()
                 await self.calibrateIfDue()
+                // a setting edited by hand shows up within half an hour
+                if self.now.timeIntervalSince(self.lastHistoryLoad) >= 1800 { await self.loadSettings() }
             }
         }
         t.tolerance = 10
@@ -461,5 +686,11 @@ public final class AppModel {
         static let showProjects = "showProjectNames"
         static let showPercent = "showPercentInMenuBar"
         static let displayProfile = "displayProfile"
+        static let notifySuggestions = "notifySuggestions"
+        static let notifyChanges = "notifyChanges"
+        static let notifyProblems = "notifyProblems"
+        static let notices = "noticeState"
+        static let verification = "verification"
+        static let verifiedAt = "verificationRunAt"
     }
 }

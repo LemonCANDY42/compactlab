@@ -131,9 +131,17 @@ struct AppModelTests {
 
         init() throws {
             tmp = try TempDir()
-            for name in ["hello", "sessions", "result", "error"] {
+            for name in ["hello", "sessions", "result", "error", "plan", "applied", "reverted", "history", "verification",
+                         "consent"] {
                 _ = try tmp.write("\(name).json", try Fixture.line(name) + "\n")
             }
+            var hello = try JSONSerialization.jsonObject(with: Fixture.data("hello")) as! [String: Any]
+            hello["consent"] = (try JSONSerialization.jsonObject(with: Fixture.data("consent")) as! [String: Any])["consent"]
+            _ = try tmp.write(
+                "hello-consent.json",
+                String(decoding: try JSONSerialization.data(withJSONObject: hello), as: UTF8.self) + "\n")
+            _ = try tmp.write(
+                "changed.json", #"{"engine_api": 1, "kind": "error", "error": {"code": "plan_changed", "message": "no"}}"# + "\n")
             _ = try tmp.write(
                 "busy.json", #"{"engine_api": 1, "kind": "error", "error": {"code": "busy", "message": "held by pid 1"}}"# + "\n")
             let d = tmp.url.path
@@ -143,9 +151,15 @@ struct AppModelTests {
                 D='\(d)'
                 echo "$*" >> "$D/calls"
                 case "$2" in
-                  hello) cat "$D/hello.json" ;;
+                  hello) if [ -e "$D/consent" ]; then cat "$D/hello-consent.json"; else cat "$D/hello.json"; fi ;;
+                  plan) cat "$D/plan.json" ;;
+                  apply) if [ -e "$D/plan-changed" ]; then cat "$D/changed.json"; exit 1; fi; touch "$D/applied"; cat "$D/applied.json" ;;
+                  revert) cat "$D/reverted.json" ;;
+                  history) if [ -e "$D/applied" ]; then cat "$D/history.json"; else echo '{"engine_api":1,"kind":"history","applies":[]}'; fi ;;
+                  verify) cat "$D/verification.json" ;;
+                  consent) if [ "$3" = set ]; then touch "$D/consent"; else rm -f "$D/consent"; fi; cat "$D/consent.json" ;;
                   result) if [ -e "$D/no-result" ]; then cat "$D/error.json"; exit 1; else cat "$D/result.json"; fi ;;
-                  calibrate) sleep 0.2; if [ -e "$D/busy" ]; then cat "$D/busy.json"; exit 1; fi; rm -f "$D/no-result"; cat "$D/result.json" ;;
+                  calibrate) if [ -e "$D/slow" ]; then sleep 3; fi; sleep 0.2; if [ -e "$D/busy" ]; then cat "$D/busy.json"; exit 1; fi; rm -f "$D/no-result"; cat "$D/result.json" ;;
                   watch)
                     if [ -e "$D/crash" ]; then echo 'Traceback: watch broke' >&2; exit 1; fi
                     cat "$D/hello.json"; cat "$D/sessions.json"
@@ -174,7 +188,7 @@ struct AppModelTests {
         let m = model(engine)
         await m.start()
         defer { m.shutdown() }
-        #expect(m.status == .ready(version: "0.1.0"))
+        #expect(m.status == .ready(version: "0.2.0"))
         #expect(m.result?.groups.count == 5)
         #expect(await eventually { m.sessions != nil })
         #expect(m.sessionRows.count == 3)
@@ -269,7 +283,7 @@ struct AppModelTests {
         m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
         await m.start()
         defer { m.shutdown() }
-        #expect(m.status == .incompatible(api: 2, version: "0.1.0"))
+        #expect(m.status == .incompatible(api: 2, version: "0.2.0"))
         #expect(m.result != nil)  // still shown
         m.recalibrate()
         await m.calibrateIfDue()
@@ -297,18 +311,19 @@ struct AppModelTests {
 
     @Test func interruptedCalibrationBacksOff() async throws {
         let engine = try FakeEngine()
+        try engine.set("slow", true)
         let m = model(engine)
-        m.calibrateTimeout = .milliseconds(50)  // the fake calibrate takes 200 ms
+        m.calibrateTimeout = .milliseconds(800)  // the slow fake calibrate takes over 3 s
         m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
         await m.start()
         defer { m.shutdown() }
         m.scheduling = true
         await m.calibrateIfDue()
-        #expect(await eventually { !m.isCalibrating && engine.calls.contains { $0.hasPrefix("engine calibrate") } })
+        #expect(m.isCalibrating)
+        #expect(await eventually { !m.isCalibrating })
         #expect(m.calibration == .failed("the calibration ran too long and was stopped"))
-        let runs = engine.calls.filter { $0.hasPrefix("engine calibrate") }.count
-        await m.calibrateIfDue()  // still due by the service state, but backing off
-        #expect(engine.calls.filter { $0.hasPrefix("engine calibrate") }.count == runs)
+        await m.calibrateIfDue()  // still due by the service state, but backing off: no run starts
+        #expect(!m.isCalibrating && m.calibration == .failed("the calibration ran too long and was stopped"))
     }
 
     @Test func scheduleOffMeansManualOnly() async throws {

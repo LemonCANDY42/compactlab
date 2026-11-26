@@ -1,0 +1,2 @@
+/* English is the development language: the keys are the text. This file makes English a localization of its own,
+   so an English system never falls back to another language. */

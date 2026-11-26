@@ -110,7 +110,7 @@ compactlab top --demo     # 合成数据;按 ? 看帮助,p 切换方案,% 切换
 
 ## 菜单栏应用(macOS,预览)
 
-`app/` 是一个只读的菜单栏应用,数据全部来自 `compactlab engine`:每个活跃的 Claude Code 和 Codex 会话离压缩阈值还有多远、提示词缓存是否还热(变冷后给出“复制 /compact”按钮)、最近一次校准的阈值表,并每天在后台校准一次。需要先装好本 CLI;用 `app/scripts/package_app.sh` 构建。详见 [app/README.md](app/README.md)。
+`app/` 是一个菜单栏应用(中英文界面),数据全部来自 `compactlab engine`:每个活跃的 Claude Code 和 Codex 会话离压缩阈值还有多远、提示词缓存是否还热(变冷后给出“复制 /compact”按钮)、最近一次校准的阈值表,并每天在后台校准一次。有建议的修改时,在审阅窗口里看它省多少、依据多少数据、具体改哪一行,点“应用”才由 `compactlab apply` 写入;面板上显示上次修改、对照日志的验证结论和“撤销”。通知和自动应用(仅 Claude Code,沿用自动应用规则)都可以关。需要先装好本 CLI;用 `app/scripts/package_app.sh` 构建。详见 [app/README.md](app/README.md)。
 
 ## 应用之后核对预测
 

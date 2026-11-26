@@ -14,6 +14,12 @@ struct CompactlabMenuBarApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        Window(L("Review changes"), id: "review") {
+            ReviewView(model: delegate.model)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
         Settings {
             SettingsView(model: delegate.model)
         }
@@ -23,6 +29,7 @@ struct CompactlabMenuBarApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
+    private lazy var notifier = Notifier(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Writing to an engine that just exited must fail with EPIPE, not kill the app.
@@ -35,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        notifier.install()
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -48,13 +56,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Always alive while the app runs, so it also opens the review window when a notification asks for it.
 struct MenuBarLabel: View {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let state = model.icon
         let percent = model.showPercent ? state.fraction.map { "\(Int(($0 * 100).rounded()))%" } : nil
-        Image(nsImage: StatusIcon.image(state, text: percent))
-            .accessibilityLabel(StatusIcon.accessibilityLabel(state))
+        Image(nsImage: StatusIcon.image(state, text: percent, dot: model.hasPending))
+            .accessibilityLabel(StatusIcon.accessibilityLabel(state, pending: model.hasPending))
+            .onChange(of: model.reviewRequest) {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "review")
+            }
     }
 }

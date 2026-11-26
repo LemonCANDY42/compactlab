@@ -4,8 +4,15 @@
   "sessions",
   "watch",
   "result",
-  "calibrate"
+  "calibrate",
+  "plan",
+  "apply",
+  "revert",
+  "history",
+  "verify",
+  "consent"
  ],
+ "consent": null,
  "engine_api": 1,
  "harnesses": [
   {
@@ -101,5 +108,5 @@
   "last_error": null
  },
  "state_dir": "~/.compactlab",
- "version": "0.1.0"
+ "version": "0.2.0"
 }

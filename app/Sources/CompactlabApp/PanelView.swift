@@ -7,6 +7,7 @@ struct PanelView: View {
     @Bindable var model: AppModel
     @State private var showAllSessions = false
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     private static let firstSessions = 4
 
@@ -18,8 +19,10 @@ struct PanelView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     banners
                     if model.status.isUsable {
+                        suggestionRow
                         sessionsSection
                         thresholdsSection
+                        changesSection
                     }
                 }
                 .padding(12)
@@ -35,15 +38,15 @@ struct PanelView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("compactlab").font(.headline)
+            Text(verbatim: "compactlab").font(.headline)
             Spacer()
             if model.result != nil {
                 Picker("Profile", selection: $model.displayProfile) {
-                    Text("Calibrated (\(model.result?.profile ?? "balanced"))").tag("")
+                    Text(L("Calibrated (\(Format.profile(model.result?.profile ?? "balanced")))")).tag("")
                     Divider()
-                    Text("cost").tag("cost")
-                    Text("balanced").tag("balanced")
-                    Text("time").tag("time")
+                    Text(Format.profile("cost")).tag("cost")
+                    Text(Format.profile("balanced")).tag("balanced")
+                    Text(Format.profile("time")).tag("time")
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
@@ -79,36 +82,36 @@ struct PanelView: View {
         case .missing:
             MissingEngineView(retry: { Task { await model.start() } })
         case .failed(let why):
-            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: "The engine did not start", detail: why) {
+            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: L("The engine did not start"), detail: why) {
                 Button("Retry") { Task { await model.start() } }
             }
         case .incompatible(let api, let version):
             Banner(
-                symbol: "info.circle", tint: .secondary, title: "Engine \(version) speaks contract \(api)",
-                detail: "This app was built for contract \(EngineAPI.version). It shows what it can and will not change any settings. Update the app and the engine to matching versions."
+                symbol: "info.circle", tint: .secondary, title: L("Engine \(version) speaks contract \(String(api))"),
+                detail: L("This app was built for contract \(String(EngineAPI.version)). It shows what it can and will not change any settings. Update the app and the engine to matching versions.")
             ) { EmptyView() }
         case .ready:
             EmptyView()
         }
         if case .stopped(let why) = model.watchStatus {
-            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: "Active sessions are not updating", detail: why) {
+            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: L("Active sessions are not updating"), detail: why) {
                 Button("Restart") { model.restartWatch() }
             }
         }
         switch model.calibration {
         case .failed(let why):
-            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: "Calibration failed", detail: why) {
+            Banner(symbol: "exclamationmark.triangle", tint: .orange, title: L("Calibration failed"), detail: why) {
                 Button("Retry") { model.recalibrate() }
             }
         case .busy(let why):
-            Banner(symbol: "hourglass", tint: .secondary, title: "Another calibration is running", detail: why) {
+            Banner(symbol: "hourglass", tint: .secondary, title: L("Another calibration is running"), detail: why) {
                 EmptyView()
             }
         default:
             EmptyView()
         }
         if let err = model.reportError {
-            Banner(symbol: "doc.badge.ellipsis", tint: .orange, title: "The report could not be made", detail: err) {
+            Banner(symbol: "doc.badge.ellipsis", tint: .orange, title: L("The report could not be made"), detail: err) {
                 EmptyView()
             }
         }
@@ -120,25 +123,26 @@ struct PanelView: View {
         let rows = model.sessionRows
         let shown = showAllSessions ? rows : Array(rows.prefix(Self.firstSessions))
         return VStack(alignment: .leading, spacing: 10) {
-            SectionTitle("Active sessions", trailing: model.sessions.map { "last \(Int($0.activeS / 3600)) h" })
+            SectionTitle(L("Active sessions"), trailing: model.sessions.map { L("last \(String(Int($0.activeS / 3600))) h") })
             if model.sessions == nil {
-                Text(model.watchStatus == .off ? "Not watching." : "Reading…").foregroundStyle(.secondary)
+                Text(model.watchStatus == .off ? L("Not watching.") : L("Reading…")).foregroundStyle(.secondary)
             } else if rows.isEmpty {
-                Text("No sessions in the last \(Int((model.sessions?.activeS ?? 21_600) / 3600)) hours.")
+                Text(L("No sessions in the last \(String(Int((model.sessions?.activeS ?? 21_600) / 3600))) hours."))
                     .foregroundStyle(.secondary)
             }
             ForEach(shown) { row in
                 SessionRowView(row: row, now: model.now)
             }
             if rows.count > Self.firstSessions {
-                Button(showAllSessions ? "Show fewer" : "Show \(rows.count - Self.firstSessions) more") {
+                Button(showAllSessions ? L("Show fewer") : L("Show \(String(rows.count - Self.firstSessions)) more")) {
                     showAllSessions.toggle()
                 }
                 .buttonStyle(.link)
                 .font(.caption)
             }
             if let n = model.sessions?.unreadable, n > 0 {
-                Text("\(n) log file\(n == 1 ? "" : "s") could not be read.").font(.caption).foregroundStyle(.secondary)
+                Text(n == 1 ? L("1 log file could not be read.") : L("\(String(n)) log files could not be read."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -147,7 +151,7 @@ struct PanelView: View {
 
     @ViewBuilder private var thresholdsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle("Thresholds", trailing: model.result?.demo == true ? "demo data" : nil)
+            SectionTitle(L("Thresholds"), trailing: model.result?.demo == true ? L("demo data") : nil)
             if let r = model.result {
                 let rows = Panel.thresholdRows(r)
                 if rows.isEmpty {
@@ -156,10 +160,8 @@ struct PanelView: View {
                 ForEach(rows) { row in
                     ThresholdRowView(row: row)
                 }
-                Text("Read-only: change settings with `compactlab apply` for now.")
-                    .font(.caption2).foregroundStyle(.tertiary)
             } else if let e = model.resultError, e.code == "no_result" {
-                Text(model.isCalibrating ? "Calibrating for the first time…" : "No calibration yet.")
+                Text(model.isCalibrating ? L("Calibrating for the first time…") : L("No calibration yet."))
                     .foregroundStyle(.secondary)
             } else if let e = model.resultError {
                 Text(e.message).font(.caption).foregroundStyle(.secondary)
@@ -167,24 +169,72 @@ struct PanelView: View {
         }
     }
 
+    // MARK: Changes
+
+    /// The suggested changes, first thing in the panel: they are what the person can act on.
+    @ViewBuilder private var suggestionRow: some View {
+        let changes = model.plan?.changes ?? []
+        if !changes.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "slider.horizontal.3").foregroundStyle(Color.accentColor).accessibilityHidden(true)
+                Text(suggestionSummary(changes)).fixedSize(horizontal: false, vertical: true)
+                if !model.stableChanges.isEmpty {
+                    Text("the last two calibrations agree").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(L("Review…")) { openReview() }
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    @ViewBuilder private var changesSection: some View {
+        let newest = model.history?.applies.first
+        if newest != nil || model.writeMessage != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionTitle(L("Changes"))
+                if let a = newest { LastChangeView(apply: a, model: model) }
+                if let msg = model.writeMessage {
+                    Text(msg).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else if model.hello?.canChangeSettings == false, model.result != nil {
+            Text("To change settings from here, update compactlab to 0.2 or later. Until then: `compactlab apply`.")
+                .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func suggestionSummary(_ changes: [Plan.Change]) -> String {
+        let usd = changes.compactMap(\.impact.usdPerDay).reduce(0, +)
+        let saving = usd < 0 ? " · " + L("\(Format.usd(usd))/day") : ""
+        return (changes.count == 1 ? L("1 suggested change") : L("\(String(changes.count)) suggested changes")) + saving
+    }
+
+    private func openReview() {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "review")
+    }
+
     // MARK: Footer
 
     private var footer: some View {
         HStack(spacing: 14) {
-            Button("Open report") {
+            Button(L("Open report")) {
                 Task {
                     if let url = await model.renderReport() { NSWorkspace.shared.open(url) }
                 }
             }
             .disabled(model.result == nil)
-            Button("Recalibrate") { model.recalibrate() }
+            Button(L("Recalibrate")) { model.recalibrate() }
                 .disabled(!model.status.canWrite || model.isCalibrating)
             Spacer()
-            Button("Settings…") {
+            Button(L("Settings…")) {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }
-            Button("Quit") { NSApp.terminate(nil) }
+            Button(L("Quit")) { NSApp.terminate(nil) }
         }
         .buttonStyle(.link)
         .font(.callout)
@@ -194,6 +244,56 @@ struct PanelView: View {
 }
 
 // MARK: - Pieces
+
+/// The newest apply: what it changed, whether it still holds, its verification, and Undo.
+struct LastChangeView: View {
+    let apply: History.Apply
+    let model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if apply.inEffect {
+                    Button(L("Undo")) { Task { await model.revert(apply.id) } }
+                        .buttonStyle(.link).font(.caption)
+                        .disabled(model.isWriting || !model.status.canWrite)
+                        .help(L("Restore the values from before this change (settings edited since are left alone)"))
+                }
+            }
+            ForEach(apply.changes, id: \.key) { r in
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Panel.changeLine(r)).monospacedDigit().lineLimit(1)
+                    Spacer()
+                    Text(Panel.status(r)).font(.caption)
+                        .foregroundStyle(r.status == "changed" ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                }
+            }
+            if let v = verificationText {
+                Text(v).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var title: String {
+        let when = apply.at.map { Format.ago($0, now: model.now) } ?? ""
+        let who = apply.by == "consent" ? L("auto-apply") : (apply.by == "app" ? L("you, from the app") : L("the command line"))
+        return L("Last change · \(when) · by \(who)")
+    }
+
+    private var verificationText: String? {
+        guard apply.inEffect else { return nil }
+        if let v = model.verification, v.id == apply.id {
+            return L("Verification: ") + v.groups.map { "\(Panel.changeTitle(harness: $0.harness, model: $0.model)) \(Panel.verdict($0))" }
+                .joined(separator: "; ")
+        }
+        return L("Verified against your logs after a day of use.")
+    }
+}
 
 struct SectionTitle: View {
     let title: String
@@ -253,17 +353,19 @@ struct SessionRowView: View {
     private var detail: String {
         var parts: [String] = []
         if let ago = row.compactedAgo {
-            parts.append("compacted \(Format.duration(ago)) ago")
+            parts.append(L("compacted \(Format.duration(ago)) ago"))
         } else if let rem = row.remaining {
-            parts.append(rem == 0 ? "at the threshold" : "\(Format.tokens(rem)) to compaction")
+            parts.append(rem == 0 ? L("at the threshold") : L("\(Format.tokens(rem)) to compaction"))
         }
         switch row.cache {
-        case .warm(let coldIn): parts.append("cache warm (cold in \(Format.duration(coldIn)))")
+        case .warm(let coldIn): parts.append(L("cache warm (cold in \(Format.duration(coldIn)))"))
         case .cold:
-            if let n = row.coldRewrite { parts.append("cache cold: next send rewrites \(Format.tokens(n))") } else { parts.append("cache cold") }
+            if let n = row.coldRewrite { parts.append(L("cache cold: next send rewrites \(Format.tokens(n))")) } else { parts.append(L("cache cold")) }
         case .unknown: break
         }
-        if row.subagents > 0 { parts.append("+\(row.subagents) subagent\(row.subagents == 1 ? "" : "s")") }
+        if row.subagents > 0 {
+            parts.append(row.subagents == 1 ? L("+1 subagent") : L("+\(String(row.subagents)) subagents"))
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -296,7 +398,7 @@ struct Banner<Actions: View>: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(tint)
+            Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).fontWeight(.medium)
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -330,6 +432,7 @@ struct MissingEngineView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Copy")
+                    .accessibilityLabel("Copy")
                 }
             }
             Text("Installed somewhere else? Set its path in Settings.").font(.caption).foregroundStyle(.secondary)

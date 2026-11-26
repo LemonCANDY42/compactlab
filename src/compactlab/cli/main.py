@@ -1671,12 +1671,11 @@ def cmd_engine_watch(a: argparse.Namespace) -> int:
         return 0
 
 
-@_engine
-def cmd_engine_result(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    from ..engine import result_message, result_path
+def _engine_result(a: argparse.Namespace) -> dict[str, Any]:
+    """The calibrator's result (or --result), re-selected for --profile."""
+    from ..engine import result_path
 
-    state = Path(a.state_dir).expanduser()
-    path = Path(a.result).expanduser() if a.result else result_path(state)
+    path = Path(a.result).expanduser() if a.result else result_path(Path(a.state_dir).expanduser())
     if not path.exists():
         raise EngineError("no_result", f"no calibration yet ({path}); run: compactlab engine calibrate")
     try:
@@ -1685,7 +1684,14 @@ def cmd_engine_result(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
         raise EngineError("bad_result", str(e)) from e
     if a.profile:
         reselect(res, a.profile)
-    return result_message(res, state), 0
+    return res
+
+
+@_engine
+def cmd_engine_result(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine import result_message
+
+    return result_message(_engine_result(a), Path(a.state_dir).expanduser()), 0
 
 
 @_engine
@@ -1701,6 +1707,166 @@ def cmd_engine_calibrate(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if out["status"] != "ok" or cal.result is None:
         raise EngineError("calibration_failed", str(out.get("error") or "no result"))
     return result_message(cal.result, state, out.get("auto_apply")), 0
+
+
+# the settings commands: plan, apply, revert, history, verify, consent (engine/settings.py)
+
+
+def _engine_configs(a: argparse.Namespace) -> dict[str, Path]:
+    """The config file `apply` writes per harness: the one named, else the first that exists, else the default."""
+    named = _config_paths(a)
+    out: dict[str, Path] = {}
+    for h in ("claude-code", "codex"):
+        p = named.get(h) or next(iter(get_adapter(h).config_paths()), None)
+        if p is not None:
+            out[h] = p
+    return out
+
+
+def _engine_plan(a: argparse.Namespace) -> tuple[dict[str, Any], ap.Preauth, list[ap.Change], list[str], str]:
+    from ..engine.settings import preauth
+
+    res = _engine_result(a)
+    pre = preauth(_engine_configs(a), res)
+    try:
+        recs, seen, dup = [], set(), []
+        for r in _recs(res):
+            sel = f"{r['harness']}:{r['model']}"
+            if sel in seen:  # two groups on one key (a dated and an alias ID): ambiguous, so neither value is used
+                dup.append(sel)
+            seen.add(sel)
+            if not a.only or sel in a.only:
+                recs.append(r)
+        recs = [r for r in recs if f"{r['harness']}:{r['model']}" not in dup]
+        changes, rejected = ap.plan_changes(recs, pre)
+        rejected += [f"{d}: two calibrated groups map to this setting; set it by hand" for d in sorted(set(dup))]
+    except (ap.ApplyError, ValueError) as e:  # a config file that cannot be read safely
+        raise EngineError("refused", str(e)) from e
+    return res, pre, changes, rejected, (res.get("options") or {}).get("profile") or DEFAULT_PROFILE
+
+
+def _locked(
+    a: argparse.Namespace, job: str, fn: Callable[[], tuple[dict[str, Any], int]]
+) -> tuple[dict[str, Any], int]:
+    from ..service.lock import Busy, LockError, single_flight
+
+    try:
+        with single_flight(Path(a.state_dir).expanduser(), job):
+            return fn()
+    except Busy as e:
+        raise EngineError("busy", str(e)) from e
+    except LockError as e:
+        raise EngineError("refused", str(e)) from e
+
+
+@_engine
+def cmd_engine_plan(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine.settings import plan_message
+
+    res, _, changes, rejected, profile = _engine_plan(a)
+    try:
+        return plan_message(res, changes, rejected, profile), 0
+    except (ap.ApplyError, ValueError) as e:
+        raise EngineError("refused", str(e)) from e
+
+
+@_engine
+def cmd_engine_apply(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine.settings import applied_message, record_applied
+
+    state = Path(a.state_dir).expanduser()
+
+    def run() -> tuple[dict[str, Any], int]:  # planned again under the lock: what is written is what was reviewed
+        _, pre, changes, _, profile = _engine_plan(a)
+        h, want = ap.plan_hash(changes), a.expect_plan.strip().lower()
+        if h != want:
+            raise EngineError("plan_changed", f"the plan is not the reviewed one (expected {want}, now {h}); "
+                                              "nothing written: review the new plan")  # fmt: skip
+        if not changes:
+            raise EngineError("refused", "nothing to change")
+        try:
+            m = ap.write_changes(changes, state, pre)
+        except (ap.ApplyError, OSError, ValueError) as e:
+            raise EngineError("refused", str(e)) from e
+        record_applied(state, m, changes, profile)
+        return applied_message(m, changes), 0
+
+    return _locked(a, "app apply", run)
+
+
+def _engine_manifest(a: argparse.Namespace) -> Path:
+    sd = Path(a.state_dir).expanduser()
+    try:
+        m = sd / "manifests" / f"{a.id}.json" if a.id else ap.latest_manifest(sd)
+    except ap.ApplyError as e:
+        raise EngineError("no_apply", str(e)) from e
+    if not m.exists():
+        raise EngineError("no_apply", f"no apply manifest {m}")
+    return m
+
+
+@_engine
+def cmd_engine_revert(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine.settings import reverted_message
+
+    def run() -> tuple[dict[str, Any], int]:
+        m = _engine_manifest(a)
+        try:
+            log = ap.revert(m)
+        except (ap.ApplyError, OSError, ValueError) as e:
+            raise EngineError("refused", str(e)) from e
+        _forget_applied(Path(a.state_dir).expanduser(), m.stem)
+        return reverted_message(m, log), 0
+
+    return _locked(a, "app revert", run)
+
+
+@_engine
+def cmd_engine_history(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine.settings import history_message
+
+    return history_message(Path(a.state_dir).expanduser(), a.limit), 0
+
+
+@_engine
+def cmd_engine_verify(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from .. import verify as vf
+    from ..engine.settings import verification_message
+
+    m = _engine_manifest(a)
+    try:
+        manifest = json.loads(m.read_text())
+    except (OSError, ValueError) as e:
+        raise EngineError("no_apply", f"{m}: {e}") from e
+    sessions = load_sessions(a)
+    if not sessions:
+        raise EngineError("no_sessions", "no sessions in the window")
+    res = vf.verify(sessions, manifest, _pricing(a), min_sessions=a.min_sessions, min_days=a.min_days,
+                    opts=_idle_opts(a, SimOptions()))  # fmt: skip
+    return verification_message(m.stem, res), 0
+
+
+@_engine
+def cmd_engine_consent(a: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from ..engine.settings import consent_message
+    from ..service.policy import Consent, load_consent, save_consent
+
+    path = Path(a.state_dir).expanduser() / "consent.json"
+    if a.action == "clear":
+        path.unlink(missing_ok=True)
+        return consent_message(None), 0
+    if a.action == "set":  # Claude Code only (docs/MENUBAR_APP.zh-CN.md §7 item 3)
+        file = _engine_configs(a).get("claude-code")
+        if file is None:
+            raise EngineError("refused", "no Claude Code settings file")
+        try:
+            save_consent(path, Consent("claude-code", str(file), a.models, a.profile))
+        except ap.ApplyError as e:
+            raise EngineError("refused", str(e)) from e
+    try:
+        return consent_message(load_consent(path)), 0
+    except ap.ApplyError:
+        return consent_message(None), 0
 
 
 def cmd_schedule(a: argparse.Namespace) -> int:
@@ -2163,6 +2329,44 @@ def _commands(sub: Any, fmt: Any) -> None:
     _service_args(e)
     e.add_argument("--reason", default="engine", help="recorded with the calibration (e.g. app, schedule)")
     e.set_defaults(f=cmd_engine_calibrate)
+    for name, text, fn in (
+        ("plan", "what `apply` would change for the calibrated (or --profile) pick, with its hash", cmd_engine_plan),
+        ("apply", "write the plan, only if its hash is still --expect-plan", cmd_engine_apply),
+    ):
+        e = es.add_parser(name, help=text)
+        _config_args(e)
+        e.add_argument("--state-dir", default=STATE)
+        e.add_argument("--result", help="a result.json (default: the calibrator's)")
+        e.add_argument("--profile", choices=PROFILE_NAMES, help="select this profile (no replay)")
+        e.add_argument("--only", action="append", metavar="HARNESS:MODEL", help="just this change (repeatable)")
+        e.set_defaults(f=fn)
+    es.choices["apply"].add_argument("--expect-plan", required=True, metavar="HASH", help="the reviewed plan's hash")
+    e = es.add_parser("revert", help="undo an apply (default: the latest) from its manifest")
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--id", help="manifest id (default: the latest)")
+    e.set_defaults(f=cmd_engine_revert)
+    e = es.add_parser("history", help="the latest applies and what each key holds now")
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--limit", type=int, default=10)
+    e.set_defaults(f=cmd_engine_history)
+    e = es.add_parser("verify", help="an apply's predicted effect against the logs since")
+    _source(e)
+    _config_args(e)
+    e.set_defaults(since_days=60)
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--id", help="manifest id (default: the latest)")
+    e.add_argument("--pricing", help="pricing override JSON")
+    e.add_argument("--offline-pricing", action="store_true", help="ignore refreshed prices")
+    e.add_argument("--min-sessions", type=int, default=3, help="sessions needed on each side (default 3)")
+    e.add_argument("--min-days", type=int, default=2, help="active days needed on each side (default 2)")
+    e.set_defaults(f=cmd_engine_verify)
+    e = es.add_parser("consent", help="show, set or clear the auto-apply consent (Claude Code)")
+    e.add_argument("action", choices=["show", "set", "clear"])
+    _config_args(e)
+    e.add_argument("--state-dir", default=STATE)
+    e.add_argument("--models", nargs="+", default=["*"], help="models whose key may change (default: all)")
+    e.add_argument("--profile", choices=PROFILE_NAMES, default=DEFAULT_PROFILE)
+    e.set_defaults(f=cmd_engine_consent)
 
     s = sub.add_parser("schedule", help="print / install a launchd or systemd user schedule (never auto-loaded)")
     s.add_argument("action", choices=["print", "install", "status", "uninstall"])

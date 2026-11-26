@@ -1,0 +1,9 @@
+{
+ "complete": true,
+ "engine_api": 1,
+ "id": "20261126T162627-42317",
+ "kind": "reverted",
+ "log": [
+  "~/settings.json: restored from backup"
+ ]
+}
