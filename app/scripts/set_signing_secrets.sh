@@ -27,7 +27,7 @@ key_id="${key_id#AuthKey_}"
 [[ "$issuer" =~ ^[0-9a-f-]{36}$ ]] || fail "the issuer ID looks like 12345678-90ab-cdef-1234-567890abcdef"
 grep -q "BEGIN PRIVATE KEY" "$p8" || fail "$p8 is not a private key"
 
-read -r -s -p "Password of $(basename "$p12"): " password
+IFS= read -r -s -p "Password of $(basename "$p12"): " password
 echo
 
 # The same import the workflow does, into a throwaway keychain: the password opens the .p12 and it holds a
