@@ -16,6 +16,8 @@
 - The menu bar app writes through `compactlab engine apply`, only after you click Apply on a reviewed plan, and only
   that plan (`--expect-plan`, below). Its targets are the harnesses' own config files, the models the result has
   groups for, and 100k–1M; it never writes the demo result. Undo is `engine revert` (or `compactlab revert`).
+- In a pre-authorization or consent, the model `*` allows every model, including ones that appear later (the
+  app's auto-apply consent uses it). Key patterns and bounds still apply.
 - The default value written is the **balanced** profile; `--profile cost|time` picks another, and
   `--value-of-time` changes its price of time.
   Pre-authorization bounds always win: a value outside them is skipped, never clamped silently.

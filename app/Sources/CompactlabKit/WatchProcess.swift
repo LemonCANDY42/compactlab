@@ -42,9 +42,9 @@ public final class WatchProcess: @unchecked Sendable {
     public func start() throws {
         stdout.fileHandleForReading.readabilityHandler = { [weak self] h in
             let data = h.availableData
+            if data.isEmpty { h.readabilityHandler = nil }  // at the end: never called again, with or without self
             guard let self else { return }
             if data.isEmpty {
-                h.readabilityHandler = nil
                 self.lock.withLock { self.eof = true }
                 self.flush()
             } else {
@@ -54,9 +54,9 @@ public final class WatchProcess: @unchecked Sendable {
         }
         stderr.fileHandleForReading.readabilityHandler = { [weak self] h in
             let data = h.availableData
+            if data.isEmpty { h.readabilityHandler = nil }
             guard let self else { return }
             if data.isEmpty {
-                h.readabilityHandler = nil
                 self.lock.withLock { self.stderrEOF = true }
                 self.flush()
                 return

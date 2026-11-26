@@ -1729,8 +1729,17 @@ def _engine_plan(a: argparse.Namespace) -> tuple[dict[str, Any], ap.Preauth, lis
     res = _engine_result(a)
     pre = preauth(_engine_configs(a), res)
     try:
-        recs = [r for r in _recs(res) if not a.only or f"{r['harness']}:{r['model']}" in a.only]
+        recs, seen, dup = [], set(), []
+        for r in _recs(res):
+            sel = f"{r['harness']}:{r['model']}"
+            if sel in seen:  # two groups on one key (a dated and an alias ID): ambiguous, so neither value is used
+                dup.append(sel)
+            seen.add(sel)
+            if not a.only or sel in a.only:
+                recs.append(r)
+        recs = [r for r in recs if f"{r['harness']}:{r['model']}" not in dup]
         changes, rejected = ap.plan_changes(recs, pre)
+        rejected += [f"{d}: two calibrated groups map to this setting; set it by hand" for d in sorted(set(dup))]
     except (ap.ApplyError, ValueError) as e:  # a config file that cannot be read safely
         raise EngineError("refused", str(e)) from e
     return res, pre, changes, rejected, (res.get("options") or {}).get("profile") or DEFAULT_PROFILE

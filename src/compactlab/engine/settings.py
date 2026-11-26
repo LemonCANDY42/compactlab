@@ -97,10 +97,16 @@ def applied_message(manifest: Path, changes: list[ap.Change]) -> dict[str, Any]:
 
 def record_applied(state_dir: Path, manifest: Path, changes: list[ap.Change], profile: str) -> None:
     """Remember what compactlab wrote, as auto-apply does: its manual-edit check and cooldown then see this change."""
+    import sys
+
     from ..service.policy import journal, load_applied
 
     p = state_dir / "service" / "applied.json"
-    applied = load_applied(p)
+    try:
+        applied = load_applied(p)
+    except (OSError, ValueError) as e:  # the write is done: a broken bookkeeping file must not report it as failed
+        print(f"warning: {p} is unreadable ({e}); starting it again", file=sys.stderr)
+        applied = {}
     now = time.time()
     for c in changes:
         applied[f"{c.file}::{c.model}"] = {"value": c.new, "at": now, "manifest": manifest.stem}
@@ -112,6 +118,8 @@ def record_applied(state_dir: Path, manifest: Path, changes: list[ap.Change], pr
 
 
 def _status(now: object, old: object, new: object) -> str:
+    if now == "unreadable":  # half-written or malformed right now: not evidence of an edit
+        return "unreadable"
     if now == new:
         return "in_effect"
     return "reverted" if now == old else "changed"
@@ -119,7 +127,7 @@ def _status(now: object, old: object, new: object) -> str:
 
 def history_message(state_dir: Path, limit: int) -> dict[str, Any]:
     """The latest applies, newest first, each key with the value its file holds now: `in_effect`, `reverted` or
-    `changed` (edited since by someone else: drift)."""
+    `changed` (edited since by someone else: drift), or `unreadable`."""
     out = []
     for m in sorted((state_dir / "manifests").glob("*.json"), reverse=True)[:limit]:
         try:

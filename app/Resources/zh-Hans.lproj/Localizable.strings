@@ -144,7 +144,6 @@
 
 /* Notifications */
 "compactlab changed a setting" = "compactlab 修改了一项设置";
-"Auto-apply wrote a new threshold." = "自动应用写入了新的阈值。";
 "removed" = "已删除";
 "A setting was changed" = "有设置被改动";
 "%@: compactlab set %@, now %@. compactlab will leave it as it is." = "%@：compactlab 设的是 %@，现在是 %@。compactlab 不会再改它。";

@@ -45,7 +45,7 @@ public struct NoticeState: Codable, Equatable, Sendable {
     public var previous: [String: Int] = [:]
     /// Notice ids already posted.
     public var sent: Set<String> = []
-    /// Suggestion ids ("Remind me in a week") → until when.
+    /// Settings (keys) whose suggestions are muted ("Remind me in a week") → until when.
     public var snoozed: [String: Double] = [:]
 
     public init() {}
@@ -55,6 +55,8 @@ public enum Notices {
     /// Calibration failures in a row before saying so.
     public static let failuresToReport = 3
     public static let snooze: TimeInterval = 7 * 86_400
+    /// An auto-apply older than this is not announced.
+    public static let autoApplyRecency: TimeInterval = 2 * 86_400
     /// A suggestion worth a notification: at least this much cheaper per day...
     public static let minCostShare = 0.02
     /// ...or this many minutes a day.
@@ -99,22 +101,23 @@ public enum Notices {
         (plan?.changes ?? []).filter { c in
             guard worthIt(c.impact), let before = state.previous[c.key] else { return false }
             guard before == direction(c, result: result) else { return false }
-            return (state.snoozed[suggestionId(c)] ?? 0) < now.timeIntervalSince1970
+            return (state.snoozed[c.key] ?? 0) < now.timeIntervalSince1970
         }
     }
 
-    /// Something waits for the person: a stable suggestion, or a setting changed behind compactlab's back.
+    /// Something waits for the person: a suggestion the last two calibrations agree on. (A setting changed behind
+    /// compactlab's back is notified once and stays visible in the panel; it needs no action, so it keeps no dot.)
     public static func pending(plan: Plan?, result: ResultSummary?, history: History?, state: NoticeState, now: Date)
         -> Bool
     {
-        !stable(plan, result: result, state: state, now: now).isEmpty || !(history?.applies.first?.drifted ?? []).isEmpty
+        !stable(plan, result: result, state: state, now: now).isEmpty
     }
 
     /// Record the plan of the current result: a new calibration moves the latest suggestions to `previous`.
     public static func observe(_ plan: Plan?, result: ResultSummary?, state: inout NoticeState) {
-        guard let at = result?.calibration?.at else { return }
+        guard let plan, let at = result?.calibration?.at else { return }  // no plan (a failed load): nothing learned
         let now = Dictionary(
-            (plan?.changes ?? []).map { ($0.key, direction($0, result: result)) }, uniquingKeysWith: { a, _ in a })
+            plan.changes.map { ($0.key, direction($0, result: result)) }, uniquingKeysWith: { a, _ in a })
         if state.calibrationAt != at {
             if state.calibrationAt != nil { state.previous = state.suggestions }
             state.calibrationAt = at
@@ -140,13 +143,14 @@ public enum Notices {
             let id = stable.map(suggestionId).sorted().joined(separator: ",")
             post(suggestionNotice(stable, id: id), if: enabled.suggestions)
         }
-        if let m = result?.autoApply?.manifestId {
-            let changed = history?.applies.first { $0.id == m }?.changes ?? []
+        // Auto-apply's writes, wherever it ran (the app's calibration, `compactlab serve`, a schedule): history marks
+        // them `consent`. Only recent ones, so a first launch does not announce old changes.
+        for a in history?.applies ?? [] where a.by == "consent" && a.inEffect {
+            guard let at = a.at, now.timeIntervalSince1970 - at < autoApplyRecency else { continue }
             post(
                 Notice(
-                    id: "auto:\(m)", kind: .autoApplied, title: L("compactlab changed a setting"),
-                    body: changed.isEmpty ? L("Auto-apply wrote a new threshold.") : changed.map(Panel.changeLine).joined(separator: "\n"),
-                    action: .undo(m)),
+                    id: "auto:\(a.id)", kind: .autoApplied, title: L("compactlab changed a setting"),
+                    body: a.changes.map(Panel.changeLine).joined(separator: "\n"), action: .undo(a.id)),
                 if: enabled.changes)
         }
         if let newest = history?.applies.first {

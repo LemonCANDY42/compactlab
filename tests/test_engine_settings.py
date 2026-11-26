@@ -109,6 +109,10 @@ def test_drift_shows_as_changed(calibrated, capsys):
     _, hist = _cli(["history", "--state-dir", str(c["state"])], capsys)
     row = next(r for r in hist["applies"][0]["changes"] if r["harness"] == "codex")
     assert row["status"] == "changed" and row["now"] == 123456
+    c["settings"].write_text('{"half": ')  # mid-write: unreadable is not an edit
+    _, hist = _cli(["history", "--state-dir", str(c["state"])], capsys)
+    assert {r["status"] for r in hist["applies"][0]["changes"] if r["harness"] == "claude-code"} == {"unreadable"}
+    c["settings"].write_text(SETTINGS)
     rc, rev = _cli(["revert", "--state-dir", str(c["state"])], capsys)
     assert rc == 0 and not rev["complete"]  # the edited key is left alone
     assert "123456" in c["codex"].read_text()

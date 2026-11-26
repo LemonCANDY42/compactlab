@@ -191,6 +191,7 @@ public final class AppModel {
         await loadResult()
         await loadSettings()
         await calibrateIfDue()
+        await verifyIfDue()
     }
 
     /// Stop the engine processes (app quitting).
@@ -318,6 +319,7 @@ public final class AppModel {
             guard let self else { return }
             await self.calibrate(reason: reason)
             self.calibrateTask = nil
+            await self.verifyIfDue()  // after clearing the task: verify never runs alongside a calibration
         }
     }
 
@@ -361,7 +363,6 @@ public final class AppModel {
         await refreshHello()
         await loadResult()
         await loadSettings()
-        await verifyIfDue()
     }
 
     /// Calibrate when the service schedule says so, unless saving power. Called at start, each tick and on wake.
@@ -450,8 +451,10 @@ public final class AppModel {
             plan = nil
             planError = e
         case .success:
+            plan = nil
             planError = EngineError(code: "internal", message: "unexpected reply to engine plan")
         case .failure(let e):
+            plan = nil
             planError = e
         }
     }
@@ -523,7 +526,7 @@ public final class AppModel {
     /// "Remind me in a week": no notification or menu bar dot for these suggestions until then.
     public func snooze(_ changes: [Plan.Change]) {
         let until = Date().addingTimeInterval(Notices.snooze).timeIntervalSince1970
-        for c in changes { noticeState.snoozed[Notices.suggestionId(c)] = until }
+        for c in changes { noticeState.snoozed[c.key] = until }
         saveNotices()
     }
 

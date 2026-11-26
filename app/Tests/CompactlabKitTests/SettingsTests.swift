@@ -74,7 +74,7 @@ struct NoticesTests {
         let now = Date()
         _ = Notices.evaluate(plan: plan, result: calibrated(r, at: 1), history: nil, verification: nil, service: nil,
                              enabled: .init(), state: &state, now: now)
-        for c in plan.changes { state.snoozed[Notices.suggestionId(c)] = now.timeIntervalSince1970 + 600 }
+        for c in plan.changes { state.snoozed[c.key] = now.timeIntervalSince1970 + 600 }
         let n = Notices.evaluate(plan: plan, result: calibrated(r, at: 2), history: nil, verification: nil, service: nil,
                                  enabled: .init(), state: &state, now: now)
         #expect(n.isEmpty && !Notices.pending(plan: plan, result: r, history: nil, state: state, now: now))
@@ -99,8 +99,13 @@ struct NoticesTests {
         var history = h
         history.applies[0].changes[0].status = "changed"
         history.applies[0].changes[0].now = .tokens(300_000)
-        var auto = r
-        auto.autoApply = AutoApply(decisions: nil, manifest: "/x/manifests/\(h.applies[0].id).json", error: nil)
+        history.applies[0].by = "consent"  // auto-apply wrote it, just now
+        history.applies[0].at = Date().timeIntervalSince1970
+        var old = history.applies[0]
+        old.id = "old"
+        old.at = Date().timeIntervalSince1970 - 30 * 86_400  // not announced: too old
+        history.applies.append(old)
+        let auto = r
         let v = Verification(
             id: h.applies[0].id, appliedAt: 0,
             groups: [.init(harness: "claude-code", model: "claude-opus-5-5", role: "main", verdict: "consistent",
@@ -113,7 +118,7 @@ struct NoticesTests {
         #expect(n.map(\.kind) == [.autoApplied, .drift, .verification, .problem])
         #expect(n[0].action == .undo(h.applies[0].id))
         #expect(n[1].body.contains("now 300k") && n[2].body.contains("as predicted") && n[3].body == "no sessions")
-        #expect(Notices.pending(plan: nil, result: r, history: history, state: state, now: Date()))
+        #expect(!Notices.pending(plan: nil, result: r, history: history, state: state, now: Date()))
         let again = Notices.evaluate(plan: nil, result: auto, history: history, verification: v, service: failing,
                                      enabled: .init(), state: &state, now: Date())
         #expect(again.isEmpty)
@@ -193,13 +198,13 @@ extension AppModelTests {
         let m = model(engine)
         await m.start()
         defer { m.shutdown() }
-        // the run is recorded, so a second call the same day does nothing
-        await m.verifyIfDue()
+        // start() verifies; the run is recorded, so a calibration the same day does not verify again
         #expect(engine.calls.contains { $0.hasPrefix("engine verify --id \(m.history!.applies[0].id) --since-days ") })
         #expect(m.verification?.id == m.history?.applies.first?.id)
-        let before = engine.calls.filter { $0.hasPrefix("engine verify") }.count
-        await m.verifyIfDue()
-        #expect(engine.calls.filter { $0.hasPrefix("engine verify") }.count == before)
+        #expect(engine.calls.filter { $0.hasPrefix("engine verify") }.count == 1)
+        m.recalibrate()
+        #expect(await eventually { !m.isCalibrating && engine.calls.filter { $0.hasPrefix("engine plan") }.count >= 2 })
+        #expect(engine.calls.filter { $0.hasPrefix("engine verify") }.count == 1)
     }
 }
 
