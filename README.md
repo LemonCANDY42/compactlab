@@ -254,10 +254,13 @@ See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, n
 
 ## Menu bar app (macOS, preview)
 
-`app/` is a read-only menu bar app built on `compactlab engine`: every active Claude Code and Codex session's
-context against its threshold, whether its prompt cache is still warm (with a "copy /compact" button once it is
-cold), the last calibration's thresholds, and a daily calibration in the background. It needs this CLI installed;
-build it with `app/scripts/package_app.sh`. See [app/README.md](app/README.md).
+`app/` is a menu bar app built on `compactlab engine`, in English and Chinese: every active Claude Code and Codex
+session's context against its threshold, whether its prompt cache is still warm (with a "copy /compact" button once
+it is cold), the last calibration's thresholds, and a daily calibration in the background. A suggested change opens
+in a review window (what it saves, the data behind it, the exact edit) and is written by `compactlab apply` only when
+you click Apply; the panel shows the last change, its verification against your logs, and Undo. Notifications and
+auto-apply (Claude Code, within the auto-apply rules) are optional. It needs this CLI installed; build it with
+`app/scripts/package_app.sh`. See [app/README.md](app/README.md).
 
 ## Two modes
 

@@ -303,13 +303,14 @@ extension Panel {
 
     /// What a change does per day: "−$11.85/day (−23% cost), +0.1 min/day, against the default".
     public static func impact(_ i: Plan.Change.Impact) -> String {
-        var parts: [String] = []
+        var s = ""
         if let usd = i.usdPerDay {
-            parts.append(
-                i.costPct.map { L("\(Format.usd(usd))/day (\(Format.percent($0)) cost)") } ?? L("\(Format.usd(usd))/day"))
+            s = i.costPct.map { L("\(Format.usd(usd))/day (\(Format.percent($0)) cost)") } ?? L("\(Format.usd(usd))/day")
         }
-        if let m = i.minPerDay { parts.append(L("\(Format.signed(m, digits: 1)) min/day")) }
-        var s = parts.joined(separator: ", ")
+        if let m = i.minPerDay {
+            let min = Format.signed(m, digits: 1)
+            s = s.isEmpty ? L("\(min) min/day") : L("\(s), \(min) min/day")
+        }
         switch i.against {
         case "current": s += " " + L("against your setting")
         case "default": s += " " + L("against the default")

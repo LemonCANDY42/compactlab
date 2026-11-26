@@ -1,6 +1,6 @@
 # compactlab 评估与 menu bar 应用设计（草案）
 
-状态：2026-11-23 起草；Phase 0 已完成（v0.1.0），Phase 1 的只读应用在 [app/](../app/README.md)（2026-11-25）。§6 的前三项（Codex 解析与时间模型、空闲压缩建模、`verify` 误判）已在引擎里修完。数字来自本机真实日志（单人、单机、list price），不是基准。
+状态：2026-11-23 起草；Phase 0 已完成（v0.1.0）；Phase 1 的只读应用在 [app/](../app/README.md)（2026-11-25，已合并）；Phase 2、3 的功能 2026-11-26 做完，发布和 7 天验收待办（见 §5）。§6 的前三项（Codex 解析与时间模型、空闲压缩建模、`verify` 误判）已在引擎里修完。数字来自本机真实日志（单人、单机、list price），不是基准。
 
 ## 0. 结论
 
@@ -245,9 +245,23 @@ compactlab.app（LSUIElement，无 Dock 图标）
 审阅页 + 应用 / 撤销、验证卡片、通知、漂移检测、同意与三档自动调整。
 验收：在测试用 settings 文件上走完“建议 → 审阅 → 应用 → 撤销”，文件逐字节还原；并发修改时 `--expect-plan` 拒绝写入。
 
+进展（2026-11-26）：做完，两项验收都有测试（`tests/test_engine_settings.py`；`swift test` 里的 `RealEngineTests` 用真引擎走一遍应用 → 撤销）。
+- 引擎新增 `engine plan / apply / revert / history / verify / consent`（[ENGINE_API.md](ENGINE_API.md)），契约仍是第 1 版。`plan` 给每项修改的每日影响、数据量和单独的哈希，可以只应用其中一项；`apply` 在锁内重新规划，哈希不符就不写，并像自动应用一样记账（冷却期和“别人改过”的判断都算上它）；`history` 给出每个写过的键现在的值，`changed` 即漂移。
+- 应用：面板第一行是建议（几项、每天省多少、“审阅…”）；审阅窗口逐项列出旧值 → 新值、相对现值或默认值的每日金额和分钟、天数和会话数、键和文件、完整 diff，可单项或全部应用，或“一周后再提醒”；面板下方是上次修改（生效中 / 已撤销 / 之后被改过）、验证结论和“撤销”。验证在修改满一天后每天最多跑一次，直到有定论，只扫修改前后的日志。
+- 通知（每条只发一次，每类可关）：最近两次校准方向一致、且每天省 ≥ 2% 或 ≥ 2 分钟的建议（带“审阅”）；自动应用写了设置（带“撤销”）；compactlab 写过的值被别人改了；验证结论；连续 3 次校准失败。有待办时菜单栏图标带小圆点。
+- 三档简化为两档：默认“先问我”（不点“应用”就不写）；“自动应用”= 引擎的 consent，仅 Claude Code、所有模型，沿用已有规则。“关”和“先问我”的区别只是有没有“应用”按钮，通知开关已经覆盖“只提醒”。
+- 没做：压缩点持续偏离设定值的漂移提醒（引擎还不算这个）；在应用里改空闲压缩（`apply` 不写这个键，面板只显示结论）；对手动修改做验证（命令行 `compactlab verify --applied-at` 可以）。
+
 ### Phase 3：发布
 
 DMG、Homebrew cask、Sparkle、中英本地化、无障碍检查；可选 WidgetKit 小组件；视需要评估内置 Python。
+
+进展（2026-11-26）：
+- 中英本地化：英文即键，`Resources/zh-Hans.lproj/Localizable.strings` 179 条，用语沿用本项目中文文档和 macOS 自己的说法；`app/scripts/check_strings.py` 在 CI 里检查每条界面文字都有译文、占位符个数一致。跟随系统语言，按应用改语言用系统设置，不另做语言菜单。
+- 图标由 `scripts/make_icon.swift` 在打包时画出；`scripts/make_dmg.sh` 出磁盘映像；CI 有证书时公证 app 和映像，发布 GitHub release 时把映像和填好的 cask 传上去。cask 模板在 `app/packaging/compactlab-app.rb`（依赖同一 tap 的 compactlab formula）。
+- 无障碍：每行合并成一个元素，图标和状态都有文字，状态不只靠颜色，审阅窗口 Esc 关闭。
+- 不做：Sparkle（应用不联网，靠 `brew upgrade`）；WidgetKit（需要 app extension，纯 SwiftPM 建不了）；内置 Python（引擎单独安装更小、签名更简单）。
+还差（都要你来）：加签名和公证的 secrets；发 0.2.0（引擎和应用同一版本号），发布后把 cask 提交到 tap；用一周验收 Phase 1。
 
 ## 6. 其他优化建议（不做应用也值得做）
 

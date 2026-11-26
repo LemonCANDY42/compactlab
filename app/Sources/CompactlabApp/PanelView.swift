@@ -19,6 +19,7 @@ struct PanelView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     banners
                     if model.status.isUsable {
+                        suggestionRow
                         sessionsSection
                         thresholdsSection
                         changesSection
@@ -37,7 +38,7 @@ struct PanelView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("compactlab").font(.headline)
+            Text(verbatim: "compactlab").font(.headline)
             Spacer()
             if model.result != nil {
                 Picker("Profile", selection: $model.displayProfile) {
@@ -170,23 +171,30 @@ struct PanelView: View {
 
     // MARK: Changes
 
+    /// The suggested changes, first thing in the panel: they are what the person can act on.
+    @ViewBuilder private var suggestionRow: some View {
+        let changes = model.plan?.changes ?? []
+        if !changes.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "slider.horizontal.3").foregroundStyle(Color.accentColor).accessibilityHidden(true)
+                Text(suggestionSummary(changes)).fixedSize(horizontal: false, vertical: true)
+                if !model.stableChanges.isEmpty {
+                    Text("the last two calibrations agree").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(L("Review…")) { openReview() }
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
     @ViewBuilder private var changesSection: some View {
         let newest = model.history?.applies.first
-        let changes = model.plan?.changes ?? []
-        if !changes.isEmpty || newest != nil || model.writeMessage != nil {
+        if newest != nil || model.writeMessage != nil {
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle(L("Changes"))
-                if !changes.isEmpty {
-                    HStack(alignment: .firstTextBaseline) {
-                        if !model.stableChanges.isEmpty {
-                            Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                                .accessibilityLabel(L("the last two calibrations agree"))
-                        }
-                        Text(suggestionSummary(changes)).fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        Button(L("Review…")) { openReview() }
-                    }
-                }
                 if let a = newest { LastChangeView(apply: a, model: model) }
                 if let msg = model.writeMessage {
                     Text(msg).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -390,7 +398,7 @@ struct Banner<Actions: View>: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(tint)
+            Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).fontWeight(.medium)
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -424,6 +432,7 @@ struct MissingEngineView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Copy")
+                    .accessibilityLabel("Copy")
                 }
             }
             Text("Installed somewhere else? Set its path in Settings.").font(.caption).foregroundStyle(.secondary)

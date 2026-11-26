@@ -5,23 +5,29 @@ on:
     paths: ["app/**", "src/**", "tests/contract/**", "pyproject.toml", ".github/workflows/app.yml"]
   pull_request:
     paths: ["app/**", "src/**", "tests/contract/**", "pyproject.toml", ".github/workflows/app.yml"]
+  release:
+    types: [published] # attach the notarized disk image to the release
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write # release uploads only; nothing else writes
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the build number is the commit count
       - uses: astral-sh/setup-uv@v7
       - run: swift --version
-      - name: Unit tests (contract fixtures, fake engines)
-        working-directory: app
-        run: swift test
       - name: Install the engine from this commit
         run: uv tool install .
+      - name: Every interface string has a translation
+        run: python3 app/scripts/check_strings.py
+      - name: Unit tests (contract fixtures, fake engines, the real engine end to end)
+        working-directory: app
+        run: COMPACTLAB_TEST_ENGINE="$(uv tool dir --bin)/compactlab" swift test
       - name: Import the Developer ID certificate
         id: cert
         env:
@@ -52,36 +58,59 @@ jobs:
           home="$(mktemp -d)"
           HOME="$home" COMPACTLAB_ENGINE="$engine" \
             app/build/compactlab.app/Contents/MacOS/compactlab --render-panel "$RUNNER_TEMP/panel-empty.png" --wait 30
-      - name: Smoke test (demo logs and result)
+      - name: Smoke test (demo logs, a calibration, both languages)
         run: |
           engine="$(uv tool dir --bin)/compactlab"
           home="$(mktemp -d)"
           "$engine" demo --out "$RUNNER_TEMP/demo" --no-open >/dev/null
           cp -R "$RUNNER_TEMP/demo/claude" "$home/.claude"
           cp -R "$RUNNER_TEMP/demo/codex" "$home/.codex"
-          mkdir -p "$home/.compactlab/service"
-          cp "$RUNNER_TEMP/demo/result.json" "$home/.compactlab/service/result.json"
-          HOME="$home" COMPACTLAB_ENGINE="$engine" \
-            app/build/compactlab.app/Contents/MacOS/compactlab --render-panel "$RUNNER_TEMP/panel-demo.png" --wait 30 \
-            | tee "$RUNNER_TEMP/diag.txt"
-          grep -q "result: loaded" "$RUNNER_TEMP/diag.txt"
-      - name: Notarize
+          HOME="$home" "$engine" engine calibrate --since-days 0 --offline-pricing --reason ci >/dev/null
+          for lang in en zh-Hans; do
+            HOME="$home" COMPACTLAB_ENGINE="$engine" \
+              app/build/compactlab.app/Contents/MacOS/compactlab --render-panel "$RUNNER_TEMP/panel-$lang.png" \
+              --render-review "$RUNNER_TEMP/review-$lang.png" --wait 30 -AppleLanguages "($lang)" \
+              | tee "$RUNNER_TEMP/diag-$lang.txt"
+            grep -q "result: loaded" "$RUNNER_TEMP/diag-$lang.txt"
+          done
+      - name: Notarize the app, then the disk image
         if: ${{ steps.cert.outputs.identity != '' }}
         env:
+          CODESIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
-          NOTARY_KEY="$RUNNER_TEMP/notary.p8" app/scripts/notarize.sh app/build/compactlab.app
+          export NOTARY_KEY="$RUNNER_TEMP/notary.p8"
+          app/scripts/notarize.sh app/build/compactlab.app
+          dmg="$(app/scripts/make_dmg.sh app/build/compactlab.app)"
+          app/scripts/notarize.sh "$dmg"
+          app/scripts/cask.sh "$dmg" > app/build/compactlab-app.rb
           rm "$RUNNER_TEMP/notary.p8"
-      - name: Zip (ad hoc)
+      - name: Disk image (ad hoc)
         if: ${{ steps.cert.outputs.identity == '' }}
-        run: ditto -c -k --keepParent app/build/compactlab.app app/build/compactlab-app-adhoc.zip
+        run: |
+          ditto -c -k --keepParent app/build/compactlab.app app/build/compactlab-app-adhoc.zip
+          app/scripts/make_dmg.sh app/build/compactlab.app
+      - name: Attach to the release
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.cert.outputs.identity != '' }}
+        run: |
+          if [ "$SIGNED" != "true" ]; then
+            echo "::error::no Developer ID secrets: a release gets only a notarized disk image (see app/README.md)"
+            exit 1
+          fi
+          gh release upload "${{ github.event.release.tag_name }}" app/build/compactlab-*.dmg app/build/compactlab-app.rb --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: compactlab-app
           path: |
             app/build/*.zip
+            app/build/*.dmg
+            app/build/compactlab-app.rb
             ${{ runner.temp }}/panel-*.png
+            ${{ runner.temp }}/review-*.png
           if-no-files-found: error

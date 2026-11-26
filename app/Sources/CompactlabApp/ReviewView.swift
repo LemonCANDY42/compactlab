@@ -107,7 +107,9 @@ private struct ChangeCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(Panel.changeTitle(harness: change.harness, model: change.model)).fontWeight(.medium)
-                    Text(change.harness == "codex" ? "Codex" : "Claude Code").font(.caption).foregroundStyle(.secondary)
+                    if change.harness != "codex" {
+                        Text(verbatim: "Claude Code").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Text("\(Panel.setting(change.old)) → \(Format.tokens(change.new))")
                     .font(.title3.monospacedDigit())

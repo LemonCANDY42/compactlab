@@ -202,3 +202,51 @@ extension AppModelTests {
         #expect(engine.calls.filter { $0.hasPrefix("engine verify") }.count == before)
     }
 }
+
+/// The app against the real engine (`COMPACTLAB_TEST_ENGINE`, set in CI after installing it): calibrate on the demo
+/// logs in a scratch home, then review → apply → undo through the model, and the settings file comes back byte for
+/// byte. Skipped when the variable is not set.
+@MainActor
+struct RealEngineTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["COMPACTLAB_TEST_ENGINE"] != nil))
+    func applyAndUndoRestoreTheFile() async throws {
+        let exe = ProcessInfo.processInfo.environment["COMPACTLAB_TEST_ENGINE"]!
+        let home = try TempDir()
+        let env = ["COMPACTLAB_ENGINE": exe, "HOME": home.url.path, "PATH": "/usr/bin:/bin"]
+        let demo = home.url.appendingPathComponent("demo")
+        for args in [["demo", "--out", demo.path, "--no-open"]] {
+            let out = try await ProcessRunner.run(URL(fileURLWithPath: exe), args, environment: env, timeout: .seconds(300))
+            #expect(out.status == 0)
+        }
+        let fm = FileManager.default
+        try fm.copyItem(at: demo.appendingPathComponent("claude"), to: home.url.appendingPathComponent(".claude"))
+        try fm.copyItem(at: demo.appendingPathComponent("codex"), to: home.url.appendingPathComponent(".codex"))
+        let settings = home.url.appendingPathComponent(".claude/settings.json")
+        let original = Data("{\n  \"theme\": \"dark\",\n  \"env\": {\"A\": \"1\"}\n}\n".utf8)
+        try original.write(to: settings)
+        let cal = try await ProcessRunner.run(
+            URL(fileURLWithPath: exe), ["engine", "calibrate", "--since-days", "0", "--offline-pricing", "--reason", "test"],
+            environment: env, timeout: .seconds(600))
+        #expect(cal.status == 0, "\(cal.stderrTail)")
+
+        let m = AppModel(defaults: UserDefaults(suiteName: "compactlab-tests-\(UUID().uuidString)")!, environment: env)
+        m.scheduling = false
+        await m.start()
+        defer { m.shutdown() }
+        #expect(m.canChangeSettings)
+        let plan = try #require(m.plan)
+        #expect(plan.changes.contains { $0.harness == "claude-code" })
+
+        await m.apply(nil)
+        #expect(m.writeMessage == nil)
+        #expect(try Data(contentsOf: settings) != original)
+        let applied = try #require(m.history?.applies.first)
+        #expect(applied.by == "app" && applied.inEffect)
+        #expect(m.plan?.changes.isEmpty == true)
+
+        await m.revert(applied.id)
+        #expect(m.writeMessage == nil)
+        #expect(try Data(contentsOf: settings) == original)
+        #expect(m.history?.applies.first?.inEffect == false)
+    }
+}

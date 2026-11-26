@@ -14,6 +14,19 @@ versioning: [SemVer](https://semver.org/).
   processes; it parses no logs, writes no settings and uses no network. macOS 14+, built with SwiftPM
   (`app/scripts/package_app.sh`); the `App` workflow tests it, smoke-tests the packaged app and, given a Developer
   ID certificate and a notary key as secrets, signs and notarizes it.
+- **The menu bar app reviews, applies and undoes changes** (Phases 2 and 3 of the design): a review window per
+  suggested change (old → new, $ and minutes per day, the data behind it, the exact edit) with Apply, one change or
+  all; the last change in the panel (in effect, undone, or changed by someone else) with its verification and Undo;
+  notifications, each once and each kind optional (a suggestion two calibrations agree on, an auto-apply with Undo,
+  a setting edited behind compactlab, a verification result, repeated calibration failures) and a dot on the icon;
+  optional auto-apply for Claude Code under the existing rules. In English and Simplified Chinese
+  (`app/scripts/check_strings.py` checks every string), with an icon, a disk image (`make_dmg.sh`, notarized in CI),
+  a Homebrew cask template, and a release upload. `swift test` also runs it against the real engine.
+- **`compactlab engine plan`, `apply`, `revert`, `history`, `verify` and `consent`** for the app
+  (docs/ENGINE_API.md): `plan` prints each change with its per-day impact and its own hash; `apply` writes only the
+  reviewed plan (`--expect-plan`, `--only harness:model`) under the state dir's lock and records the write as
+  auto-apply does; `history` reports what every written key holds now (drift); `hello` reports the stored consent.
+  A consent may name every model (`--models '*'`, the `engine consent` default). Contract stays version 1.
 
 ## [0.1.0] - 2026-11-25
 
