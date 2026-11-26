@@ -3,7 +3,7 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-26
 
 ### Added
 - **A read-only macOS menu bar app** in `app/` (Phase 1 of `docs/MENUBAR_APP.zh-CN.md`): how close each active

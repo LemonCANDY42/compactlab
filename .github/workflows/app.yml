@@ -72,6 +72,7 @@ jobs:
               --render-review "$RUNNER_TEMP/review-$lang.png" --wait 30 -AppleLanguages "($lang)" \
               | tee "$RUNNER_TEMP/diag-$lang.txt"
             grep -q "result: loaded" "$RUNNER_TEMP/diag-$lang.txt"
+            grep -q "^settings: writable, [1-9]" "$RUNNER_TEMP/diag-$lang.txt"
           done
       - name: Notarize the app, then the disk image
         if: ${{ steps.cert.outputs.identity != '' }}

@@ -188,7 +188,7 @@ struct AppModelTests {
         let m = model(engine)
         await m.start()
         defer { m.shutdown() }
-        #expect(m.status == .ready(version: "0.1.0"))
+        #expect(m.status == .ready(version: "0.2.0"))
         #expect(m.result?.groups.count == 5)
         #expect(await eventually { m.sessions != nil })
         #expect(m.sessionRows.count == 3)
@@ -283,7 +283,7 @@ struct AppModelTests {
         m.powerState = { PowerState(lowPowerMode: false, onBattery: false, batteryPercent: nil) }
         await m.start()
         defer { m.shutdown() }
-        #expect(m.status == .incompatible(api: 2, version: "0.1.0"))
+        #expect(m.status == .incompatible(api: 2, version: "0.2.0"))
         #expect(m.result != nil)  // still shown
         m.recalibrate()
         await m.calibrateIfDue()

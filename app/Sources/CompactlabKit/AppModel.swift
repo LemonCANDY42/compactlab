@@ -648,6 +648,7 @@ public final class AppModel {
         lines.append("watch: \(watchStatus)\(watchError.map { " (\($0))" } ?? "")")
         lines.append("sessions: \(sessions?.sessions.count ?? 0), unreadable files \(sessions?.unreadable ?? 0)")
         lines.append("calibration: \(calibration); result: \(result == nil ? (resultError?.code ?? "none") : "loaded")")
+        lines.append("settings: \(canChangeSettings ? "writable, \(plan?.changes.count ?? 0) suggested" : "read-only")")
         return lines.joined(separator: "\n")
     }
 
