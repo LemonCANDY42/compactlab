@@ -8,8 +8,8 @@
 #
 # DeveloperID.p12  your "Developer ID Application" certificate and its private key, exported from Keychain Access
 #                  (My Certificates → right-click the certificate → Export → .p12, with a password)
-# AuthKey_*.p8     an App Store Connect API key (Users and Access → Integrations → Team Keys, role Developer); the key
-#                  ID is read from the file name
+# AuthKey_*.p8     an App Store Connect API key (Users and Access → Integrations → Team Keys, role Developer or
+#                  higher; one in ~/.appstoreconnect/private_keys will do); the key ID is read from the file name
 # ISSUER_ID        the issuer ID shown above that list of keys
 # --check          check the files and stop before storing anything
 set -euo pipefail
@@ -27,6 +27,11 @@ key_id="${key_id#AuthKey_}"
 [[ "$issuer" =~ ^[0-9a-f-]{36}$ ]] || fail "the issuer ID looks like 12345678-90ab-cdef-1234-567890abcdef"
 grep -q "BEGIN PRIVATE KEY" "$p8" || fail "$p8 is not a private key"
 
+# The notary service accepts the key (a team key, Developer role or higher): the call the workflow's notarization makes.
+xcrun notarytool history --key "$p8" --key-id "$key_id" --issuer "$issuer" >/dev/null 2>&1 ||
+    fail "Apple's notary service refused key $key_id with issuer $issuer (it must be a team key with the Developer role or higher)"
+echo "ok: notary key $key_id, issuer $issuer"
+
 IFS= read -r -s -p "Password of $(basename "$p12"): " password
 echo
 
@@ -43,7 +48,6 @@ security import "$p12" -k "$kc" -P "$password" -T /usr/bin/codesign >/dev/null 2
 identity="$(security find-identity -v -p codesigning "$kc" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)"
 [ -n "$identity" ] || fail "$p12 holds no Developer ID Application certificate with its private key"
 echo "ok: $identity"
-echo "ok: notary key $key_id, issuer $issuer"
 
 if [ "$check" = "--check" ]; then
     echo "checked; nothing stored"
