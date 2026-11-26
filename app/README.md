@@ -95,6 +95,23 @@ LemonCANDY42/homebrew-tap as `Casks/compactlab-app.rb`; then `brew install --cas
 and `brew upgrade` updates it. `zap` removes the app's preferences only: `~/.compactlab` (results, backups, manifests)
 belongs to the formula.
 
+## Releasing
+
+The engine and the app share the version (`pyproject.toml`), and the app changes settings only with an engine of its
+version or later: a cask that reaches people before the formula would open read-only. So the cask goes last.
+
+1. Before tagging, on the release commit: `scripts/package_app.sh && scripts/release_check.sh --source
+   build/compactlab.app` installs this checkout the way the formula does (its `git archive`, a fresh venv) and runs
+   review → apply → undo through the app against it; the packaged app must open with settings writable.
+2. Tag `vX.Y.Z` and publish the GitHub release; the `App` workflow attaches the notarized disk image and the filled-in
+   cask (it fails without the signing secrets).
+3. Point `Formula/compactlab.rb` in LemonCANDY42/homebrew-tap at the new tag's tarball and checksum; the tap's CI
+   installs it on macOS and Linux.
+4. On a Mac with a clean Homebrew install (`brew uninstall compactlab`, then `brew install LemonCANDY42/tap/compactlab`),
+   install the app from the release's disk image and run `scripts/release_check.sh "$(brew --prefix)/bin/compactlab"
+   /Applications/compactlab.app` (Gatekeeper must accept it).
+5. Then commit the release's `compactlab-app.rb` to the tap as `Casks/compactlab-app.rb`.
+
 ## Left out on purpose
 
 - Sparkle updates: the app uses no network; Homebrew updates it.
