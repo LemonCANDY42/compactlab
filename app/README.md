@@ -87,8 +87,8 @@ image too. The `App` workflow does all of this on pushes to `main` when these re
 disk image, the zip and a filled-in Homebrew cask as artifacts; on a published GitHub release it attaches the disk
 image and the cask to it. Without the secrets it uploads an ad-hoc build (runs only where it was built).
 `scripts/set_signing_secrets.sh DeveloperID.p12 AuthKey_<id>.p8 <issuer id>` stores them: run it yourself, it asks
-for the .p12 password, checks both files the way the workflow uses them (`--check` stops there) and passes each value
-to `gh secret set` on standard input.
+for the .p12 password, checks both files the way the workflow uses them (the notary key against Apple; `--check`
+stops there) and passes each value to `gh secret set` on standard input.
 
 | Secret | Value |
 | --- | --- |
