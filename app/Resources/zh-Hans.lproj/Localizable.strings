@@ -15,7 +15,7 @@
 "Apply" = "应用";
 "Apply all" = "全部应用";
 "Open report" = "打开报告";
-"Recalibrate" = "重新校准";
+"Recalibrate" = "立即重算";
 "Settings…" = "设置…";
 "Quit" = "退出";
 "Review…" = "审阅…";
@@ -39,13 +39,13 @@
 "This app was built for contract %@. It shows what it can and will not change any settings. Update the app and the engine to matching versions." = "本应用按第 %@ 版接口构建：能显示的照常显示，但不会修改任何设置。请把应用和引擎更新到匹配的版本。";
 "Active sessions are not updating" = "活跃会话没有更新";
 "Calibration failed" = "校准失败";
-"Another calibration is running" = "已有校准正在运行";
+"Another calibration is running" = "另一个校准正在运行";
 "The report could not be made" = "没能生成报告";
 
 /* Active sessions */
 "Active sessions" = "活跃会话";
 "last %@ h" = "近 %@ 小时";
-"Not watching." = "没有在监视。";
+"Not watching." = "未在监视。";
 "Reading…" = "正在读取…";
 "No sessions in the last %@ hours." = "近 %@ 小时没有会话。";
 "Show fewer" = "收起";
@@ -56,10 +56,10 @@
 "unknown model" = "未知模型";
 "compacted %@ ago" = "%@前已压缩";
 "at the threshold" = "已到阈值";
-"%@ to compaction" = "距压缩还有 %@";
-"cache warm (cold in %@)" = "缓存有效（%@后过期）";
-"cache cold: next send rewrites %@" = "缓存已过期：下次发送会重新写入 %@";
-"cache cold" = "缓存已过期";
+"%@ to compaction" = "还有 %@ 压缩";
+"cache warm (cold in %@)" = "缓存热（%@后变冷）";
+"cache cold: next send rewrites %@" = "缓存已冷：下次发送重写 %@";
+"cache cold" = "缓存已冷";
 "+1 subagent" = "+1 个 subagent";
 "+%@ subagents" = "+%@ 个 subagent";
 "– / %@" = "– / %@";
@@ -68,12 +68,12 @@
 /* Thresholds */
 "Thresholds" = "阈值";
 "demo data" = "演示数据";
-"No model has enough sessions yet." = "各模型的会话都还不够多。";
+"No model has enough sessions yet." = "还没有哪个模型的会话足够多。";
 "Calibrating for the first time…" = "正在首次校准…";
 "No calibration yet." = "还没有校准过。";
 "subagent" = "subagent";
-"no pick" = "没有推荐值";
-"no change needed: sessions never reach the threshold" = "无需调整：会话始终没到阈值";
+"no pick" = "没有选出";
+"no change needed: sessions never reach the threshold" = "无需调整：会话从来到不了阈值";
 "set it (%@ cost)" = "建议设置（成本 %@）";
 "set it" = "建议设置";
 "keep your setting" = "保持你的设置";
@@ -86,8 +86,8 @@
 "off" = "关";
 "turn it off (%@/day)" = "建议关闭（每天 %@）";
 "turn it on (%@/day)" = "建议开启（每天 %@）";
-"keep it on (turning it off: %@/day)" = "保持开启（关闭后每天 %@）";
-"keep it off (turning it on: %@/day)" = "保持关闭（开启后每天 %@）";
+"keep it on (turning it off: %@/day)" = "保持开启（关掉每天 %@）";
+"keep it off (turning it on: %@/day)" = "保持关闭（打开每天 %@）";
 "Idle compaction" = "空闲压缩";
 
 /* Changes: panel */
@@ -133,8 +133,8 @@
 /* Verification */
 "as predicted" = "与预测一致";
 "cost %@" = "成本 %@";
-"saved less than predicted" = "实际节省少于预测";
-"saved more than predicted" = "实际节省多于预测";
+"saved less than predicted" = "省得比预测少";
+"saved more than predicted" = "省得比预测多";
 "no effect: sessions did not reach the threshold" = "没有影响：会话没到阈值";
 "it was in effect before the recorded time" = "在记录的时间之前就已生效";
 "not enough turns to compare" = "轮数不够，无法比较";
