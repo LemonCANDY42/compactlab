@@ -3,6 +3,17 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Docs and presentation.** The READMEs are a short front page (pitch, the one real-log result, install,
+  quickstart, ways to use it, harnesses, privacy, limitations), the same in English and Chinese, with a language
+  switch, release and platform badges, and screenshots of the menu bar app. The reference detail they held moved to
+  `docs/GUIDE.md`; `docs/README.md` indexes every doc. `app/scripts/screenshots.sh` renders the app screenshots from
+  synthetic data. `docs/ARCHITECTURE.md` and `docs/ROADMAP.md` caught up with the adapters, the app and the
+  Homebrew install; CONTRIBUTING uses `uv`, covers the app and the docs rules; the issue and PR templates ask for
+  the app, harness and OS.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

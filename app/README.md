@@ -1,6 +1,6 @@
 # compactlab menu bar app
 
-A macOS menu bar app for compactlab ([the design](../docs/MENUBAR_APP.zh-CN.md)), in English and Simplified Chinese.
+A macOS menu bar app for compactlab, in English and Simplified Chinese ([design notes](../docs/MENUBAR_APP.zh-CN.md), in Chinese).
 It shows how close each active Claude Code and Codex session is to auto-compaction, whether its prompt cache is still
 warm, and the last calibration's threshold for every model; recalibrates once a day in the background; and lets you
 review a suggested change, apply it, check it against your logs later, and undo it.
@@ -8,6 +8,14 @@ review a suggested change, apply it, check it against your logs later, and undo 
 It is a thin client: every number comes from the `compactlab` command-line tool through `compactlab engine`
 ([ENGINE_API.md](../docs/ENGINE_API.md)), and the engine's `apply` is the only thing that writes a harness setting
 (backup, manifest, undo). The app parses no logs and uses no network.
+
+<p align="center">
+  <img src="../docs/assets/app-panel.png" alt="The menu bar panel: one suggested change, active sessions and the threshold for each model and role (synthetic demo data)" width="380">
+  <img src="../docs/assets/app-review.png" alt="The review window: default to 500k for opus-5.5, its saving per day, the data behind it and the setting it writes, with Apply (synthetic demo data)" width="440">
+</p>
+
+<sub>Synthetic demo data. Chinese: [panel](../docs/assets/app-panel.zh-CN.png), [review](../docs/assets/app-review.zh-CN.png).
+Regenerate with `scripts/screenshots.sh`.</sub>
 
 ## Requirements
 
@@ -52,6 +60,7 @@ swift run compactlab-app         # run from the build directory
 scripts/package_app.sh           # build/compactlab.app (translations, icon), signed ad hoc
 scripts/make_dmg.sh build/compactlab.app   # build/compactlab-<version>.dmg
 python3 scripts/check_strings.py # every interface string has a Chinese translation
+scripts/screenshots.sh           # docs/assets/app-*.png from synthetic demo data, both languages
 ```
 
 `swift test` also runs the app against a real engine (calibrate on the demo logs in a scratch home, apply, undo, the
