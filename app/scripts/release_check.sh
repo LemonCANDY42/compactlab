@@ -45,6 +45,7 @@ if [ -n "$app" ]; then
     HOME="$home" "$engine" demo --out "$scratch/demo" --no-open >/dev/null
     cp -R "$scratch/demo/claude" "$home/.claude"
     cp -R "$scratch/demo/codex" "$home/.codex"
+    printf '{\n  "theme": "dark"\n}\n' > "$home/.claude/settings.json"  # no threshold set: something to suggest
     HOME="$home" "$engine" engine calibrate --since-days 0 --offline-pricing --reason release-check >/dev/null
     diag="$(HOME="$home" COMPACTLAB_ENGINE="$engine" "$app/Contents/MacOS/compactlab" \
         --render-panel "$scratch/panel.png" --render-review "$scratch/review.png" --wait 30)"

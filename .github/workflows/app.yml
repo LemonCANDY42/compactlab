@@ -65,6 +65,7 @@ jobs:
           "$engine" demo --out "$RUNNER_TEMP/demo" --no-open >/dev/null
           cp -R "$RUNNER_TEMP/demo/claude" "$home/.claude"
           cp -R "$RUNNER_TEMP/demo/codex" "$home/.codex"
+          printf '{\n  "theme": "dark"\n}\n' > "$home/.claude/settings.json"  # no threshold set: something to suggest
           HOME="$home" "$engine" engine calibrate --since-days 0 --offline-pricing --reason ci >/dev/null
           for lang in en zh-Hans; do
             HOME="$home" COMPACTLAB_ENGINE="$engine" \
