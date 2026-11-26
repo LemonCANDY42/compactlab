@@ -11,6 +11,21 @@ body:
     id: version
     attributes: {label: compactlab version, placeholder: "compactlab --version"}
     validations: {required: true}
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options: [CLI or report, menu bar app, background service, lens mod, other]
+    validations: {required: true}
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Harness
+      multiple: true
+      options: [Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek Harness (dsh), not harness-specific]
+  - type: input
+    id: os
+    attributes: {label: OS and version, placeholder: "macOS 15.2 / Ubuntu 24.04"}
   - type: textarea
     id: what
     attributes: {label: What happened and what you expected}

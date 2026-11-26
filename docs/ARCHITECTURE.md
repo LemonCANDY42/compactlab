@@ -2,14 +2,17 @@
 
 ```
 src/compactlab/
-  adapters/   base.py (Adapter, Parser, registry) · claude_code.py · codex.py · cache.py (incremental scan cache)
+  adapters/   base.py (Adapter, Parser, registry) · claude_code.py · codex.py · opencode.py · gemini_cli.py · dsh.py ·
+              cache.py (incremental scan cache)
   model/      Turn, Compaction, Session + (de)serialization
-  pricing/    PricingTable with provenance (bundled -> refreshed -> user) · refresh.py (models.dev / LiteLLM)
+  pricing/    PricingTable with provenance (bundled -> refreshed -> user) · refresh.py (models.dev / LiteLLM) ·
+              ids.py (platform model IDs) · auto.py (opt-in refresh for unknown models)
   sim/        engine.py (traces, replay, sweep) · calibrate.py (re-discovery penalty) · select.py (profiles,
-              guardrails, Pareto)
+              guardrails, Pareto) · timing.py (wall-clock fit) · baseline.py (harness default, current setting)
   eval/       factcheck.py (offline heuristics) · deep.py (probes, judge, budget, re-summarize) · executors.py
   report/     html.py + template.html (single offline file)
-  recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py); knobs in data/config_knobs.json
+  recommend/  per-harness Recommender: ready-to-paste snippets (claude_code.py, codex.py, opencode.py, gemini_cli.py,
+              dsh.py) · units.py (tokens to a harness's ratio knob); knobs in data/config_knobs.json
   apply/      pre-authorization, plan, diff, backup/manifest, key-level revert
   cli/        main.py (argparse commands)
   service/    core.py (calibrator) · lock.py (one calibration or config write at a time per state dir, across
@@ -18,9 +21,15 @@ src/compactlab/
               watch.py (JSON Lines loop)
   term/       style.py (colour depth, palette, display width) · widgets.py (gauge, was/now, sparkline, braille,
               panel, header) · views.py (demo / simulate / recommend / doctor / serve) · top.py (`compactlab top`)
-  data/       pricing.json, harness_formats.json (each with source + date)
+  data/       pricing.json, harness_formats.json, harness_defaults.json, config_knobs.json (each with source + date)
+  verify.py   predicted vs observed after a change · share.py (anonymous record) · lens.py (the mod's summary) ·
+              publish.py (shared files other programs read)
   synth.py    synthetic transcripts for tests and `demo`
 ```
+
+Outside the package: `app/` is the macOS menu bar app (Swift, a client of `compactlab engine`), `mods/compactlab-lens`
+the Claude Code mod, `scripts/` the asset, secrets-scan and sharing tools, and `tests/contract/` the engine JSON
+fixtures that both the Python and the Swift tests read.
 
 ```mermaid
 flowchart LR

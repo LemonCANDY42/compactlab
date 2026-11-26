@@ -1,5 +1,5 @@
 name: New harness adapter
-description: Propose support for another agent harness (dsh, opencode, pi, ...)
+description: Propose support for another agent harness (Hermes, Qwen Code, Kimi CLI, Goose, ...)
 labels: [adapter, help wanted]
 body:
   - type: input

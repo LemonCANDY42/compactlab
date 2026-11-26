@@ -2,409 +2,204 @@
 
 # compactlab
 
-**Your agent history says where to auto-compact.**<br>
-Measure cost vs. context-rot trade-offs per model and per role, then tune auto-compact safely.
+**Your agent history says where to auto-compact.**
+
+compactlab replays your own Claude Code and Codex session logs at every auto-compact threshold and shows, per model
+and role, where cost, waiting and lost context balance out. Then it helps you apply the setting, check it against
+your logs, and undo it.
 
 [![CI](https://github.com/LemonCANDY42/compactlab/actions/workflows/ci.yml/badge.svg)](https://github.com/LemonCANDY42/compactlab/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/LemonCANDY42/compactlab)](https://github.com/LemonCANDY42/compactlab/releases)
+[![Homebrew](https://img.shields.io/badge/brew-LemonCANDY42%2Ftap-orange)](https://github.com/LemonCANDY42/homebrew-tap)
+![macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**English** · [简体中文](README.zh-CN.md)
 
 <img src="docs/assets/demo.svg" alt="compactlab demo printing cost, balanced and time thresholds per model and role (synthetic data)" width="760">
+
+</div>
+
+## Why
+
+Claude Code and Codex compact a conversation when it reaches a token threshold. Set it too low and you pay for
+frequent summaries, cache rewrites and re-reading what the summary dropped. Set it too high and every turn re-reads
+a huge, cached-but-not-free prefix, and long contexts get less reliable. The right number depends on how *your*
+sessions grow, which models you use and what they cost, so a default or a rule of thumb rarely fits.
+
+- **From your own logs.** It replays the sessions you actually ran, turn by turn, at every threshold. No benchmark
+  stand-ins.
+- **Per model and per role.** Main agent and subagents grow differently, and so do Opus, Sonnet and GPT sessions.
+- **Money and time.** Three profiles (`cost`, `balanced`, `time`) put a price on an hour of waiting, with guardrails
+  on how small the window and how long the added waiting may get.
+- **Closes the loop.** `apply` writes the setting with a backup, `verify` checks the logs afterwards against what the
+  replay predicted, and `revert` undoes it.
+- **Local and free by default.** Lite mode reads your logs offline and calls no model. Reports hold token counts and
+  model names, never transcript text.
+
+![compactlab HTML report: group sidebar, profile switch, KPI cards and per-day impact of each profile (synthetic demo data)](docs/assets/report.png)
+
+## Does it work?
+
+One real case so far, on the maintainer's machine ([details](docs/RESULTS.md)). Opus 5.5 main sessions in Claude Code,
+moved by hand from the default (about 967k) to 650k:
+
+- **Before the change, the replay matched the logged cost within 2%.** That is the control: it shows the replay is
+  accurate enough to trust for the rest.
+- **Over 25 active days after it, list-price cost per 1k turns fell 21%** (80% interval −24% to −17%; 125 sessions
+  before, 86 after).
+- **The replay credits the threshold with roughly a third to two thirds of that.** The rest came from Claude Code's
+  idle compaction, which reached the machine in the same days; compactlab now tells the two apart.
+
+One machine and one workload, at list prices, is not a benchmark. `compactlab share` writes an anonymous record you
+can post to collect more cases ([SHARING.md](docs/SHARING.md)).
+
+## Install
+
+```bash
+brew install LemonCANDY42/tap/compactlab
+```
+
+Or with uv or pipx: `uv tool install git+https://github.com/LemonCANDY42/compactlab`. compactlab is not on PyPI.
+Python 3.11+, no runtime dependencies. Tested on macOS; Linux runs in CI.
+
+To try it without installing anything (bundled synthetic sessions, no history or API key needed):
 
 ```bash
 uvx --from git+https://github.com/LemonCANDY42/compactlab compactlab demo
 ```
 
-<sub>Builds a report from bundled synthetic sessions and opens it. No history or API key needed; uvx fetches compactlab from GitHub.</sub>
-
-</div>
-
----
-
-Claude Code and Codex compact a conversation when it reaches a token threshold. Set it too low and you pay for
-frequent summaries, cache rewrites and re-reading what the summary dropped. Set it too high and every turn re-reads
-a huge, cached-but-not-free prefix, and long contexts get less reliable. The right number depends on how *your*
-sessions grow, your models and their prices. compactlab replays your own session logs at every threshold and tells
-you where the trade-off sits, per model and per role (main agent vs subagent).
-
-![compactlab HTML report: group sidebar, profile switch, KPI cards and per-day impact of each profile (synthetic demo data)](docs/assets/report.png)
-
 ## Quickstart
 
 ```bash
-brew install LemonCANDY42/tap/compactlab   # or: uv tool install git+https://github.com/LemonCANDY42/compactlab (or pipx)
+compactlab doctor                     # which harnesses, logs and settings it finds
+compactlab report --open              # analyze the last 30 days -> offline HTML report
+compactlab recommend --copy           # the setting to paste, for each harness (prints or copies; never writes)
 
-compactlab demo                       # synthetic data -> report (zero config)
-compactlab doctor                     # where are my logs and configs?
-compactlab report --open              # lite analysis of your last 30 days -> HTML report
-compactlab simulate --out result.json # same analysis, saved for apply
+compactlab simulate --out result.json # the same analysis, saved for apply
 compactlab apply --result result.json --claude-settings ~/.claude/settings.json   # dry-run diff
 compactlab verify                     # days later: did the change do what the replay predicted?
+compactlab revert                     # undo the last apply
 ```
 
-compactlab installs with Homebrew or from GitHub (it is not on PyPI). Python 3.11+, no runtime dependencies.
+For each model and role you get three profiles next to the harness default and your current setting, with the change
+in cost, wall-clock and compactions per day. When the default already works, it says **no action needed**, **keep
+current** or **keep default** instead of inventing a change.
 
-## What you get
-
-For each model and role, three **profiles**, side by side, each compared with **the harness default** (what happens
-if you change nothing) and with **your current setting** when compactlab can read it. A profile is the price you put
-on an hour of agent wall-clock, plus guardrails:
-
-| Profile | Value of time | Guardrails |
+| Profile | Value of an hour of waiting | Guardrails |
 | --- | --- | --- |
-| `cost` | $10/h (money first) | none on window size; warns below 25% of the max window and when compaction wait grows by more than 30 min/day |
-| `balanced` (default) | $250/h | never below 40% of the max window; at most 30 min/day of added compaction wait |
-| `time` | $600/h (time first) | never below 50% of the max window; at most 30 min/day of added compaction wait |
+| `cost` | $10 | warns below 25% of the window or above 30 min/day of added waiting |
+| `balanced` (default) | $250 | never below 40% of the window; at most 30 min/day of added waiting |
+| `time` | $600 | never below 50% of the window; at most 30 min/day of added waiting |
 
-Within its guardrails, each profile picks the largest threshold whose score (list-price replay cost + re-discovery
-penalty + value of time × wall-clock) is within 2% of its lowest, with assumed recall at or above a floor (0.90).
-`--profile` chooses which one `apply`, `recommend` and the report lead with; `--value-of-time` overrides that
-profile's price of time. Both work on a saved result without re-running. **no action needed** is shown instead of a
-number when the default never compacts in those sessions, **keep current** when your setting scores within the same
-2% of the profile's pick (changing it would be churn for no real gain), and **keep default** when a profile would not
-beat the default by more than that.
+How to read the output, every setting key it can emit, `verify` in detail and the per-harness notes:
+[**User guide**](docs/GUIDE.md).
 
-Every profile reports Δcost, Δwall-clock in hours and minutes per day (time saved by smaller contexts minus time
-added by compactions and re-discovery, fitted from your own timestamps), compactions per day and recall against the
-default and your current setting. Costs are list-price estimates (no discounts, plans or credits). Recall in lite mode
-is an assumed proxy, not a measurement. When a group has too few timed compactions (fewer than 20) its latency fit is
-not used: it borrows the pooled fit of all sessions of that harness, or a deliberately pessimistic prior, and says so.
+## Ways to use it
 
-Sample output (**synthetic demo data**, not a benchmark; output is bilingual by default, `--lang en` shown; `*` marks
-the selected profile):
-
-```
-claude-opus-5-5 · main · 6 sessions · 1308 turns · 10 days · window 1000k
-  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
-  default              967k -                             $403 (base)                0            0.8            0.871
-  current              600k -                            -$102 (-25%)        -1m (-0m)            1.4            0.909
-  balanced*            500k set                          -$135 (-33%)      -0.1h (-1m)            1.7   0.916 (+0.045)
-  cost                 175k set                          -$233 (-58%)      -0.2h (-1m)            6.5   0.922 (+0.051)
-  time                 650k set                           -$88 (-22%)        -6m (-1m)            1.2   0.902 (+0.030)
-  · vs current: cost -$131 (-43%) -0.2h; balanced -$32 (-11%) -0.1h; time +$14 (+5%) -4m
-  · time model: turn latency from this group's data, compaction latency from this group's data (22 own samples)
-  · balanced: guardrail moved the pick from 300k to 500k
-  · cost: below 25% of the max window; expect frequent lossy compactions
-  · time: guardrail moved the pick from 325k to 650k
-  · default: models with a native 1M window compact at about 967K tokens by default; current: modelSettings.claude-opus-5-5.autoCompactWindow in settings.json
-
-claude-opus-5-5 · subagent · 3 sessions · 143 turns · 4 days · window 1000k
-  profile            window action                   Δcost vs default     Δtime (/day)  compactions/d           recall
-  default              967k -                              $18 (base)                0            0.0            0.937
-  current              600k -                               +$0 (+0%)        +0m (+0m)            0.0            0.937
-  balanced*               - no action needed                        -                -            0.0            0.937
-  cost                    - no action needed                        -                -            0.0            0.937
-  time                    - no action needed                        -                -            0.0            0.937
-  · no action needed: the default never compacts in these sessions
-  · time model: turn latency from all claude-code sessions (this group is thin), compaction latency from all claude-code sessions (this group is thin) (0 own samples)
-  · default: models with a native 1M window compact at about 967K tokens by default; current: modelSettings.claude-opus-5-5.autoCompactWindow in settings.json
-```
-
-The HTML report is one offline file (no fonts, scripts or images fetched), in English or Chinese (follows the
-browser language; one toggle switches), light or dark (follows the system, or pick one). It leans on icons, delta
-chips (▼ green saves, ▲ amber adds) and small gauges rather than prose; explanations sit behind ⓘ tooltips and
-warnings are ⚠ icons with a tooltip. A sidebar lists each harness / model / role group (a top bar on phones); the
-header states the history's date range, data source and mode. A sticky control bar holds the profile switch and a
-threshold slider with marks for each profile, the default and your current setting. Below it: KPI cards for the
-slider position, the per-day impact of every profile, a comparison table, a Pareto frontier and cost and wall-clock
-curves with hover/tap tooltips and direct labels, where your tokens sit by context size, and any session's real
-context curve next to the same session replayed at the chosen threshold. Thin data, short histories and borrowed
-time models are called out in plain language.
-
-| Light | Dark | Phone |
+| | What it is | More |
 | --- | --- | --- |
-| ![report, light](docs/assets/report.png) | ![report, dark](docs/assets/report-dark.png) | ![report on a phone](docs/assets/report-mobile.png) |
+| **CLI and report** | `simulate`, `report`, `recommend`, `apply`, `verify`. The report is one offline HTML file, English or Chinese, light or dark. | [User guide](docs/GUIDE.md) |
+| **`compactlab top`** | An htop-like terminal view of the latest result: models on the left, cost and time curves on the right. | [TUI.md](docs/TUI.md) |
+| **Menu bar app** (macOS, preview) | Every active session's context against its threshold, whether its prompt cache is still warm, a daily calibration, and review → apply → verify → undo. English and Chinese. | [app/](app/README.md) |
+| **Background service** | `compactlab serve` recalibrates on a schedule with a localhost report and JSON API; opt-in auto-apply within strict limits. | [SERVICE.md](docs/SERVICE.md) |
+| **In-session lens** | A Claude Code mod that adds one row above the prompt: this session's context against the default and the compactlab threshold. | [MOD.md](docs/MOD.md) |
+| **Engine API** | `compactlab engine`: versioned JSON on stdout for apps and scripts, no port. | [ENGINE_API.md](docs/ENGINE_API.md) |
 
-### Per-day impact
+<p align="center">
+  <img src="docs/assets/app-panel.png" alt="compactlab menu bar panel: one suggested change, active sessions and the threshold for each model and role (synthetic demo data)" width="380">
+  <img src="docs/assets/app-review.png" alt="compactlab review window: default to 500k for opus-5.5, its saving per day, the data behind it and the setting it writes, with Apply (synthetic demo data)" width="440">
+</p>
 
-For each profile of each group, versus the harness default and versus your current setting: money saved or added
-(USD), wall-clock saved or added (minutes, with compaction wait and the turn-speed gain from a smaller context shown
-separately), and compactions, each per calendar day, per active day and per month (30 days). The calendar span is
-the history window actually covered; an active day is a local date with at least one turn. Dividing by calendar days
-understates a heavy user's day, so both are shown. **Sign: `-$204.8/day` means it saves $204.8 a day**; `+` adds.
-The report colours savings green and added cost or time amber, and keeps red for broken guardrails. Money is a
-list-price estimate and recall is a lite-mode proxy. `compactlab recommend` prints the same table after the
-snippets (`--json` adds it under `impact`):
+The menu bar app needs this CLI installed and is built from source for now (`app/scripts/package_app.sh`); a signed
+Homebrew cask is planned. The lens mod installs with
+`/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`; it is an independent project, not
+affiliated with Anthropic.
 
-```
-Per-day impact · claude-opus-5-5 · main · history 10.5 calendar days, 10.5 active days (with ≥1 turn)
-  vs harness default 967k
-    profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
-    balanced*         500k     -$12.9      -$12.9     -$386.1      -0.8     +2.0     -2.9          -0.8      -0.4        1.7      52
-    cost              175k     -$22.3      -$22.3     -$668.0      -1.4     +7.8     -9.2          -1.4      -0.7        6.5     195
-    time              650k      -$8.4       -$8.4     -$252.6      -0.6     +1.1     -1.7          -0.6      -0.3        1.2      37
-  vs your current 600k
-    profile         window      $/day  $/active d     $/month   min/day     wait    turns  min/active d   h/month  compact/d  /month
-    balanced*         500k      -$3.1       -$3.1      -$93.1      -0.7     +0.1     -0.8          -0.7      -0.3        1.7      52
-    cost              175k     -$12.5      -$12.5     -$375.0      -1.2     +5.9     -7.1          -1.2      -0.6        6.5     195
-    time              650k      +$1.3       +$1.3      +$40.4      -0.4     -0.8     +0.4          -0.4      -0.2        1.2      37
-```
+## Supported harnesses
 
-(Synthetic demo data, `--lang en`. The demo spreads sessions over every day, so active days equal calendar days.)
-
-## Copy the settings
-
-```bash
-compactlab recommend                                  # Claude Code settings.json fragment + Codex config.toml line
-compactlab recommend --scope project --copy           # project-level, onto the clipboard (macOS)
-compactlab recommend --scope agent                    # subagent frontmatter (autoCompactWindow)
-compactlab recommend --format env                     # CLAUDE_CODE_AUTO_COMPACT_WINDOW instead
-compactlab recommend --check                          # are the keys still verified against the docs?
-```
-
-Each snippet names its target file and carries a merge one-liner that leaves other keys alone, the evidence it came
-from (groups, delta vs default, time per day, where the time model came from) and a revert hint. `--profile` picks the
-profile (default balanced); `--all-profiles` prints all three. Values never exceed the model's window or your
-caps, and groups that need no change are listed as omitted. `recommend` only prints or copies; `apply` is still the
-only command that writes, under pre-authorization. The report has the same panel with copy buttons.
-
-| Harness | Scope | Key | Status |
+| Harness | Reads | Settings | Status |
 | --- | --- | --- | --- |
-| Claude Code | global / project | `modelSettings.<model>.autoCompactWindow` (v2.1.288+) | documented |
-| Claude Code | agent | subagent frontmatter `autoCompactWindow` (v2.1.296+, lowers only) | documented |
-| Claude Code | session | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` env (wins over all), `--autocompact` flag | documented |
-| Codex | global / project | top-level `model_auto_compact_token_limit` (project needs trust) | documented |
-| Codex | session | `codex -c model_auto_compact_token_limit=N` | documented |
-| Codex | agent / profile | role `config_file` layer, profile file | **unverified**: emitted with a warning |
-| Codex | env var | none documented | not emitted |
-| OpenCode 1.x | global / project | per-model `provider.<id>.models.<model>.limit` (`input` = threshold + 20,000) | public source; the note gives the 2.x `compaction.buffer` share |
-| Gemini CLI | global / project | `model.compressionThreshold` (fraction of the token limit, one value for every model) | documented; adapter experimental |
+| Claude Code | `~/.claude/projects/**/*.jsonl`, subagents included | `recommend` and `apply`: `modelSettings.<model>.autoCompactWindow` | supported |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | `recommend` and `apply`: `model_auto_compact_token_limit` (one global value) | supported |
+| OpenCode 1.x | `~/.local/share/opencode/opencode.db` (read-only) | `recommend`: a per-model `limit` | supported |
+| DeepSeek Harness (dsh) | `~/.dsh/sessions/**` | `recommend`: a `modelPolicies` entry | experimental, not yet run on real history |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/*.jsonl` | `recommend`: `model.compressionThreshold` | experimental, not yet run on real history |
 
-Facts, sources and verified-on dates live in [`data/config_knobs.json`](src/compactlab/data/config_knobs.json).
-
-## Check the prediction afterwards
-
-`compactlab verify` splits your logs at the time of the last `apply` and compares, per model and role, the logged cost
-and compactions per 1k turns before and after with what a replay of the *before* sessions predicted (plus a replay
-of the *after* sessions, to show when the workload changed). Cost includes an estimate of each compaction's summary
-request, which the logs do not record; threshold, idle and hand-typed compactions are counted apart, and a role whose
-threshold was never reached gets no verdict on it. It also checks that compactions really happen near the
-new threshold, which catches a setting that a project file, env var or CLI flag overrides. It says "too early" until
-each side has 3 sessions and 2 active days. Cost is the list-price figure, not your invoice, and wall-clock is not
-verified. Use `--id` for an older apply. For a threshold you set by hand, describe it instead:
-`compactlab verify --applied-at 2026-10-29T21:05 --model claude-opus-5-5 --new 625k [--old 967k]` (the time and old
-value are yours; it says so when sessions before that time already compacted near the new threshold, i.e. you gave a
-too-late date). For OpenCode add `--harness opencode` and name the model as `provider/model`; for Gemini CLI add
-`--harness gemini-cli`, name the model, and give `--new` in tokens for it (the fraction times that model's token
-limit; one fraction is a different token count on each window).
-
-Does it hold up on real logs? One checked case, with the control that makes the replay trustworthy:
-[docs/RESULTS.md](docs/RESULTS.md).
-
-## Idle compaction
-
-Claude Code also compacts on its own when you leave a long conversation idle on the one-hour cache (`idleCompaction`,
-on by default, from 200k tokens): it makes the summary while the cache is still warm, about 55 minutes in, and
-applies it when you return. compactlab tells these compactions apart in the logs, replays them (the summary's read
-and output, the smaller context you return to, the re-discovery after it, and summaries made for sessions you never
-resumed), and replays the groups it applies to with the setting flipped. After the groups it says whether to keep it
-on, with the cost, wall-clock and compaction change per day; `recommend` prints an `idleCompaction` snippet only when
-flipping it beats the current state by more than 2%.
-
-## Run as a service
-
-```bash
-compactlab serve --every 1d                 # localhost-only live report + JSON API, recalibrates daily (lite)
-compactlab schedule print                   # launchd / systemd files to run it unattended; install writes, you load
-compactlab consent set --file ~/.claude/settings.json --models claude-opus-5-5   # optional: allow auto-apply
-compactlab recalibrate --auto-apply --dry-run
-```
-
-Rescans are incremental, at low priority, with no network, and one at a time: the service, the CLI, a schedule and
-the app share one lock, so a run that finds another calibration or config write going is skipped, not doubled. Auto-apply is opt-in and goes through
-`apply`'s backups and manifests (`compactlab revert` undoes it). It moves a setting at most 100k per run, at most
-weekly, only for a clear benefit, and never over a value someone else edited. Details and threat model:
-[docs/SERVICE.md](docs/SERVICE.md).
-
-Apps and scripts use `compactlab engine` instead: versioned JSON on stdout, no port. `engine watch` keeps a live
-list of active sessions (context, model, threshold in force, when the prompt cache goes cold) from the ends of their
-log files; `engine calibrate` and `engine result` run and read the calibration. See
-[docs/ENGINE_API.md](docs/ENGINE_API.md).
-
-## In the terminal
-
-On a terminal, `demo`, `simulate`, `recommend`, `doctor` and `serve` draw a compact view (colour, boxes, a
-threshold gauge, was/now bars); piped or with `--plain` they print the full plain tables. `compactlab top` is a live,
-htop-like view of the latest result: models on the left, the selected one's cost and time curve on the right.
-
-<img src="docs/assets/top.svg" alt="compactlab top: models with was/now bars on the left, the selected model's cost and time curves over the threshold on the right (synthetic data)" width="760">
-
-```bash
-compactlab top --demo     # synthetic data; keys: ? help, p profile, % unit, c copy, r recalibrate, q quit
-```
-
-Details and key bindings: [docs/TUI.md](docs/TUI.md).
-
-## In-session lens (Claude Code mod)
-
-`mods/compactlab-lens` is an optional Claude Code mod. It adds one row above the prompt, and a pane on desktop, with
-this session's context against the default and the compactlab threshold, the per-day savings `simulate` estimated,
-and a ⚠ when the window in force differs. It reads only `~/.compactlab/lens.json`, which `simulate` writes. It never
-writes settings, calls a model or uses the network. Its "copy" button puts `/autocompact <n>` on your clipboard.
-
-```
-▸ ●●●●●●●●●●·┃··········┊· 412k ┊967k ┃500k ▼−$204.8/day ▲+4.8m/day ⟳0 ⚠
-```
-
-```
-/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab
-```
-
-See [docs/MOD.md](docs/MOD.md). The mod is an independent open-source project, not affiliated with Anthropic.
-
-## Menu bar app (macOS, preview)
-
-`app/` is a menu bar app built on `compactlab engine`, in English and Chinese: every active Claude Code and Codex
-session's context against its threshold, whether its prompt cache is still warm (with a "copy /compact" button once
-it is cold), the last calibration's thresholds, and a daily calibration in the background. A suggested change opens
-in a review window (what it saves, the data behind it, the exact edit) and is written by `compactlab apply` only when
-you click Apply; the panel shows the last change, its verification against your logs, and Undo. Notifications and
-auto-apply (Claude Code, within the auto-apply rules) are optional. It needs this CLI installed; build it with
-`app/scripts/package_app.sh`. See [app/README.md](app/README.md).
-
-## Two modes
-
-| | `lite` (default) | `deep` (opt-in) |
-| --- | --- | --- |
-| Inputs | your logs + price table | lite + a model you choose, via Claude Code or Codex |
-| Does | replay simulation, cost model, re-discovery penalty, summary fact-check heuristics | re-summarizes sampled sessions at candidate thresholds, probes them for ground-truth facts, LLM judge on a different model |
-| Recall | assumed proxy | measured on samples; disagreements with lite are shown |
-| Cost | $0, offline | shows an estimate first, needs `--yes`, stops at `--budget` (checked before each call and against measured spend after it; one call can overshoot the cap) |
-
-```bash
-compactlab simulate --mode deep --executor claude-code --model claude-sonnet-5-5 \
-  --judge-model claude-haiku-5-5 --budget 3            # prints the estimate; add --yes to run
-```
-
-If measured recall at a profile's threshold falls below the floor, deep lowers that profile and says so.
+Hermes, Qwen Code, Kimi CLI and Goose are on the [roadmap](docs/ROADMAP.md); the
+[adapter guide](docs/ADDING_A_HARNESS.md) shows how to add one.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  L[Claude Code / Codex JSONL] -->|adapters, incremental cache| S[sessions]
+  L[session logs] -->|adapters, incremental cache| S[sessions]
   S --> R[replay at every threshold]
   P[prices with provenance] --> R
   S --> C[calibrate re-discovery penalty]
   C --> R
-  R --> T[cost / balanced / time profiles + guardrails, Pareto]
+  R --> T[cost / balanced / time profiles + guardrails]
   T --> J[(result.json)]
-  J --> H[report.html]
+  J --> H[report, recommend]
   J --> A[apply: dry-run, backup, revert]
+  A --> V[verify against later logs]
 ```
 
-Each session becomes the tokens added per turn. compactlab replays that growth for each threshold. It charges
-cache reads, cache writes (after a compaction, or after an idle gap longer than the cache TTL, which it reads from the
-logs: 1 hour or 5 minutes, at that tier's write price), output, a summarizer
-call per compaction, and the re-reads and corrections that tend to follow one. It also adds up wall-clock time
-from latency curves fitted to your own timestamps. Details and formulas:
-[docs/METHODOLOGY.md](docs/METHODOLOGY.md). Background: [docs/WHY_THRESHOLDS.md](docs/WHY_THRESHOLDS.md).
+Each session becomes the tokens added per turn, and compactlab replays that growth at each threshold. It charges cache
+reads, cache writes (at the cache tier the logs show), output, a summarizer call per compaction, and the re-reads and
+corrections that tend to follow one, and adds up wall-clock time from latency curves fitted to your own timestamps.
+Formulas and what is measured versus assumed: [METHODOLOGY.md](docs/METHODOLOGY.md). Background:
+[WHY_THRESHOLDS.md](docs/WHY_THRESHOLDS.md).
 
-## Supported harnesses
+## Privacy and safety
 
-| Harness | Logs | Setting `apply` writes | Status |
-| --- | --- | --- | --- |
-| Claude Code | `~/.claude/projects/**/*.jsonl` (incl. `subagents/`, `$CLAUDE_CONFIG_DIR`) | `modelSettings.<model>.autoCompactWindow` (per model) | supported |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` (`$CODEX_HOME`) | top-level `model_auto_compact_token_limit` (global only: one value chosen across the models in use) | supported |
-| DeepSeek Harness (dsh) | `~/.dsh/sessions/**/session[.vN].jsonl[.zstd]` (`$DSH_HOME`; zstd needs Python 3.14+ or the `zstd` command) | none: `recommend` prints a `modelPolicies` entry (`thresholdRatio`) for the compaction-basic plugin | experimental: built from dsh's source and snapshot logs, not yet run on real history |
-| OpenCode 1.x | `~/.local/share/opencode/opencode.db` (SQLite, opened read-only; `$XDG_DATA_HOME`) | none: `recommend` prints a per-model `limit` for `opencode.json` | supported: parsed on a real 1.19.5 database (token sums match OpenCode's own totals); compaction records are from the source, since that history had none. 2.x pre-release storage is not read (`doctor` counts it) |
-| Gemini CLI | `~/.gemini/tmp/<project>/chats/*.jsonl` (`$GEMINI_CLI_HOME`; older `session-*.json` too) | none: `recommend` prints `model.compressionThreshold` | experimental: built from Gemini CLI 0.46/0.70 source, not yet run on real history |
-| Hermes, Qwen Code, Kimi CLI, Goose | | | planned, see the [roadmap](docs/ROADMAP.md) ([adapter guide](docs/ADDING_A_HARNESS.md)) |
+- **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` (or the opt-in
+  `pricing auto`) downloads public price files, and only deep mode calls a model, after showing an estimate and
+  asking for `--yes` and a `--budget`.
+- **No transcript text leaves your logs.** Reports and `result.json` hold token counts, model names and session ids;
+  `report --redact` hashes the ids. The scan cache keeps token counts and times, not prompts, tool arguments or
+  output (one exception: a last message still waiting for its reply).
+- **Writes are opt-in and reversible.** `apply` is a dry-run diff; writing needs `--write` plus a
+  [pre-authorization](docs/SAFETY.md) or `--i-authorize`, backs up every file, and `revert` restores only the keys it
+  changed.
+- **Sharing is a file you post yourself.** `compactlab share` writes numbers and model names only and sends nothing.
 
-None of these harnesses lets subagents have their own threshold, so `apply` writes the main-role value. dsh reads its threshold as a fraction of the window (default: the lower of 80% and window − 256k output reserve − 65,536, about 727k on DeepSeek's 1M models); where its plugin config lives is not verified, so `apply` leaves it alone.
-
-OpenCode 1.x has no threshold key. It compacts at the window minus the model's output reserve (at most 32,000), or at
-`limit.input − compaction.reserved` for a model whose `limit` sets `input`, so `compaction.reserved` alone does
-nothing for most models; `recommend` sets a per-model `limit` with `input` = threshold + 20,000 and gives the 2.x
-`compaction.buffer` share in a note. A custom model without a `limit` has no known window, and OpenCode never
-compacts it by itself. Gemini CLI compresses at `model.compressionThreshold` × the model's token limit (0.5 ×
-1,048,576 by default); the key is global, so one fraction serves every model and the snippet says where it lands for
-the others. Fractions are rounded so the trigger never lands above the pick, with a note when the window makes the
-step coarse. `apply` writes neither until their config locations and precedence are checked on real setups.
-
-## Safety and privacy
-
-- **Offline by default.** Lite mode makes no network and no model calls. Only `pricing refresh` fetches public
-  prices, and only deep mode calls a model, and only after you confirm. `compactlab pricing auto on` lets `serve` and
-  scheduled runs fetch the same public files by themselves: when your logs show a model with no price row of its own
-  (retried daily, or after an hour for a newly seen model, up to 5 times) and once a week for the models already
-  known, since vendors change prices and windows. The download sends nothing about you or your models; changes are
-  logged and `simulate` lists the recent ones for your models.
-- **Nothing leaves your machine in lite mode.** Reports and `result.json` hold token counts, model names and
-  session ids, never transcript text or file paths. `report --redact` hashes the ids.
-- **Config changes are opt-in and reversible.** `apply` is a dry-run diff. Writing needs `--write` plus a
-  [pre-authorization file](docs/SAFETY.md) (allowed files, keys, models, value bounds, expiry) or `--i-authorize`.
-  Every write is backed up, and `revert` restores only the keys it changed. `--expect-plan <hash>` (the hash a
-  dry-run prints) writes only the plan you reviewed and refuses if anything in it changed since.
-- **Sharing is a file you post yourself.** `compactlab share` writes an anonymous record of the estimated savings
-  (numbers and model names, no ids, paths or timestamps) for the research issue form; it sends nothing. See
-  [docs/SHARING.md](docs/SHARING.md).
-- The scan cache (`~/.compactlab/cache`, 0600 files in a 0700 directory) stores lean sessions: token counts and
-  times, a flag for user messages that correct the agent, hashed tool calls and summary lengths; no prompt text,
-  tool arguments, output snippets or summaries (only a still-unanswered last message waits there until its reply).
-  It also keeps the last few analysis results (numbers, model names and session ids). Rows of deleted logs are
-  dropped after each scan and older cache versions are deleted on upgrade. Use `--no-cache`, or
-  `compactlab cache clear` to delete every version.
+Threat model and reporting: [SECURITY.md](SECURITY.md).
 
 ## Limitations
 
-- Lite-mode recall is an **assumed** curve, not a measurement of any model. Deep mode measures recall on samples
-  of compactlab's excerpts, not the full transcript the harness would summarize.
-- Replayed cost is a list-price estimate for comparing thresholds, not a reconstruction of your invoice
-  (subscriptions, discounts and credits are ignored). Wall-clock estimates come from
-  log timestamps (response time minus the preceding input), a proxy that is flagged when data is thin.
-- The bundled prices are a dated public snapshot (models.dev). `compactlab pricing show` lists the source of every
-  row; refresh or override them as needed. A model is priced from its own row when there is one, with platform IDs
-  (Bedrock `us.anthropic.…`, Vertex `…@date`, OpenRouter `anthropic/…`, Azure, Codex's `model_provider`) mapped to
-  that platform's price after a refresh and to the vendor's list price before. A model the table does not know borrows
-  the closest model of its family (`claude-fable-5-3` from `claude-fable-5-2`), and anything else gets the fallback
-  row; `simulate` lists both, and `pricing show --model <id> [--platform <p>]` shows how one is matched.
-- Claude Code sizes the window from the model ID: a third-party model behind `ANTHROPIC_BASE_URL` (DeepSeek, Kimi,
-  GLM, ...) is replayed with the 200K window Claude Code assumes for it, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` when set.
-- Things change over time, and the replay follows the latest: history is priced at today's prices (a refresh older
-  than the bundled snapshot no longer overrides it, and a saved result made before a price change says so when
-  loaded); Codex's window is the one its latest sessions logged (a clean switch is reported); a Claude Code context
-  larger than the assumed window means the window grew; and when your latest threshold compactions land more than
-  10% from the assumed default, `simulate` says the harness default may have changed or a setting it cannot read is
-  in force.
-- Some log-format details (Codex fork replay, compaction events) are marked `assumed` in
-  [`data/harness_formats.json`](src/compactlab/data/harness_formats.json) until checked against more real files.
-- Tested on macOS; Linux paths follow the same defaults and run in CI. Windows is untested.
+- Lite-mode recall is an **assumed** curve, not a measurement; deep mode measures it on samples.
+- Costs are list-price estimates for comparing thresholds, not your invoice (subscriptions, discounts and credits are
+  ignored). Wall-clock comes from log timestamps and is flagged when data is thin.
+- The one real-world check is a single machine (above). More cases are needed before the savings can be generalized.
+- Windows is untested.
 
-## FAQ
+Full list: [User guide § Limitations](docs/GUIDE.md#limitations).
 
-**Will it change my settings?** Not unless you pass `--write` with an authorization, and even then only the
-allow-listed key, with a backup.
+## Documentation
 
-**Why not just use the lowest-cost threshold?** Cost alone favors compacting early, and every compaction costs
-minutes of waiting and some lost detail. On real histories a cost-first pick can mean several times more compactions
-than the default. The default `balanced` profile prices your time at $250/h and never goes below 40% of the
-window; `--profile cost` is there if money is what you want to minimize.
+- [User guide](docs/GUIDE.md): reading the output, setting keys, apply and verify, harness notes
+- [Results on real logs](docs/RESULTS.md) · [Methodology](docs/METHODOLOGY.md) · [Why thresholds matter](docs/WHY_THRESHOLDS.md)
+- [Safety: apply and revert](docs/SAFETY.md) · [Running as a service](docs/SERVICE.md) · [Sharing results](docs/SHARING.md)
+- [Terminal views](docs/TUI.md) · [HTML report design](docs/REPORT_UI.md) · [Lens mod](docs/MOD.md) · [Menu bar app](app/README.md)
+- For contributors: [Architecture](docs/ARCHITECTURE.md) · [Engine API](docs/ENGINE_API.md) · [Adding a harness](docs/ADDING_A_HARNESS.md) · [Roadmap](docs/ROADMAP.md)
 
-**Does it work without any history?** `compactlab demo` uses bundled synthetic sessions.
-
-**What is the baseline?** The harness default from its docs or source: about 967K tokens for Claude models with a
-native 1M window, 200K for Sonnet/Opus 4.6 without extended context, the context limit otherwise; 90% of the
-context window for Codex; the window minus 32K for OpenCode 1.x; half the token limit (about 524K) for Gemini CLI.
-Sources are in [`data/harness_defaults.json`](src/compactlab/data/harness_defaults.json).
-
-**Can I trust the recall numbers?** In lite mode, no. Treat them as a guard-rail you can configure. Deep mode
-gives sampled measurements with their own noise.
+All docs are indexed in [docs/README.md](docs/README.md).
 
 ## Related work
 
 [ccusage](https://github.com/ryoppippi/ccusage) and [CodexBar](https://github.com/steipete/CodexBar) track token
-usage and cost from the same logs. compactlab borrows parsing ideas from them, not code. Chroma's
+usage and cost from the same logs; compactlab borrows parsing ideas from them, not code. Chroma's
 [Context Rot](https://trychroma.com/research/context-rot) report covers long-context degradation, and LangWatch's
 [study on optimal context windows](https://langwatch.ai/research/finding-the-optimal-context-window) looks at the
 same trade-off on its own agents.
 
 ## Contributing
 
-Adapters, pricing updates and new fact-check heuristics are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/ADDING_A_HARNESS.md](docs/ADDING_A_HARNESS.md). Tests use synthetic data only. Run
-`python scripts/secrets_scan.py --all` before pushing.
+Adapters, pricing updates and new fact-check heuristics are welcome; tests use synthetic data only. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). [中文说明](README.zh-CN.md)
+[MIT](LICENSE)
