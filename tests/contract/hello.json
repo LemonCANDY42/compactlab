@@ -4,8 +4,15 @@
   "sessions",
   "watch",
   "result",
-  "calibrate"
+  "calibrate",
+  "plan",
+  "apply",
+  "revert",
+  "history",
+  "verify",
+  "consent"
  ],
+ "consent": null,
  "engine_api": 1,
  "harnesses": [
   {

@@ -18,7 +18,19 @@ from ..lens import summarize
 from ..sim.select import DEFAULT_PROFILE
 
 ENGINE_API = 1
-COMMANDS = ("hello", "sessions", "watch", "result", "calibrate")
+COMMANDS = (
+    "hello",
+    "sessions",
+    "watch",
+    "result",
+    "calibrate",
+    "plan",
+    "apply",
+    "revert",
+    "history",
+    "verify",
+    "consent",
+)
 LIVE_HARNESSES = ("claude-code", "codex")  # harnesses `sessions` / `watch` read
 
 
@@ -27,7 +39,8 @@ def message(kind: str, **body: Any) -> dict[str, Any]:
 
 
 def error(code: str, text: str) -> dict[str, Any]:
-    """codes: no_result, bad_result, calibration_failed, busy, bad_command, scan_failed, internal"""
+    """codes: no_result, bad_result, calibration_failed, busy, bad_command, scan_failed, internal; plan_changed,
+    refused, no_apply, no_sessions (the settings commands)"""
     return message("error", error={"code": code, "message": text})
 
 
@@ -71,7 +84,22 @@ def hello(harnesses: list[dict[str, Any]], state_dir: Path) -> dict[str, Any]:
         state_dir=str(state_dir),
         result={"path": str(res), "exists": res.exists()},
         service=service_state(state_dir),
+        consent=consent_state(state_dir),
     )
+
+
+def consent_state(state_dir: Path) -> dict[str, Any] | None:
+    """The stored auto-apply consent (`compactlab consent`, `engine consent`), or null when there is none or it no
+    longer holds (expired, unreadable)."""
+    from dataclasses import asdict
+
+    from ..apply import ApplyError
+    from ..service.policy import load_consent
+
+    try:
+        return asdict(load_consent(state_dir / "consent.json"))
+    except ApplyError:
+        return None
 
 
 def result_message(

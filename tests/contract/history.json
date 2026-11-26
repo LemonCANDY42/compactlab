@@ -1,0 +1,33 @@
+{
+ "applies": [
+  {
+   "at": 1795681587.655479,
+   "by": "app",
+   "changes": [
+    {
+     "file": "~/settings.json",
+     "harness": "claude-code",
+     "key": "modelSettings.claude-opus-5-5.autoCompactWindow",
+     "model": "claude-opus-5-5",
+     "new": 625000,
+     "now": 625000,
+     "old": null,
+     "status": "in_effect"
+    },
+    {
+     "file": "~/settings.json",
+     "harness": "claude-code",
+     "key": "modelSettings.claude-sonnet-5-5.autoCompactWindow",
+     "model": "claude-sonnet-5-5",
+     "new": 450000,
+     "now": 450000,
+     "old": null,
+     "status": "in_effect"
+    }
+   ],
+   "id": "20261126T162627-42317"
+  }
+ ],
+ "engine_api": 1,
+ "kind": "history"
+}
