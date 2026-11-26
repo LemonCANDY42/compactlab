@@ -85,7 +85,10 @@ sandboxed: it reads `~/.claude` and `~/.codex` and runs the engine.
 `scripts/make_dmg.sh` puts the app in a disk image (signed with the same identity), and `scripts/notarize.sh` takes the
 image too. The `App` workflow does all of this on pushes to `main` when these repository secrets exist and uploads the
 disk image, the zip and a filled-in Homebrew cask as artifacts; on a published GitHub release it attaches the disk
-image and the cask to it. Without the secrets it uploads an ad-hoc build (runs only where it was built):
+image and the cask to it. Without the secrets it uploads an ad-hoc build (runs only where it was built).
+`scripts/set_signing_secrets.sh DeveloperID.p12 AuthKey_<id>.p8 <issuer id>` stores them: run it yourself, it asks
+for the .p12 password, checks both files the way the workflow uses them (`--check` stops there) and passes each value
+to `gh secret set` on standard input.
 
 | Secret | Value |
 | --- | --- |
