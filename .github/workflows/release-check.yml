@@ -1,0 +1,30 @@
+name: Release check
+# A clean Homebrew install of the released engine, paired with the app built from the same tag: review → apply →
+# undo through the app restores the settings file, and the packaged app opens with settings writable
+# (app/scripts/release_check.sh). Run it after the tap's formula points at a new tag, before committing the cask.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to check (its version must be the formula's)"
+        required: true
+  pull_request:
+    paths: [".github/workflows/release-check.yml", "app/scripts/release_check.sh"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+          fetch-depth: 0 # the build number is the commit count
+      - name: Install the engine from the tap
+        run: |
+          brew install --yes lemoncandy42/tap/compactlab
+          brew test lemoncandy42/tap/compactlab
+      - name: Package the app
+        run: app/scripts/package_app.sh
+      - name: Release check
+        run: app/scripts/release_check.sh "$(brew --prefix)/bin/compactlab" app/build/compactlab.app
