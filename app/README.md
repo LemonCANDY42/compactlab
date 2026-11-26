@@ -118,7 +118,8 @@ version or later: a cask that reaches people before the formula would open read-
    installs it on macOS and Linux.
 4. On a Mac with a clean Homebrew install (`brew uninstall compactlab`, then `brew install LemonCANDY42/tap/compactlab`),
    install the app from the release's disk image and run `scripts/release_check.sh "$(brew --prefix)/bin/compactlab"
-   /Applications/compactlab.app` (Gatekeeper must accept it).
+   /Applications/compactlab.app` (Gatekeeper must accept it). The `Release check` workflow (dispatch it with the tag)
+   does the same on a fresh runner with the app built from the tag.
 5. Then commit the release's `compactlab-app.rb` to the tap as `Casks/compactlab-app.rb`.
 
 ## Left out on purpose
