@@ -112,8 +112,14 @@ How to read the output, every setting key it can emit, `verify` in detail and th
   <img src="docs/assets/app-review.png" alt="compactlab review window: default to 500k for opus-5.5, its saving per day, the data behind it and the setting it writes, with Apply (synthetic demo data)" width="440">
 </p>
 
-The menu bar app needs this CLI installed and is built from source for now (`app/scripts/package_app.sh`); a signed
-Homebrew cask is planned. The lens mod installs with
+The menu bar app (macOS 14+) is signed and notarized; the Homebrew cask installs this CLI with it:
+
+```bash
+brew install --cask LemonCANDY42/tap/compactlab-app
+```
+
+Or download the disk image from [Releases](https://github.com/LemonCANDY42/compactlab/releases) and install the CLI
+first. The lens mod installs with
 `/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`; it is an independent project, not
 affiliated with Anthropic.
 
