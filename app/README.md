@@ -21,7 +21,7 @@ Regenerate with `scripts/screenshots.sh`.</sub>
 
 - macOS 14 or later.
 - The engine, 0.1.0 or later (0.2 or later to change settings from the app): `brew install LemonCANDY42/tap/compactlab` or
-  `uv tool install git+https://github.com/LemonCANDY42/compactlab`. The app looks for `compactlab` in Settings → Engine,
+  `uv tool install compactlab`. The app looks for `compactlab` in Settings → Engine,
   then on PATH, `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`.
 
 ## What it does

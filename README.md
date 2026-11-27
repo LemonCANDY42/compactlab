@@ -61,13 +61,13 @@ can post to collect more cases ([SHARING.md](docs/SHARING.md)).
 brew install LemonCANDY42/tap/compactlab
 ```
 
-Or with uv or pipx: `uv tool install git+https://github.com/LemonCANDY42/compactlab`. compactlab is not on PyPI.
+Or from PyPI: `uv tool install compactlab` or `pipx install compactlab`.
 Python 3.11+, no runtime dependencies. Tested on macOS; Linux runs in CI.
 
 To try it without installing anything (bundled synthetic sessions, no history or API key needed):
 
 ```bash
-uvx --from git+https://github.com/LemonCANDY42/compactlab compactlab demo
+uvx compactlab demo
 ```
 
 ## Quickstart

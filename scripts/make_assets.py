@@ -65,7 +65,7 @@ def run_cli(args: list[str], cols: int) -> str:
 
 
 def prompt(cmd: str) -> str:
-    """The typed command above a capture: what a visitor runs after `uv tool install git+…/compactlab`."""
+    """The typed command above a capture: what a visitor runs after `uv tool install compactlab`."""
     return f"\x1b[38;2;143;140;131m$ \x1b[0m\x1b[1;38;2;236;235;228m{cmd}\x1b[0m\n\n"
 
 

@@ -9,15 +9,15 @@ from 2026-10-29 and change quickly.
   recommend); dsh and Gemini CLI experimental (parse, replay, recommend; not yet run on real history).
 - Lite mode is offline and default; deep mode exists but has not been run against real history at scale.
 - Recall in lite mode is an assumed proxy, and the savings are counterfactual estimates at list prices.
-- Installs with Homebrew (`LemonCANDY42/tap`) or from GitHub; v0.1.0 is tagged. Not on PyPI.
+- Installs with Homebrew (`LemonCANDY42/tap`) or from PyPI; v0.2.0 is the latest release.
 - A macOS menu bar app (`app/`, preview) shows live sessions and reviews, applies, verifies and undoes changes; it is
-  built from source until a signed Homebrew cask ships.
+  signed and notarized, and installs with the Homebrew cask `compactlab-app`.
 
 ## v0.1.0 — release what exists
 
 - Tag v0.1.0 with release notes — done (2026-11-25), installable with Homebrew.
-- Publish to PyPI so the short install command works without the GitHub URL (and lift the docs test that forbids
-  PyPI-style install commands at the same time) — not done.
+- Publish to PyPI so the short install command works without the GitHub URL — done (0.2.0, 2026-11-27); releases
+  upload with trusted publishing.
 - Social preview image in the repository settings (`docs/assets/social-preview.png`) — to upload by hand.
 - Merge or close the open Dependabot PRs — done.
 
