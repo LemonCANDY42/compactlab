@@ -92,7 +92,13 @@ compactlab revert                     # 撤销最近一次 apply
   <img src="docs/assets/app-review.zh-CN.png" alt="compactlab 审阅窗口：opus-5.5 从默认改到 500k、每天省多少、依据的数据和要写入的设置，带应用按钮（合成演示数据）" width="440">
 </p>
 
-菜单栏应用需要先装好这个命令行工具，目前要从源码构建（`app/scripts/package_app.sh`）；签名的 Homebrew cask 还在计划中。lens mod 的安装命令是 `/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`；它是独立的开源项目，与 Anthropic 无关。
+菜单栏应用（macOS 14+）已签名并通过公证。用 Homebrew 安装时会一起装上这个命令行工具：
+
+```bash
+brew install --cask LemonCANDY42/tap/compactlab-app
+```
+
+也可以从 [Releases](https://github.com/LemonCANDY42/compactlab/releases) 下载磁盘映像，这样要先自己装好命令行工具。lens mod 的安装命令是 `/plugin install compactlab-lens --marketplace LemonCANDY42/compactlab`；它是独立的开源项目，与 Anthropic 无关。
 
 ## 支持的工具
 

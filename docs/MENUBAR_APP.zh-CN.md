@@ -263,7 +263,7 @@ DMG、Homebrew cask、Sparkle、中英本地化、无障碍检查；可选 Widge
 - 不做：Sparkle（应用不联网，靠 `brew upgrade`）；WidgetKit（需要 app extension，纯 SwiftPM 建不了）；内置 Python（引擎单独安装更小、签名更简单）。
 版本号已升到 0.2.0（引擎和应用同一版本号）；`app/scripts/release_check.sh` 检查装好的一对引擎和应用：引擎版本对得上、能改设置，经应用走一遍「审阅 → 应用 → 撤销」后设置文件逐字节复原，打包的应用打开后设置可写。发版顺序见 app/README.md「Releasing」：先 tag 和 release，再更新 tap 的 formula，用干净的 Homebrew 安装跑检查，最后才提交 cask，免得应用先于能改设置的引擎到用户手里。
 0.2.0 已于 2026-11-26 发布，tap 的 formula 已更新到 0.2.0；`Release check` workflow 在全新的 runner 上从 tap 装引擎，配上同一 tag 打包的应用，「审阅 → 应用 → 撤销」通过。
-还差（都要你来）：加签名和公证的 secrets，然后重跑 v0.2.0 release 的 `App` workflow（把公证过的磁盘映像和 cask 传到 release），再把 cask 提交到 tap；用一周验收 Phase 1。
+签名和公证（2026-11-27）：v0.2.0 release 里已经有公证过的磁盘映像和 cask，cask 也提交到了 tap（`brew install --cask LemonCANDY42/tap/compactlab-app`），tap 的 CI 会安装它并检查 Gatekeeper。还差：用一周验收 Phase 1。
 
 ## 6. 其他优化建议（不做应用也值得做）
 
