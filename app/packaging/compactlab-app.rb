@@ -6,11 +6,11 @@ cask "compactlab-app" do
 
   url "https://github.com/LemonCANDY42/compactlab/releases/download/v#{version}/compactlab-#{version}.dmg"
   name "compactlab"
-  desc "Menu bar app for compactlab: context headroom, calibrated thresholds, review and undo"
+  desc "Menu bar app for context headroom and calibrated auto-compact thresholds"
   homepage "https://github.com/LemonCANDY42/compactlab"
 
-  depends_on macos: ">= :sonoma"
   depends_on formula: "lemoncandy42/tap/compactlab"
+  depends_on macos: :sonoma
 
   app "compactlab.app"
 
