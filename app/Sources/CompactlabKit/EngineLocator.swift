@@ -59,6 +59,6 @@ public struct EngineLocator: Sendable {
 
     public static let installCommands = [
         "brew install LemonCANDY42/tap/compactlab",
-        "uv tool install git+https://github.com/LemonCANDY42/compactlab",
+        "uv tool install compactlab",
     ]
 }

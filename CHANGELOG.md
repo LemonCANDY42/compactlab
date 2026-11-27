@@ -6,6 +6,9 @@ versioning: [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **On PyPI.** `uv tool install compactlab`, `pipx install compactlab` and `uvx compactlab demo` work; releases
+  upload with trusted publishing (the `Publish` workflow). The menu bar app installs with the signed and notarized
+  Homebrew cask: `brew install --cask LemonCANDY42/tap/compactlab-app`.
 - **Docs and presentation.** The READMEs are a short front page (pitch, the one real-log result, install,
   quickstart, ways to use it, harnesses, privacy, limitations), the same in English and Chinese, with a language
   switch, release and platform badges, and screenshots of the menu bar app. The reference detail they held moved to

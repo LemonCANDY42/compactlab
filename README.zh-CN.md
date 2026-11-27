@@ -45,12 +45,12 @@ Claude Code 和 Codex 会在上下文涨到某个 token 阈值时压缩对话。
 brew install LemonCANDY42/tap/compactlab
 ```
 
-也可以用 uv 或 pipx 安装：`uv tool install git+https://github.com/LemonCANDY42/compactlab`。compactlab 没有发布到 PyPI。需要 Python 3.11+，没有运行时依赖。在 macOS 上测试过，Linux 在 CI 里跑。
+也可以从 PyPI 安装：`uv tool install compactlab` 或 `pipx install compactlab`。需要 Python 3.11+，没有运行时依赖。在 macOS 上测试过，Linux 在 CI 里跑。
 
 不安装也能先试一下（用内置的合成会话，不需要历史记录或 API key）：
 
 ```bash
-uvx --from git+https://github.com/LemonCANDY42/compactlab compactlab demo
+uvx compactlab demo
 ```
 
 ## 快速上手
