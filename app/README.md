@@ -115,8 +115,8 @@ version or later: a cask that reaches people before the formula would open read-
 1. Before tagging, on the release commit: `scripts/package_app.sh && scripts/release_check.sh --source
    build/compactlab.app` installs this checkout the way the formula does (its `git archive`, a fresh venv) and runs
    review → apply → undo through the app against it; the packaged app must open with settings writable.
-2. Tag `vX.Y.Z` and publish the GitHub release; the `App` workflow attaches the notarized disk image and the filled-in
-   cask (it fails without the signing secrets).
+2. Tag `vX.Y.Z` and publish the GitHub release; the `Publish` workflow uploads the engine to PyPI, and the `App`
+   workflow attaches the notarized disk image and the filled-in cask (it fails without the signing secrets).
 3. Point `Formula/compactlab.rb` in LemonCANDY42/homebrew-tap at the new tag's tarball and checksum; the tap's CI
    installs it on macOS and Linux.
 4. On a Mac with a clean Homebrew install (`brew uninstall compactlab`, then `brew install LemonCANDY42/tap/compactlab`),

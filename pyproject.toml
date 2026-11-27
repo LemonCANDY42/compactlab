@@ -1,12 +1,12 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
 
 [project]
 name = "compactlab"
 version = "0.2.0"
 description = "Measure where to auto-compact from your own agent history: cost vs context-rot trade-offs per model and role."
-readme = "README.md"
+dynamic = ["readme"]
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "compactlab contributors" }]
@@ -40,6 +40,24 @@ compactlab = "compactlab.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/compactlab"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/examples", "/README.md", "/README.zh-CN.md", "/CHANGELOG.md", "/LICENSE"]
+
+# PyPI shows the README without the repository around it, so relative links and images point at GitHub there.
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '(\]\(|src=")(docs/assets/[^)"]+)'
+replacement = '\1https://raw.githubusercontent.com/LemonCANDY42/compactlab/main/\2'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\((?!https?://|#|mailto:)([^)]+)\)'
+replacement = '](https://github.com/LemonCANDY42/compactlab/blob/main/\1)'
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
